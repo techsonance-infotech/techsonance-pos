@@ -16,11 +16,13 @@ import {
     Settings,
     LogOut,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    LayoutGrid
 } from "lucide-react"
 
 const sidebarItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+    { icon: LayoutGrid, label: "Tables", href: "/dashboard/tables" },
     { icon: ShoppingCart, label: "New Order", href: "/dashboard/new-order" },
     { icon: Clock, label: "Recent Orders", href: "/dashboard/recent-orders" },
     { icon: PauseCircle, label: "Hold Orders", href: "/dashboard/hold-orders" },

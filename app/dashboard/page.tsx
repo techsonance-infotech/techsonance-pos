@@ -1,7 +1,14 @@
 import { Button } from "@/components/ui/button"
 import { IndianRupee, ShoppingBag, Clock, Pause, Plus, List, Settings } from "lucide-react"
+import { getUserProfile } from "@/app/actions/user"
+import { redirect } from "next/navigation"
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+    const user = await getUserProfile()
+    if (!user) redirect("/")
+    if (!user.defaultStoreId) redirect("/dashboard/stores")
+    // Note: We might want to pass the store name to UI if needed, but not required yet.
+
     return (
         <div className="space-y-8">
             <div>

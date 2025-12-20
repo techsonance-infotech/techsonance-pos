@@ -58,3 +58,30 @@ body {
   @apply bg-background text-foreground;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+
+  /* Hide specific elements explicitly */
+  .no-print,
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+
+  /* Also hide all body children by default if needed, but the above is closer to standard */
+  /* If .no-print is applied to the main content, that should be enough */
+
+  /* Ensure receipt is visible */
+  .print-receipt {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white;
+    z-index: 9999;
+  }
+}

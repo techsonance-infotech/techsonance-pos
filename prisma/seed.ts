@@ -17,17 +17,30 @@ async function main() {
     })
     console.log({ superAdmin })
 
-    // 2. Create Restaurant
-    const restaurant = await prisma.restaurant.create({
+    // 2. Create Stores
+    const store1 = await prisma.store.create({
+        data: { name: 'Godadara, Surat', location: '123 Main Street' }
+    })
+    const store2 = await prisma.store.create({
+        data: { name: 'Vesu, Surat', location: '456 Downtown Ave' }
+    })
+    const store3 = await prisma.store.create({
+        data: { name: 'Vapi, Gujarat', location: '789 Shopping Mall' }
+    })
+    console.log({ store1, store2, store3 })
+
+    // 2b. Link Super Admin to Stores
+    await prisma.user.update({
+        where: { id: superAdmin.id },
         data: {
-            name: 'TechSonance Cafe',
-            address: '123 Tech Park',
-            area: 'Innovation Hub',
+            stores: {
+                connect: [{ id: store1.id }, { id: store2.id }, { id: store3.id }]
+            },
+            defaultStoreId: store1.id
         }
     })
-    console.log({ restaurant })
 
-    // 3. Create Business Owner linked to Restaurant
+    // 3. Create Business Owner linked to All Stores
     const businessOwner = await prisma.user.upsert({
         where: { email: 'owner@techsonance.com' },
         update: {},
@@ -37,12 +50,15 @@ async function main() {
             password: 'password123',
             role: Role.BUSINESS_OWNER,
             contactNo: '9876543211',
-            restaurantId: restaurant.id
+            stores: {
+                connect: [{ id: store1.id }, { id: store2.id }, { id: store3.id }]
+            },
+            // defaultStoreId removed to force selection
         },
     })
     console.log({ businessOwner })
 
-    // 4. Create Regular User (Staff) linked to Restaurant
+    // 4. Create Regular User (Staff) linked to Vesu only
     const staffUser = await prisma.user.upsert({
         where: { email: 'staff@techsonance.com' },
         update: {},
@@ -52,7 +68,10 @@ async function main() {
             password: 'password123',
             role: Role.USER,
             contactNo: '9876543212',
-            restaurantId: restaurant.id
+            stores: {
+                connect: [{ id: store2.id }]
+            },
+            defaultStoreId: store2.id
         },
     })
     console.log({ staffUser })

@@ -18,7 +18,7 @@ export async function verifyPin(prevState: any, formData: FormData) {
         })
 
         if (!user) {
-            return { error: "User not found" }
+            redirect("/")
         }
 
         if (user.pin !== pin) {
@@ -27,11 +27,25 @@ export async function verifyPin(prevState: any, formData: FormData) {
 
         // Set session cookie
         const cookieStore = await cookies()
+
         // Set session cookie (30 days)
         cookieStore.set('session_role', user.role, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
         cookieStore.set('session_user_id', user.id, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
 
-        redirect("/dashboard?verified=true")
+        console.log("LOGIN DEBUG: User ID:", user.id)
+        console.log("LOGIN DEBUG: tableMode value:", user.tableMode)
+
+        // Strict check for null OR undefined
+        if (user.tableMode === null || user.tableMode === undefined) {
+            console.log("LOGIN DEBUG: Redirecting to SETUP")
+            redirect("/setup/mode?verified=true")
+        } else if (user.tableMode === true) {
+            console.log("LOGIN DEBUG: Redirecting to TABLES")
+            redirect("/dashboard/tables?verified=true")
+        } else {
+            console.log("LOGIN DEBUG: Redirecting to DASHBOARD (Counter)")
+            redirect("/dashboard?verified=true")
+        }
 
     } catch (error) {
         if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
@@ -66,7 +80,15 @@ export async function createPin(prevState: any, formData: FormData) {
         cookieStore.set('session_role', user.role, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
         cookieStore.set('session_user_id', user.id, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
 
-        redirect("/dashboard?verified=true")
+        console.log("CREATE PIN DEBUG: tableMode value:", user.tableMode)
+
+        if (user.tableMode === null || user.tableMode === undefined) {
+            redirect("/setup/mode?verified=true")
+        } else if (user.tableMode === true) {
+            redirect("/dashboard/tables?verified=true")
+        } else {
+            redirect("/dashboard?verified=true")
+        }
     } catch (error) {
         if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
             throw error

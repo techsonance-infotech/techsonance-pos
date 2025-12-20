@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
-import { Bell, Search, MapPin, LogOut, Settings, Check, CheckCheck, Filter } from "lucide-react"
+import { Bell, Search, MapPin, LogOut, Settings, Check, CheckCheck, Filter, Clock, LayoutGrid } from "lucide-react"
 import { getUserProfile } from "@/app/actions/user"
 import { getNotifications, markNotificationAsRead, markAllAsRead } from "@/app/actions/notifications"
 import { logout } from "@/app/actions/logout"
@@ -16,23 +16,25 @@ type Notification = {
     createdAt: Date
 }
 
-export function Header() {
-    const [user, setUser] = useState<{ username: string, role: string } | null>(null)
+export function Header({ initialUser }: { initialUser: any | null }) {
+    const [user, setUser] = useState(initialUser)
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [showNotifications, setShowNotifications] = useState(false)
     const [unreadOnly, setUnreadOnly] = useState(false)
 
 
-    // Load User Data
+    // Load User Data (Fallback or Refresh)
     useEffect(() => {
-        async function loadData() {
-            const profile = await getUserProfile()
-            if (profile) {
-                setUser(profile)
+        if (!user) {
+            async function loadData() {
+                const profile = await getUserProfile()
+                if (profile) {
+                    setUser(profile)
+                }
             }
+            loadData()
         }
-        loadData()
-    }, [])
+    }, [user])
 
     // Load Notifications
     useEffect(() => {
@@ -42,6 +44,19 @@ export function Header() {
         }
         fetchNotes()
     }, [unreadOnly, showNotifications]) // Refresh when filter changes or popup opens
+
+    // Held Orders Count
+    const [heldCount, setHeldCount] = useState(0)
+    // Dynamic import to avoid server-component issues
+    const { getHeldOrdersCount } = require("@/app/actions/orders")
+
+    useEffect(() => {
+        async function loadHeldCount() {
+            const count = await getHeldOrdersCount()
+            setHeldCount(count)
+        }
+        loadHeldCount()
+    }, [])
 
     const unreadCount = notifications.filter(n => !n.isRead).length // Client-side calculation for Badge
 
@@ -63,10 +78,10 @@ export function Header() {
         <header className="flex h-20 items-center justify-between bg-white px-8 shadow-sm z-50 relative transition-colors">
             {/* Left: Outlet Selector */}
             <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-full cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+                <a href="/dashboard/stores" className="flex items-center gap-2 text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-full cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
                     <MapPin className="h-4 w-4 text-orange-500" />
-                    <span className="text-sm font-medium">Vesu, Surat Outlet</span>
-                </div>
+                    <span className="text-sm font-medium">{user?.defaultStore?.name || "Select Store"}</span>
+                </a>
             </div>
 
             {/* Center: Search Bar (Big) */}
@@ -81,6 +96,29 @@ export function Header() {
             </div>
 
             <div className="flex items-center gap-4">
+                {/* Tables Icon */}
+                <a
+                    href="/dashboard/tables"
+                    className="p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
+                    title="Tables"
+                >
+                    <LayoutGrid className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                </a>
+
+                {/* Hold Orders Icon */}
+                <button
+                    onClick={() => window.location.href = '/dashboard/hold-orders'}
+                    className="relative p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
+                    title="Hold Orders"
+                >
+                    <Clock className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                    {heldCount > 0 && (
+                        <span className="absolute top-2 right-2 h-4 w-4 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white animate-in zoom-in">
+                            {heldCount}
+                        </span>
+                    )}
+                </button>
+
                 {/* Notification Bell */}
                 <div className="relative">
                     <button

@@ -5,35 +5,35 @@ import { X, Plus, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Types
-export type Product = {
-    id: number
-    name: string
-    price: number
-    categoryId: string
-}
-
 export type Addon = {
     id: string
     name: string
     price: number
+    isAvailable?: boolean
 }
 
-// Mock Addons Data
-const MOCK_ADDONS: Addon[] = [
-    { id: 'extra_shot', name: 'Extra Shot', price: 50 },
-    { id: 'whipped_cream', name: 'Whipped Cream', price: 30 },
-    { id: 'vanilla_syrup', name: 'Vanilla Syrup', price: 20 },
-    { id: 'extra_sugar', name: 'Extra Sugar', price: 0 },
-]
+export type Product = {
+    id: string | number
+    name: string
+    price: number
+    categoryId: string
+    description?: string | null
+    image?: string
+    isAvailable?: boolean
+    addons?: Addon[]
+}
+
+// Mock Addons Removed - Passing via props
 
 interface ProductCustomizationModalProps {
     isOpen: boolean
     onClose: () => void
     product: Product | null
+    addons: Addon[]
     onAddToBill: (item: { product: Product, quantity: number, addons: { addon: Addon, quantity: number }[] }) => void
 }
 
-export function ProductCustomizationModal({ isOpen, onClose, product, onAddToBill }: ProductCustomizationModalProps) {
+export function ProductCustomizationModal({ isOpen, onClose, product, addons, onAddToBill }: ProductCustomizationModalProps) {
     const [quantity, setQuantity] = useState(1)
     const [selectedAddons, setSelectedAddons] = useState<{ [key: string]: number }>({})
 
@@ -62,7 +62,7 @@ export function ProductCustomizationModal({ isOpen, onClose, product, onAddToBil
 
     // Calculations
     const basePrice = product.price * quantity
-    const addonsPrice = MOCK_ADDONS.reduce((sum, addon) => {
+    const addonsPrice = addons.reduce((sum, addon) => {
         const qty = selectedAddons[addon.id] || 0
         return sum + (addon.price * qty)
     }, 0)
@@ -70,7 +70,7 @@ export function ProductCustomizationModal({ isOpen, onClose, product, onAddToBil
 
     const handleAdd = () => {
         const addonsList = Object.entries(selectedAddons).map(([id, qty]) => ({
-            addon: MOCK_ADDONS.find(a => a.id === id)!,
+            addon: addons.find(a => a.id === id)!,
             quantity: qty
         }))
         onAddToBill({ product, quantity, addons: addonsList })
@@ -110,42 +110,45 @@ export function ProductCustomizationModal({ isOpen, onClose, product, onAddToBil
                     </div>
 
                     {/* Add-ons List */}
-                    <div className="space-y-4">
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add ons</h3>
-                        <div className="space-y-3">
-                            {MOCK_ADDONS.map(addon => {
-                                const qty = selectedAddons[addon.id] || 0
-                                return (
-                                    <div key={addon.id} className="flex items-center justify-between">
-                                        <div>
-                                            <p className="font-medium text-gray-800">{addon.name}</p>
-                                            <p className="text-xs text-gray-500">{addon.price === 0 ? 'Free' : `+₹${addon.price}`}</p>
+                    {addons && addons.length > 0 && (
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add ons</h3>
+                            <div className="space-y-3">
+                                {addons.map(addon => {
+                                    if (addon.isAvailable === false) return null // Skip unavailable
+                                    const qty = selectedAddons[addon.id] || 0
+                                    return (
+                                        <div key={addon.id} className="flex items-center justify-between">
+                                            <div>
+                                                <p className="font-medium text-gray-800">{addon.name}</p>
+                                                <p className="text-xs text-gray-500">{addon.price === 0 ? 'Free' : `+₹${addon.price}`}</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() => updateAddonQuantity(addon.id, -1)}
+                                                    className={cn(
+                                                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                                                        qty > 0 ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-gray-50 text-gray-300 pointer-events-none"
+                                                    )}
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </button>
+                                                <span className={cn("w-6 text-center font-bold", qty > 0 ? "text-gray-800" : "text-gray-300")}>
+                                                    {qty}
+                                                </span>
+                                                <button
+                                                    onClick={() => updateAddonQuantity(addon.id, 1)}
+                                                    className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={() => updateAddonQuantity(addon.id, -1)}
-                                                className={cn(
-                                                    "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
-                                                    qty > 0 ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-gray-50 text-gray-300 pointer-events-none"
-                                                )}
-                                            >
-                                                <Minus className="h-4 w-4" />
-                                            </button>
-                                            <span className={cn("w-6 text-center font-bold", qty > 0 ? "text-gray-800" : "text-gray-300")}>
-                                                {qty}
-                                            </span>
-                                            <button
-                                                onClick={() => updateAddonQuantity(addon.id, 1)}
-                                                className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
-                                            >
-                                                <Plus className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                                    )
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Total */}
                     <div className="pt-4 flex justify-between items-center">

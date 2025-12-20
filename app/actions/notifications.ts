@@ -55,3 +55,14 @@ export async function markAllAsRead() {
         return { error: "Failed to mark all as read" }
     }
 }
+
+export async function createNotification(userId: string, title: string, message: string) {
+    try {
+        await prisma.notification.create({
+            data: { userId, title, message }
+        })
+        revalidatePath('/dashboard')
+    } catch (error) {
+        console.error("Failed to create notification", error)
+    }
+}
