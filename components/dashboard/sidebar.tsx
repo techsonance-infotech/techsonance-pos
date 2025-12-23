@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { logout } from "@/app/actions/logout"
@@ -17,10 +17,12 @@ import {
     LogOut,
     ChevronLeft,
     ChevronRight,
-    LayoutGrid
+    LayoutGrid,
+    Key,
+    Users
 } from "lucide-react"
 
-const sidebarItems = [
+const baseSidebarItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
     { icon: LayoutGrid, label: "Tables", href: "/dashboard/tables" },
     { icon: ShoppingCart, label: "New Order", href: "/dashboard/new-order" },
@@ -32,9 +34,15 @@ const sidebarItems = [
     { icon: Settings, label: "More Options", href: "/dashboard/settings" },
 ]
 
-export function Sidebar() {
+const EMPTY_MODULES: string[] = []
+
+// Added storeTableMode, businessName, logoUrl to props
+export function Sidebar({ userRole, disabledModules, storeTableMode = true, businessName = "CafePOS", logoUrl }: { userRole?: string, disabledModules?: string[], storeTableMode?: boolean, businessName?: string, logoUrl?: string }) {
     const [collapsed, setCollapsed] = useState(false)
     const pathname = usePathname()
+    const [items, setItems] = useState(baseSidebarItems)
+
+    // ... (existing logic)
 
     return (
         <aside
@@ -45,9 +53,14 @@ export function Sidebar() {
         >
             <div className="flex h-20 items-center justify-between px-6">
                 {!collapsed && (
-                    <span className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">
-                        CafePOS
-                    </span>
+                    <div className="flex items-center gap-3">
+                        {logoUrl && (
+                            <img src={logoUrl} alt="Logo" className="h-8 w-8 object-contain" />
+                        )}
+                        <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent truncate max-w-[150px]" title={businessName}>
+                            {businessName}
+                        </span>
+                    </div>
                 )}
                 <button
                     onClick={() => setCollapsed(!collapsed)}
@@ -58,7 +71,7 @@ export function Sidebar() {
             </div>
 
             <nav className="flex-1 space-y-1 p-4">
-                {sidebarItems.map((item) => {
+                {items.map((item) => {
                     const isActive = pathname === item.href
                     return (
                         <Link

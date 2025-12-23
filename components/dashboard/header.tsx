@@ -56,6 +56,17 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             setHeldCount(count)
         }
         loadHeldCount()
+
+        // Listen for custom event to refresh count
+        const handleHoldOrderUpdate = () => {
+            loadHeldCount()
+        }
+
+        window.addEventListener('holdOrderUpdated', handleHoldOrderUpdate)
+
+        return () => {
+            window.removeEventListener('holdOrderUpdated', handleHoldOrderUpdate)
+        }
     }, [])
 
     const unreadCount = notifications.filter(n => !n.isRead).length // Client-side calculation for Badge

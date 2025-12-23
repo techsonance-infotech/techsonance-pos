@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
@@ -47,6 +47,14 @@ function SettingCard({ icon: Icon, title, description, colorClass, iconBgClass, 
 }
 
 export default function SettingsPage() {
+    const [userRole, setUserRole] = useState<string | null>(null)
+
+    useEffect(() => {
+        getUserProfile().then(user => {
+            if (user) setUserRole(user.role)
+        })
+    }, [])
+
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-8 pb-10">
             {/* Breadcrumb */}
@@ -64,6 +72,36 @@ export default function SettingsPage() {
 
             {/* Settings Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <SettingCard
+                    icon={Building2}
+                    title="Business Settings"
+                    description="Logo, Name, Address"
+                    colorClass="text-orange-600"
+                    iconBgClass="bg-orange-50"
+                    href="/dashboard/settings/business"
+                />
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={Key}
+                        title="License Management"
+                        description="Generate and manage product keys"
+                        colorClass="text-red-600"
+                        iconBgClass="bg-red-50"
+                        href="/dashboard/admin/licenses"
+                    />
+                )}
+
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={Users}
+                        title="User Management"
+                        description="Manage system users and IPs"
+                        colorClass="text-indigo-600"
+                        iconBgClass="bg-indigo-50"
+                        href="/dashboard/admin/users"
+                    />
+                )}
+
                 <SettingCard
                     icon={Receipt}
                     title="Tax Configuration"

@@ -16,12 +16,13 @@ export async function switchStore(storeId: string) {
     }
 
     try {
-        await prisma.user.update({
+        const updatedUser = await prisma.user.update({
             where: { id: user.id },
-            data: { defaultStoreId: storeId }
+            data: { defaultStoreId: storeId },
+            include: { defaultStore: true }
         })
         revalidatePath("/dashboard")
-        return { success: true }
+        return { success: true, tableMode: updatedUser.defaultStore?.tableMode }
     } catch (error) {
         console.error("Failed to switch store:", error)
         return { error: "Failed to switch store" }
@@ -44,6 +45,7 @@ export async function createStore(formData: FormData) {
             data: {
                 name,
                 location,
+                tableMode: formData.get("tableMode") === 'true',
                 users: { connect: { id: user.id } }
             }
         })
@@ -72,7 +74,11 @@ export async function updateStore(storeId: string, formData: FormData) {
     try {
         await prisma.store.update({
             where: { id: storeId },
-            data: { name, location }
+            data: {
+                name,
+                location,
+                tableMode: formData.get("tableMode") === 'true'
+            }
         })
         revalidatePath("/dashboard/stores")
         return { success: true }

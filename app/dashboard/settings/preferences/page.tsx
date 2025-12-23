@@ -1,142 +1,282 @@
 "use client"
 
-import { useState } from "react"
-import { Home, ArrowLeft, Settings, Save } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Home, ArrowLeft, Palette, DollarSign, Calendar, Save, Sun, Moon } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
+import { getAppPreferences, updateAppPreferences } from "@/app/actions/preferences"
+import { CURRENCIES, DATE_FORMATS } from "@/lib/currencies"
+import { formatCurrency, formatDate } from "@/lib/format"
 
 export default function AppPreferencesPage() {
-    const [theme, setTheme] = useState("light")
-    const [currency, setCurrency] = useState("INR")
-    const [dateFormat, setDateFormat] = useState("DD/MM/YYYY")
+    const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+
+    const [theme, setTheme] = useState("light")
+    const [currencyCode, setCurrencyCode] = useState("USD")
+    const [dateFormat, setDateFormat] = useState("MM/DD/YYYY")
+
+    useEffect(() => {
+        loadPreferences()
+    }, [])
+
+    const loadPreferences = async () => {
+        setLoading(true)
+        try {
+            const prefs = await getAppPreferences()
+            setTheme(prefs.theme)
+            setCurrencyCode(prefs.currencyCode)
+            setDateFormat(prefs.dateFormat)
+        } catch (error) {
+            toast.error("Failed to load preferences")
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const handleSave = async () => {
         setSaving(true)
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 800))
-        setSaving(false)
-        toast.success("Preferences saved successfully")
+        try {
+            const result = await updateAppPreferences({
+                theme,
+                currencyCode,
+                dateFormat
+            })
+
+            if (result.success) {
+                toast.success("Preferences saved successfully!")
+                // Reload the page to apply theme changes
+                setTimeout(() => window.location.reload(), 500)
+            } else {
+                toast.error(result.error || "Failed to save preferences")
+            }
+        } catch (error) {
+            toast.error("An error occurred while saving")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const selectedCurrency = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0]
+    const selectedDateFormat = DATE_FORMATS.find(f => f.value === dateFormat) || DATE_FORMATS[0]
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <div className="text-center">
+                    <Palette className="h-12 w-12 text-gray-400 mx-auto mb-4 animate-pulse" />
+                    <p className="text-gray-500">Loading preferences...</p>
+                </div>
+            </div>
+        )
     }
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
             {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-3 rounded-xl border border-gray-100 shadow-sm w-fit animate-in fade-in slide-in-from-top-2">
-                <Link href="/dashboard" className="hover:text-orange-600 transition-colors">
+            <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-3 rounded-xl border border-gray-100 shadow-sm w-fit">
+                <Link href="/dashboard" className="hover:text-blue-600 transition-colors">
                     <Home className="h-4 w-4" />
                 </Link>
                 <span>/</span>
-                <Link href="/dashboard/settings" className="hover:text-orange-600 transition-colors">More Options</Link>
+                <Link href="/dashboard/settings" className="hover:text-blue-600 transition-colors">More Options</Link>
                 <span>/</span>
-                <span className="font-medium text-orange-600">App Preferences</span>
+                <span className="font-medium text-blue-600">App Preferences</span>
             </div>
 
-            {/* Back Link */}
+            {/* Header */}
             <div>
                 <Link href="/dashboard/settings" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors mb-4">
                     <ArrowLeft className="h-4 w-4 mr-1" /> Back to Overview
                 </Link>
                 <h1 className="text-3xl font-bold text-gray-900">App Preferences</h1>
-                <p className="text-gray-500 mt-2 text-lg">Manage your settings and preferences</p>
+                <p className="text-gray-500 mt-2 text-lg">Customize your application experience</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-
-                {/* Left: Settings Form */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-                    <div className="flex items-center gap-4 mb-8">
-                        <div className="h-12 w-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                            <Settings className="h-6 w-6" />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Main Settings */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Theme Settings */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="h-12 w-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                                <Palette className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Theme</h2>
+                                <p className="text-sm text-gray-500">Choose your preferred theme</p>
+                            </div>
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">Application Settings</h2>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <button
+                                onClick={() => setTheme('light')}
+                                className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
+                                        ? 'border-blue-600 bg-blue-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                            >
+                                <Sun className={`h-8 w-8 mx-auto mb-3 ${theme === 'light' ? 'text-blue-600' : 'text-gray-400'}`} />
+                                <p className={`font-semibold ${theme === 'light' ? 'text-blue-600' : 'text-gray-700'}`}>
+                                    Light Mode
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">Bright and clean</p>
+                            </button>
+
+                            <button
+                                onClick={() => setTheme('dark')}
+                                className={`p-6 rounded-xl border-2 transition-all ${theme === 'dark'
+                                        ? 'border-blue-600 bg-blue-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                            >
+                                <Moon className={`h-8 w-8 mx-auto mb-3 ${theme === 'dark' ? 'text-blue-600' : 'text-gray-400'}`} />
+                                <p className={`font-semibold ${theme === 'dark' ? 'text-blue-600' : 'text-gray-700'}`}>
+                                    Dark Mode
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">Easy on the eyes</p>
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="space-y-6 max-w-md">
-                        <div className="space-y-3">
-                            <Label className="text-gray-700 font-medium">Theme</Label>
-                            <Select value={theme} onValueChange={setTheme}>
-                                <SelectTrigger className="h-12">
-                                    <SelectValue placeholder="Select theme" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="light">Light</SelectItem>
-                                    <SelectItem value="dark">Dark</SelectItem>
-                                    <SelectItem value="system">System Default</SelectItem>
-                                </SelectContent>
-                            </Select>
+                    {/* Currency Settings */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="h-12 w-12 rounded-xl bg-green-50 text-green-600 flex items-center justify-center">
+                                <DollarSign className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Currency</h2>
+                                <p className="text-sm text-gray-500">Set your default currency</p>
+                            </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <Label className="text-gray-700 font-medium">Currency</Label>
-                            <Select value={currency} onValueChange={setCurrency}>
-                                <SelectTrigger className="h-12">
-                                    <SelectValue placeholder="Select currency" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="INR">₹ INR (Indian Rupee)</SelectItem>
-                                    <SelectItem value="USD">$ USD (US Dollar)</SelectItem>
-                                    <SelectItem value="EUR">€ EUR (Euro)</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Select Currency</Label>
+                                <Select value={currencyCode} onValueChange={setCurrencyCode}>
+                                    <SelectTrigger className="h-12">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-[300px]">
+                                        {CURRENCIES.map((currency) => (
+                                            <SelectItem key={currency.code} value={currency.code}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono font-bold">{currency.symbol}</span>
+                                                    <span>{currency.code}</span>
+                                                    <span className="text-gray-500">- {currency.name}</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <p className="text-sm text-gray-600 mb-2">Preview:</p>
+                                <p className="text-2xl font-bold text-gray-900">
+                                    {formatCurrency(1234.56, selectedCurrency.symbol)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Date Format Settings */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="h-12 w-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                                <Calendar className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Date Format</h2>
+                                <p className="text-sm text-gray-500">Choose how dates are displayed</p>
+                            </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <Label className="text-gray-700 font-medium">Date Format</Label>
-                            <Select value={dateFormat} onValueChange={setDateFormat}>
-                                <SelectTrigger className="h-12">
-                                    <SelectValue placeholder="Select date format" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                                    <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                                    <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Select Format</Label>
+                                <Select value={dateFormat} onValueChange={setDateFormat}>
+                                    <SelectTrigger className="h-12">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {DATE_FORMATS.map((format) => (
+                                            <SelectItem key={format.value} value={format.value}>
+                                                {format.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <p className="text-sm text-gray-600 mb-2">Preview:</p>
+                                <p className="text-2xl font-bold text-gray-900">
+                                    {formatDate(new Date(), dateFormat)}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Right: Info Panel */}
-                <div className="bg-amber-50 rounded-2xl border border-amber-100 p-8 space-y-6 h-full min-h-[300px]">
-                    <h3 className="text-amber-900 font-bold mb-6 text-lg">Current Settings</h3>
+                {/* Preview Panel */}
+                <div className="space-y-6">
+                    <div className="bg-blue-50 rounded-2xl border border-blue-100 p-8">
+                        <h3 className="text-blue-900 font-bold mb-6">Current Settings</h3>
 
-                    <div className="space-y-5">
-                        <div className="flex gap-2 text-amber-800 items-center">
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-600 shrink-0" />
-                            <p className="text-sm font-medium">Theme: <span className="font-bold capitalize">{theme}</span></p>
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-3">
+                                <div className="h-2 w-2 rounded-full bg-blue-600 mt-1.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-blue-800">Theme</p>
+                                    <p className="text-sm text-blue-700 capitalize">{theme} Mode</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                                <div className="h-2 w-2 rounded-full bg-blue-600 mt-1.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-blue-800">Currency</p>
+                                    <p className="text-sm text-blue-700">
+                                        {selectedCurrency.symbol} {selectedCurrency.code}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                                <div className="h-2 w-2 rounded-full bg-blue-600 mt-1.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-blue-800">Date Format</p>
+                                    <p className="text-sm text-blue-700">{selectedDateFormat.example}</p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex gap-2 text-amber-800 items-center">
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-600 shrink-0" />
-                            <p className="text-sm font-medium">Currency: <span className="font-bold">{currency === 'INR' ? '₹ INR (Indian Rupee)' : currency}</span></p>
-                        </div>
-                        <div className="flex gap-2 text-amber-800 items-center">
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-600 shrink-0" />
-                            <p className="text-sm font-medium">Date Format: <span className="font-bold">{dateFormat}</span></p>
-                        </div>
-                        <div className="flex gap-2 text-amber-800 items-center">
-                            <div className="h-1.5 w-1.5 rounded-full bg-amber-600 shrink-0" />
-                            <p className="text-sm font-medium">Language: <span className="font-bold">English</span></p>
-                        </div>
+                    </div>
+
+                    <div className="bg-amber-50 rounded-2xl border border-amber-100 p-6">
+                        <h4 className="text-amber-900 font-bold mb-3 text-sm">Important Note</h4>
+                        <p className="text-xs text-amber-800">
+                            Changes will apply across the entire application. The page will reload to apply theme changes.
+                        </p>
                     </div>
                 </div>
             </div>
 
-            {/* Footer Action */}
+            {/* Save Button */}
             <div className="flex justify-end pt-4">
                 <Button
                     size="lg"
                     onClick={handleSave}
                     disabled={saving}
-                    className="h-12 px-8 bg-orange-600 hover:bg-orange-700 text-white font-bold shadow-lg shadow-orange-200"
+                    className="h-12 px-8 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-200"
                 >
                     {saving ? "Saving..." : (
                         <>
-                            <Save className="h-4 w-4 mr-2" /> Save Settings
+                            <Save className="h-4 w-4 mr-2" /> Save Preferences
                         </>
                     )}
                 </Button>

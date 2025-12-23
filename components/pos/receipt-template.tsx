@@ -3,6 +3,16 @@ import { cn } from "@/lib/utils"
 
 // Type definitions matching the order structure
 interface ReceiptProps {
+    businessDetails?: {
+        name?: string
+        address?: string
+        phone?: string
+        email?: string
+        logoUrl?: string
+        taxRate?: string
+        taxName?: string
+        showTaxBreakdown?: boolean
+    }
     order: {
         kotNo: string
         createdAt: Date | string
@@ -11,18 +21,34 @@ interface ReceiptProps {
         tableName?: string
         items: any[]
         totalAmount: number
+        subtotal?: number
+        taxAmount?: number
         discount?: string | number
     }
 }
 
-export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order }, ref) => {
+export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails }, ref) => {
+    // Calculate defaults if not provided (fallback logic)
+    const calculatedSubtotal = order.items.reduce((sum, item) => {
+        const itemTotal = item.unitPrice * item.quantity;
+        const addonTotal = item.addons ? item.addons.reduce((acc: number, addon: any) => acc + (addon.addon.price * addon.quantity), 0) : 0;
+        return sum + itemTotal + addonTotal;
+    }, 0);
+
+    const subtotal = order.subtotal ?? calculatedSubtotal;
+    const taxAmount = order.taxAmount ?? (order.totalAmount - subtotal); // Approximation if missing
+
     return (
         <div ref={ref} className="hidden print:block print:w-[80mm] print:p-2 bg-white text-black font-mono text-sm leading-tight">
             {/* Header */}
-            <div className="text-center mb-4 border-b border-black pb-2 border-dashed">
-                <h1 className="text-xl font-bold uppercase tracking-wider">TechSonance</h1>
-                <p className="text-xs">Vesu, Surat, Gujarat</p>
-                <p className="text-xs mt-1">Ph: +91 98765 43210</p>
+            <div className="text-center mb-4 border-b border-black pb-2 border-dashed flex flex-col items-center justify-center">
+                {businessDetails?.logoUrl && (
+                    <img src={businessDetails.logoUrl} alt="Logo" className="h-16 w-16 mb-2 object-contain" />
+                )}
+                <h1 className="text-xl font-bold uppercase tracking-wider">{businessDetails?.name || 'TechSonance'}</h1>
+                {businessDetails?.address && <p className="text-xs whitespace-pre-wrap px-4">{businessDetails.address}</p>}
+                {businessDetails?.phone && <p className="text-xs mt-1">Ph: {businessDetails.phone}</p>}
+                {businessDetails?.email && <p className="text-xs">Email: {businessDetails.email}</p>}
             </div>
 
             {/* Order Info */}
@@ -84,8 +110,16 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
             <div className="border-t border-black border-dashed pt-2 space-y-1 text-xs">
                 <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>{order.totalAmount.toFixed(2)}</span>
+                    <span>{subtotal.toFixed(2)}</span>
                 </div>
+
+                {businessDetails?.showTaxBreakdown && (
+                    <div className="flex justify-between">
+                        <span>{businessDetails.taxName || 'Tax'} ({businessDetails.taxRate || 5}%):</span>
+                        <span>{taxAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
                 {/* Discount (Mock logic if you had discount field in order items or total) */}
                 {/* <div className="flex justify-between">
                     <span>Discount:</span>

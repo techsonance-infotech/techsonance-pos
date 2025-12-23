@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { switchStore, createStore, updateStore, deleteStore } from "@/app/actions/store"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import {
@@ -26,10 +27,12 @@ export default function StoreManagementClient({ user }: { user: any }) {
     // Form States
     const [name, setName] = useState("")
     const [location, setLocation] = useState("")
+    const [tableMode, setTableMode] = useState(true)
 
     const resetForm = () => {
         setName("")
         setLocation("")
+        setTableMode(true)
         setIsCreateOpen(false)
         setEditingStore(null)
         setLoading(false)
@@ -42,7 +45,11 @@ export default function StoreManagementClient({ user }: { user: any }) {
         } else {
             toast.success("Store switched successfully")
             router.refresh()
-            router.push("/dashboard")
+            if (res.tableMode === false) {
+                router.push("/dashboard/new-order")
+            } else {
+                router.push("/dashboard/tables")
+            }
         }
     }
 
@@ -52,6 +59,7 @@ export default function StoreManagementClient({ user }: { user: any }) {
         const formData = new FormData()
         formData.append("name", name)
         formData.append("location", location)
+        formData.append("tableMode", String(tableMode))
 
         let res
         if (editingStore) {
@@ -74,6 +82,7 @@ export default function StoreManagementClient({ user }: { user: any }) {
         setEditingStore(store)
         setName(store.name)
         setLocation(store.location)
+        setTableMode(store.tableMode ?? true)
     }
 
     const handleDelete = async (storeId: string) => {
@@ -114,9 +123,14 @@ export default function StoreManagementClient({ user }: { user: any }) {
                                 {isActive && <CheckCircleIcon />}
                             </div>
 
-                            <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
-                                <MapPin className="h-4 w-4" />
-                                {store.location}
+                            <div className="flex flex-col gap-2 mb-6">
+                                <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                    <MapPin className="h-4 w-4" />
+                                    {store.location}
+                                </div>
+                                <span className={`w-fit px-2 py-0.5 rounded-[4px] text-xs font-medium border ${store.tableMode ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                                    {store.tableMode ? 'Dine-in Mode' : 'Counter Mode'}
+                                </span>
                             </div>
 
                             {isActive ? (
@@ -180,6 +194,11 @@ export default function StoreManagementClient({ user }: { user: any }) {
                                 required
                             />
                         </div>
+
+                        <div className="flex items-center space-x-2 py-2">
+                            <Switch id="table-mode" checked={tableMode} onCheckedChange={setTableMode} />
+                            <Label htmlFor="table-mode">Enable Table Management (Dine-in Mode)</Label>
+                        </div>
                         <DialogFooter>
                             <Button type="button" variant="ghost" onClick={resetForm}>Cancel</Button>
                             <Button type="submit" disabled={loading} className="bg-orange-600 hover:bg-orange-700 text-white">
@@ -189,7 +208,7 @@ export default function StoreManagementClient({ user }: { user: any }) {
                     </form>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }
 

@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getHeldOrders, deleteOrder } from "@/app/actions/orders"
 import { useRouter } from "next/navigation"
+import { useCurrency } from "@/lib/hooks/use-currency"
+import { formatCurrency } from "@/lib/format"
 
 export default function HoldOrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
     const router = useRouter()
+    const { currency } = useCurrency()
 
     useEffect(() => {
         loadData()
@@ -62,7 +65,7 @@ export default function HoldOrdersPage() {
                                 </p>
                             </div>
                             <div className="text-right">
-                                <span className="text-lg font-bold text-purple-700">₹{order.totalAmount.toFixed(2)}</span>
+                                <span className="text-lg font-bold text-purple-700">{formatCurrency(order.totalAmount, currency.symbol)}</span>
                             </div>
                         </div>
 
@@ -74,7 +77,7 @@ export default function HoldOrdersPage() {
                                         <span className="font-semibold text-gray-900">{item.quantity}x</span>
                                         <span>{item.name}</span>
                                     </div>
-                                    <span className="text-gray-500">₹{item.unitPrice.toFixed(2)}</span>
+                                    <span className="text-gray-500">{formatCurrency(item.unitPrice, currency.symbol)}</span>
                                 </div>
                             ))}
                             {Array.isArray(order.items) && order.items.length > 3 && (

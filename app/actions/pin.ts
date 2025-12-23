@@ -14,7 +14,8 @@ export async function verifyPin(prevState: any, formData: FormData) {
 
     try {
         const user = await prisma.user.findUnique({
-            where: { id: userId }
+            where: { id: userId },
+            include: { defaultStore: true }
         })
 
         if (!user) {
@@ -29,22 +30,16 @@ export async function verifyPin(prevState: any, formData: FormData) {
         const cookieStore = await cookies()
 
         // Set session cookie (30 days)
-        cookieStore.set('session_role', user.role, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
-        cookieStore.set('session_user_id', user.id, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        // Set session cookie (30 days)
+        // FORCE SECURE FALSE FOR DEBUGGING/LOCALHOST
+        cookieStore.set('session_role', user.role, { secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        cookieStore.set('session_user_id', user.id, { secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
 
-        console.log("LOGIN DEBUG: User ID:", user.id)
-        console.log("LOGIN DEBUG: tableMode value:", user.tableMode)
-
-        // Strict check for null OR undefined
-        if (user.tableMode === null || user.tableMode === undefined) {
-            console.log("LOGIN DEBUG: Redirecting to SETUP")
-            redirect("/setup/mode?verified=true")
-        } else if (user.tableMode === true) {
-            console.log("LOGIN DEBUG: Redirecting to TABLES")
-            redirect("/dashboard/tables?verified=true")
+        // Redirect based on Default Store Mode
+        if (user.defaultStore?.tableMode === false) {
+            redirect("/dashboard/new-order?verified=true")
         } else {
-            console.log("LOGIN DEBUG: Redirecting to DASHBOARD (Counter)")
-            redirect("/dashboard?verified=true")
+            redirect("/dashboard/tables?verified=true")
         }
 
     } catch (error) {
@@ -71,23 +66,19 @@ export async function createPin(prevState: any, formData: FormData) {
     try {
         const user = await prisma.user.update({
             where: { id: userId },
-            data: { pin: pin }
+            data: { pin: pin },
+            include: { defaultStore: true }
         })
 
-        // Set session cookie
-        const cookieStore = await cookies()
         // Set session cookie (30 days)
-        cookieStore.set('session_role', user.role, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
-        cookieStore.set('session_user_id', user.id, { secure: true, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        // FORCE SECURE FALSE FOR DEBUGGING/LOCALHOST
+        cookieStore.set('session_role', user.role, { secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        cookieStore.set('session_user_id', user.id, { secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
 
-        console.log("CREATE PIN DEBUG: tableMode value:", user.tableMode)
-
-        if (user.tableMode === null || user.tableMode === undefined) {
-            redirect("/setup/mode?verified=true")
-        } else if (user.tableMode === true) {
-            redirect("/dashboard/tables?verified=true")
+        if (user.defaultStore?.tableMode === false) {
+            redirect("/dashboard/new-order?verified=true")
         } else {
-            redirect("/dashboard?verified=true")
+            redirect("/dashboard/tables?verified=true")
         }
     } catch (error) {
         if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {

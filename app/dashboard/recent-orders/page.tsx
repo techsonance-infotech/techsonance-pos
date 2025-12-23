@@ -12,14 +12,19 @@ import {
 } from "@/components/ui/dialog"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { getRecentOrders } from "@/app/actions/orders"
+import { getBusinessSettings } from "@/app/actions/settings"
+import { useCurrency } from "@/lib/hooks/use-currency"
+import { formatCurrency } from "@/lib/format"
 
 export default function RecentOrdersPage() {
+    const { currency } = useCurrency()
     const [searchQuery, setSearchQuery] = useState("")
     const [dateFilter, setDateFilter] = useState("")
     const [orders, setOrders] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
     const [printOrder, setPrintOrder] = useState<any | null>(null) // For Printing
+    const [businessDetails, setBusinessDetails] = useState<any>(null)
 
     // Dynamic import to avoid server-component issues - Replacing with standard import as typical for Next.js 14+ client components using server actions
     // const { getRecentOrders } = require("@/app/actions/orders")
@@ -30,8 +35,12 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const data = await getRecentOrders()
+        const [data, settings] = await Promise.all([
+            getRecentOrders(),
+            getBusinessSettings()
+        ])
         setOrders(data)
+        setBusinessDetails(settings)
         setLoading(false)
     }
 
@@ -319,7 +328,10 @@ export default function RecentOrdersPage() {
             {
                 printOrder && (
                     <div className="hidden print:block print-only fixed inset-0 z-[9999] bg-white">
-                        <ReceiptTemplate order={printOrder} />
+                        <ReceiptTemplate
+                            order={printOrder}
+                            businessDetails={businessDetails}
+                        />
                     </div>
                 )
             }

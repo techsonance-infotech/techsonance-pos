@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   BUSINESS_OWNER
+  MANAGER
   USER
 }
 
@@ -17,6 +18,7 @@ model Store {
   id        String   @id @default(uuid())
   name      String
   location  String
+  tableMode Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -27,6 +29,73 @@ model Store {
   orders     Order[]
 
   defaultForUsers User[] @relation("DefaultStore")
+
+  license   License?
+}
+
+model License {
+  id          String   @id @default(uuid())
+  key         String   @unique // The signed JWT/String
+  status      LicenseStatus @default(ACTIVE)
+  type        LicenseType   @default(PERPETUAL)
+  
+  validFrom   DateTime @default(now())
+  validUntil  DateTime? // Null for perpetual, but practically can set far future
+  
+  maxDevices  Int      @default(1)
+  devices     LicenseDevice[]
+
+  storeId     String   @unique
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LicenseDevice {
+  id          String   @id @default(uuid())
+  licenseId   String
+  license     License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  
+  fingerprint String
+  deviceName  String?
+  lastSeen    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([licenseId, fingerprint])
+}
+
+enum LicenseStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum LicenseType {
+  TRIAL
+  ANNUAL
+  PERPETUAL
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  isEnabled Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityRule {
+  id        String   @id @default(uuid())
+  type      SecurityRuleType
+  value     String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+enum SecurityRuleType {
+  IP
+  COUNTRY
+  USER_AGENT
 }
 
 model User {
@@ -38,6 +107,12 @@ model User {
   pin          String?
   role         Role        @default(USER)
   tableMode    Boolean?
+
+  // Security & Control
+  isLocked        Boolean  @default(false)
+  isApproved      Boolean  @default(false) // Track admin approval for new registrations
+  disabledModules String[] @default([]) // Array of module IDs e.g. ["orders", "reports"]
+  lastIp          String?  // Track last login IP
 
   // Store Relations
   stores         Store[]   @relation("UserStores")

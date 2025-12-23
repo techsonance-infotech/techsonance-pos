@@ -10,7 +10,10 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { updateTableStatus } from "@/app/actions/tables"
 import { saveOrder, getOrder } from "@/app/actions/orders"
 import { getCategories, getProducts } from "@/app/actions/menu"
+import { getBusinessSettings } from "@/app/actions/settings"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
+import { useCurrency } from "@/lib/hooks/use-currency"
+import { formatCurrency } from "@/lib/format"
 
 type CartItem = {
     cartId?: string
@@ -24,12 +27,14 @@ type CartItem = {
 export default function NewOrderPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const { currency } = useCurrency()
 
     // Data State
     const [categories, setCategories] = useState<any[]>([])
     const [products, setProducts] = useState<Product[]>([])
     const [loading, setLoading] = useState(true)
 
+    // UI State
     // UI State
     const [selectedCategory, setSelectedCategory] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
@@ -40,6 +45,7 @@ export default function NewOrderPage() {
     const [guestName, setGuestName] = useState('')
     const [guestMobile, setGuestMobile] = useState('')
     const [printOrder, setPrintOrder] = useState<any | null>(null)
+    const [businessDetails, setBusinessDetails] = useState<any>(null)
 
     // URL Params
     const tableId = searchParams.get('tableId')
@@ -53,12 +59,19 @@ export default function NewOrderPage() {
     async function loadInitialData() {
         setLoading(true)
         try {
-            const [cats, prods] = await Promise.all([
+            const [cats, prods, settings] = await Promise.all([
                 getCategories(),
-                getProducts('all')
+                getProducts('all'),
+                getBusinessSettings()
             ])
             setCategories(cats)
-            setProducts(prods)
+            // Fix type mismatch: Prisma returns null, Product type expects undefined
+            const sanitizedProds = prods.map((p: any) => ({
+                ...p,
+                image: p.image || undefined
+            }))
+            setProducts(sanitizedProds)
+            setBusinessDetails(settings)
             // Set default category
             if (cats.length > 0) setSelectedCategory(cats[0].id)
         } catch (error) {
@@ -129,7 +142,10 @@ export default function NewOrderPage() {
         return sum + ((item.unitPrice * item.quantity) + (unitAddonsCost))
     }, 0)
 
-    const tax = subtotal * 0.05 // 5% Tax
+    const taxRate = parseFloat(businessDetails?.taxRate || '5')
+    const taxName = businessDetails?.taxName || 'Tax'
+    const tax = subtotal * (taxRate / 100)
+
     const discountAmount = Number(discount) || 0
     const total = subtotal + tax - discountAmount
 
@@ -148,6 +164,9 @@ export default function NewOrderPage() {
 
         const result = await saveOrder(orderData)
         if (result?.success) {
+            // Mark table as OCCUPIED since order is held/in progress
+            if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
+
             // Success feedback (using alert for now)
             toast.success("Order Held Successfully! Check 'Hold Orders' in header.")
             setCart([])
@@ -155,6 +174,9 @@ export default function NewOrderPage() {
             setGuestMobile('')
             setResumeId(null)
             setDiscount('0')
+
+            // Dispatch event to update header counter
+            window.dispatchEvent(new Event('holdOrderUpdated'))
             // No redirect, just clear
         } else {
             toast.error("Failed to hold order")
@@ -193,7 +215,11 @@ export default function NewOrderPage() {
                     {/* 2. Products Grid */}
                     <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-center justify-between">
-                            <h2 className="font-bold text-gray-800 capitalize">{selectedCategory}</h2>
+                            <h2 className="font-bold text-gray-800 capitalize">
+                                {selectedCategory === 'all'
+                                    ? 'All Products'
+                                    : categories.find(c => c.id === selectedCategory)?.name || 'Select Category'}
+                            </h2>
                             <div className="relative w-full sm:w-64">
                                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                     <Search className="h-4 w-4 text-gray-400" />
@@ -225,7 +251,7 @@ export default function NewOrderPage() {
 
                                             <div className="relative z-10">
                                                 <h3 className="font-bold text-gray-800 group-hover:text-orange-700 transition-colors line-clamp-1" title={product.name}>{product.name}</h3>
-                                                <p className="text-xl font-bold text-gray-900 mt-1">₹{product.price}</p>
+                                                <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(product.price, currency.symbol)}</p>
                                             </div>
 
                                             <div className="mt-auto self-end">
@@ -284,7 +310,7 @@ export default function NewOrderPage() {
                                     <div key={item.cartId} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-xl transition-colors group">
                                         <div className="flex-1">
                                             <p className="font-semibold text-gray-800 text-sm">{item.name}</p>
-                                            <p className="text-xs text-gray-500">₹{item.unitPrice} x {item.quantity}</p>
+                                            <p className="text-xs text-gray-500">{formatCurrency(item.unitPrice, currency.symbol)} x {item.quantity}</p>
                                             {item.addons && item.addons.length > 0 && (
                                                 <div className="mt-1 flex flex-wrap gap-1">
                                                     {item.addons.map((addon, idx) => (
@@ -311,7 +337,7 @@ export default function NewOrderPage() {
                                             </button>
                                         </div>
                                         <div className="w-16 text-right font-bold text-sm">
-                                            ₹{(item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0) * 1}
+                                            {formatCurrency((item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0) * 1, currency.symbol)}
                                         </div>
                                     </div>
                                 ))}
@@ -323,12 +349,14 @@ export default function NewOrderPage() {
                     <div className="p-4 bg-gray-50 border-t border-gray-100 space-y-2">
                         <div className="flex justify-between text-sm text-gray-600">
                             <span>Subtotal</span>
-                            <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+                            <span className="font-medium">{formatCurrency(subtotal, currency.symbol)}</span>
                         </div>
-                        <div className="flex justify-between text-sm text-gray-600">
-                            <span>Tax (5%)</span>
-                            <span className="font-medium">₹{tax.toFixed(2)}</span>
-                        </div>
+                        {businessDetails?.showTaxBreakdown && (
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>{taxName} ({taxRate}%)</span>
+                                <span className="font-medium">{formatCurrency(tax, currency.symbol)}</span>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>Discount</span>
                             <div className="w-20">
@@ -344,7 +372,7 @@ export default function NewOrderPage() {
                         <div className="pt-2 border-t border-gray-200">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-lg font-bold text-gray-800">Total</span>
-                                <span className="text-2xl font-bold text-gray-800">₹{total.toFixed(2)}</span>
+                                <span className="text-2xl font-bold text-gray-800">{formatCurrency(total, currency.symbol)}</span>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -352,8 +380,8 @@ export default function NewOrderPage() {
                                     onClick={async () => {
                                         if (cart.length === 0) return
 
-                                        // Optimistic update for table status if applicable
-                                        if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
+                                        // Mark table as AVAILABLE since order is completed
+                                        if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
 
                                         const orderData = {
                                             id: resumeId,
@@ -407,12 +435,14 @@ export default function NewOrderPage() {
                                         }
 
                                         // 2. Save
-                                        if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
                                         const result = await saveOrder(orderData)
 
                                         if (result?.success) {
+                                            // Mark table as AVAILABLE since order is completed
+                                            if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
+
                                             // 3. Print (Set state -> Render -> Print)
-                                            setPrintOrder({ ...orderData, createdAt: new Date() })
+                                            setPrintOrder({ ...orderData, createdAt: new Date(), subtotal, taxAmount: tax })
 
                                             // Wait for state to update and render the receipt
                                             setTimeout(() => {
@@ -470,7 +500,10 @@ export default function NewOrderPage() {
             {
                 printOrder && (
                     <div className="hidden print:block print-only fixed inset-0 z-[9999] bg-white">
-                        <ReceiptTemplate order={printOrder} />
+                        <ReceiptTemplate
+                            order={printOrder}
+                            businessDetails={businessDetails}
+                        />
                     </div>
                 )
             }

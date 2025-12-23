@@ -41,6 +41,8 @@ import { cn } from "@/lib/utils"
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useCurrency } from "@/lib/hooks/use-currency"
+import { formatCurrency } from "@/lib/format"
 
 function SortableCategoryItem({ category, isSelected, onSelect, onEdit }: { category: any, isSelected: boolean, onSelect: () => void, onEdit: () => void }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category.id })
@@ -72,7 +74,7 @@ function SortableCategoryItem({ category, isSelected, onSelect, onEdit }: { cate
     )
 }
 
-function SortableProductItem({ product, onEdit, onToggle, onDelete }: { product: any, onEdit: (p: any) => void, onToggle: (p: any) => void, onDelete: (id: string) => void }) {
+function SortableProductItem({ product, onEdit, onToggle, onDelete, currencySymbol }: { product: any, onEdit: (p: any) => void, onToggle: (p: any) => void, onDelete: (id: string) => void, currencySymbol: string }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id })
 
     const style = {
@@ -94,7 +96,7 @@ function SortableProductItem({ product, onEdit, onToggle, onDelete }: { product:
                         <h3 className={cn("font-semibold text-gray-900", !product.isAvailable && "text-gray-400 line-through")}>{product.name}</h3>
                         <p className="text-sm text-gray-500 line-clamp-1">{product.description}</p>
                     </div>
-                    <span className="font-bold text-orange-600">₹{product.price}</span>
+                    <span className="font-bold text-orange-600">{currencySymbol}{product.price}</span>
                 </div>
                 <div className="flex items-center gap-4 mt-3">
                     <div className="flex items-center gap-2">
@@ -116,6 +118,8 @@ function SortableProductItem({ product, onEdit, onToggle, onDelete }: { product:
 }
 
 export default function MenuManagementPage() {
+    const { currency } = useCurrency()
+
     // Data State
     const [categories, setCategories] = useState<any[]>([])
     const [products, setProducts] = useState<any[]>([]) // Products of selected category
@@ -437,6 +441,7 @@ export default function MenuManagementPage() {
                                                 <SortableProductItem
                                                     key={product.id}
                                                     product={product}
+                                                    currencySymbol={currency.symbol}
                                                     onEdit={p => handleOpenProductModal(p)}
                                                     onToggle={async (p) => {
                                                         await toggleProductStatus(p.id, !p.isAvailable)
@@ -536,7 +541,7 @@ export default function MenuManagementPage() {
                                         <div key={addon.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
                                             <div className={cn("flex-1", !addon.isAvailable && "opacity-50 line-through decoration-gray-400")}>
                                                 <p className="font-semibold text-sm">{addon.name}</p>
-                                                <p className="text-xs text-gray-500">₹{addon.price}</p>
+                                                <p className="text-xs text-gray-500">{currency.symbol}{addon.price}</p>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <Switch checked={addon.isAvailable} onCheckedChange={() => handleToggleAddon(addon)} />

@@ -1,13 +1,16 @@
 import { LogIn } from "lucide-react"
 import { LoginForm } from "@/components/auth/login-form"
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const { getBusinessSettings } = await import("@/app/actions/settings")
+  const settings = await getBusinessSettings()
+
   return (
     <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-2">
       <div className="hidden bg-stone-900 lg:block relative">
         <div className="absolute inset-0 bg-gradient-to-br from-[#a69281] to-[#786a5d] flex items-center justify-center">
           <div className="text-center text-white space-y-2">
-            <h1 className="text-6xl font-normal tracking-tight">CafePOS</h1>
+            <h1 className="text-6xl font-normal tracking-tight">{settings.businessName}</h1>
             <p className="text-lg opacity-90 font-light">Modern Point of Sale System</p>
           </div>
         </div>
@@ -26,7 +29,13 @@ export default function LoginPage() {
             </p>
           </div>
           <LoginForm />
-          <div className="mt-4 text-center text-sm text-gray-500">
+          <div className="mt-4 text-center text-sm">
+            Don't have an account?{" "}
+            <a href="/register" className="text-[#d97706] hover:underline font-medium">
+              Register
+            </a>
+          </div>
+          <div className="mt-2 text-center text-sm text-gray-500">
             Demo credentials: admin / admin
           </div>
         </div>
