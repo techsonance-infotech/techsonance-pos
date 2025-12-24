@@ -29,10 +29,9 @@ export async function verifyPin(prevState: any, formData: FormData) {
         // Set session cookie
         const cookieStore = await cookies()
 
-        // Set session cookie (30 days)
-        // FORCE SECURE FALSE FOR DEBUGGING/LOCALHOST
-        cookieStore.set({ name: 'session_role', value: user.role, secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
-        cookieStore.set({ name: 'session_user_id', value: user.id, secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        // Set session cookie
+        cookieStore.set('session_role', user.role)
+        cookieStore.set('session_user_id', user.id)
 
         // Redirect based on Default Store Mode
         if (user.defaultStore?.tableMode === false) {
@@ -69,10 +68,9 @@ export async function createPin(prevState: any, formData: FormData) {
             include: { defaultStore: true }
         })
 
-        // Set session cookie (30 days)
-        // FORCE SECURE FALSE FOR DEBUGGING/LOCALHOST
-        cookieStore.set({ name: 'session_role', value: user.role, secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
-        cookieStore.set({ name: 'session_user_id', value: user.id, secure: false, httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 30 })
+        // Set session cookie
+        cookieStore.set('session_role', user.role)
+        cookieStore.set('session_user_id', user.id)
 
         if (user.defaultStore?.tableMode === false) {
             redirect("/dashboard/new-order?verified=true")
