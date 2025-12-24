@@ -19,7 +19,8 @@ import {
     ChevronRight,
     LayoutGrid,
     Key,
-    Users
+    Users,
+    BarChart3
 } from "lucide-react"
 
 const baseSidebarItems = [
@@ -30,6 +31,7 @@ const baseSidebarItems = [
     { icon: PauseCircle, label: "Hold Orders", href: "/dashboard/hold-orders" },
     { icon: Menu, label: "Menu Management", href: "/dashboard/menu" },
     { icon: Store, label: "Stores", href: "/dashboard/stores" },
+    { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER'] },
     { icon: Bell, label: "Notifications", href: "/dashboard/notifications" },
     { icon: Settings, label: "More Options", href: "/dashboard/settings" },
 ]
@@ -41,6 +43,19 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
     const [collapsed, setCollapsed] = useState(false)
     const pathname = usePathname()
     const [items, setItems] = useState(baseSidebarItems)
+
+    useEffect(() => {
+        // Filter items based on user role
+        const filteredItems = baseSidebarItems.filter(item => {
+            // If item has roles restriction, check if user role is allowed
+            if ('roles' in item && item.roles) {
+                return userRole && item.roles.includes(userRole)
+            }
+            // Otherwise, show the item
+            return true
+        })
+        setItems(filteredItems)
+    }, [userRole])
 
     // ... (existing logic)
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Play, Trash2 } from "lucide-react"
+import { Play, Trash2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getHeldOrders, deleteOrder } from "@/app/actions/orders"
@@ -13,6 +13,7 @@ export default function HoldOrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
     const router = useRouter()
     const { currency } = useCurrency()
+    const [deletingId, setDeletingId] = useState<string | null>(null)
 
     useEffect(() => {
         loadData()
@@ -25,8 +26,13 @@ export default function HoldOrdersPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm("Delete this held order?")) {
-            await deleteOrder(id)
-            loadData()
+            setDeletingId(id)
+            try {
+                await deleteOrder(id)
+                loadData()
+            } finally {
+                setDeletingId(null)
+            }
         }
     }
 

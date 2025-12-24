@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Users, Trash2, RotateCcw } from "lucide-react"
+import { Plus, Users, Trash2, RotateCcw, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,30 +36,46 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
     const [newTableName, setNewTableName] = useState("")
     const [newTableCapacity, setNewTableCapacity] = useState(4)
     const router = useRouter()
+    const [adding, setAdding] = useState(false)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [vacatingId, setVacatingId] = useState<string | null>(null)
 
     const handleAddTable = async () => {
-        if (!newTableName) return
-
-        const newTable = await addTable(newTableName, newTableCapacity)
-        setTables(prev => [...prev, newTable])
-
-        setNewTableName("")
-        setNewTableCapacity(4)
-        setIsAddOpen(false)
+        if (!newTableName || adding) return
+        setAdding(true)
+        try {
+            const newTable = await addTable(newTableName, newTableCapacity)
+            setTables(prev => [...prev, newTable])
+            setNewTableName("")
+            setNewTableCapacity(4)
+            setIsAddOpen(false)
+        } finally {
+            setAdding(false)
+        }
     }
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation()
         if (confirm("Are you sure you want to delete this table?")) {
-            await deleteTable(id)
-            setTables(prev => prev.filter(t => t.id !== id))
+            setDeletingId(id)
+            try {
+                await deleteTable(id)
+                setTables(prev => prev.filter(t => t.id !== id))
+            } finally {
+                setDeletingId(null)
+            }
         }
     }
 
     const handleVacant = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation()
-        const updatedTable = await updateTableStatus(id, 'AVAILABLE')
-        setTables(prev => prev.map(t => t.id === id ? updatedTable : t))
+        setVacatingId(id)
+        try {
+            const updatedTable = await updateTableStatus(id, 'AVAILABLE')
+            setTables(prev => prev.map(t => t.id === id ? updatedTable : t))
+        } finally {
+            setVacatingId(null)
+        }
     }
 
     const handleTableClick = (table: Table) => {

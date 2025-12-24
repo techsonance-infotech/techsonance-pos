@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Search, Plus, Minus, Trash2, ShoppingCart, Save, Printer, Clock } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Search, Plus, Minus, Trash2, ShoppingCart, Save, Printer, Clock, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -46,6 +46,10 @@ export default function NewOrderPage() {
     const [guestMobile, setGuestMobile] = useState('')
     const [printOrder, setPrintOrder] = useState<any | null>(null)
     const [businessDetails, setBusinessDetails] = useState<any>(null)
+    const loadedOrderRef = useRef<string | null>(null) // Track loaded order to prevent duplicate toasts
+    const [saving, setSaving] = useState(false)
+    const [holding, setHolding] = useState(false)
+    const [printing, setPrinting] = useState(false)
 
     // URL Params
     const tableId = searchParams.get('tableId')
@@ -81,21 +85,28 @@ export default function NewOrderPage() {
         }
     }
 
-    // Resume Logic
+    // Resume Logic - Handle both held orders and completed orders
     useEffect(() => {
-        const rId = searchParams.get('resumeId')
+        const rId = searchParams.get('resumeId') || searchParams.get('resumeOrderId')
         if (rId) {
             loadResumeOrder(rId)
         }
     }, [searchParams])
 
     async function loadResumeOrder(id: string) {
+        // Prevent loading the same order multiple times
+        if (loadedOrderRef.current === id) return
+
         const order = await getOrder(id)
-        if (order && order.status === 'HELD') {
+        if (order && (order.status === 'HELD' || order.status === 'COMPLETED')) {
             setResumeId(id)
             setCart(order.items as any)
             setGuestName(order.customerName || '')
             setGuestMobile(order.customerMobile || '')
+            loadedOrderRef.current = id // Mark as loaded
+            toast.success(`Order #${order.kotNo} loaded successfully`)
+        } else {
+            toast.error('Order not found or invalid status')
         }
     }
 
@@ -151,35 +162,42 @@ export default function NewOrderPage() {
 
     const handleHoldOrder = async () => {
         if (cart.length === 0) return
+        setHolding(true)
+        try {
+            const orderData = {
+                id: resumeId, // Update existing if resuming
+                totalAmount: total, // Use calculated total
+                items: cart,
+                customerName: guestName,
+                customerMobile: guestMobile,
+                tableId: tableId || null,
+                tableName: tableName || null,
+            }
 
-        const orderData = {
-            id: resumeId, // Update existing if resuming
-            totalAmount: total, // Use calculated total
-            items: cart,
-            customerName: guestName,
-            customerMobile: guestMobile,
-            tableId: tableId || null,
-            tableName: tableName || null,
-        }
+            const result = await saveOrder(orderData)
+            if (result?.success) {
+                // Mark table as OCCUPIED since order is held/in progress
+                if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
 
-        const result = await saveOrder(orderData)
-        if (result?.success) {
-            // Mark table as OCCUPIED since order is held/in progress
-            if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
+                // Success feedback (using alert for now)
+                toast.success("Order Held Successfully! Check 'Hold Orders' in header.")
+                setCart([])
+                setGuestName('')
+                setGuestMobile('')
+                setResumeId(null)
+                setDiscount('0')
 
-            // Success feedback (using alert for now)
-            toast.success("Order Held Successfully! Check 'Hold Orders' in header.")
-            setCart([])
-            setGuestName('')
-            setGuestMobile('')
-            setResumeId(null)
-            setDiscount('0')
+                // Dispatch event to update header counter
+                window.dispatchEvent(new Event('holdOrderUpdated'))
 
-            // Dispatch event to update header counter
-            window.dispatchEvent(new Event('holdOrderUpdated'))
-            // No redirect, just clear
-        } else {
-            toast.error("Failed to hold order")
+                // Clear URL parameters to prevent reloading
+                router.push('/dashboard/new-order')
+                // No redirect, just clear
+            } else {
+                toast.error("Failed to hold order")
+            }
+        } finally {
+            setHolding(false)
         }
     }
 
@@ -379,94 +397,114 @@ export default function NewOrderPage() {
                                 <button
                                     onClick={async () => {
                                         if (cart.length === 0) return
+                                        setSaving(true)
+                                        try {
+                                            // Mark table as AVAILABLE since order is completed
+                                            if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
 
-                                        // Mark table as AVAILABLE since order is completed
-                                        if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
+                                            const orderData = {
+                                                id: resumeId,
+                                                status: 'COMPLETED',
+                                                totalAmount: total,
+                                                items: cart,
+                                                customerName: guestName,
+                                                customerMobile: guestMobile,
+                                                tableId: tableId || null,
+                                                tableName: tableName || null,
+                                            }
 
-                                        const orderData = {
-                                            id: resumeId,
-                                            status: 'COMPLETED',
-                                            totalAmount: total,
-                                            items: cart,
-                                            customerName: guestName,
-                                            customerMobile: guestMobile,
-                                            tableId: tableId || null,
-                                            tableName: tableName || null,
-                                        }
+                                            const result = await saveOrder(orderData)
+                                            if (result?.success) {
+                                                toast.success("Order Saved Successfully!")
+                                                // Clear form using the same logic as "Clear Order"
+                                                setCart([])
+                                                setGuestName('')
+                                                setGuestMobile('')
+                                                setResumeId(null)
+                                                setDiscount('0')
 
-                                        const result = await saveOrder(orderData)
-                                        if (result?.success) {
-                                            toast.success("Order Saved Successfully!")
-                                            // Clear form using the same logic as "Clear Order"
-                                            setCart([])
-                                            setGuestName('')
-                                            setGuestMobile('')
-                                            setResumeId(null)
-                                            setDiscount('0')
-                                        } else {
-                                            toast.error("Failed to save order")
+                                                // Clear URL parameters to prevent reloading
+                                                router.push('/dashboard/new-order')
+                                            } else {
+                                                toast.error("Failed to save order")
+                                            }
+                                        } finally {
+                                            setSaving(false)
                                         }
                                     }}
-                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 shadow-sm active:scale-95 transition-all"
+                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={saving || holding || printing}
                                 >
-                                    <Save className="h-4 w-4" /> Save
+                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    {saving ? 'Saving...' : 'Save'}
                                 </button>
                                 <button
                                     onClick={handleHoldOrder}
-                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 shadow-sm active:scale-95 transition-all"
+                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={saving || holding || printing}
                                 >
-                                    <Clock className="h-4 w-4" /> KOT (Hold)
+                                    {holding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                                    {holding ? 'Holding...' : 'KOT (Hold)'}
                                 </button>
                                 <button
                                     onClick={async () => {
                                         if (cart.length === 0) return
+                                        setPrinting(true)
+                                        try {
+                                            // 1. Prepare Data
+                                            const orderData = {
+                                                id: resumeId,
+                                                status: 'COMPLETED',
+                                                totalAmount: total,
+                                                items: cart,
+                                                customerName: guestName,
+                                                customerMobile: guestMobile,
+                                                tableId: tableId || null,
+                                                tableName: tableName || null,
+                                                kotNo: `KOT${Date.now().toString().slice(-6)}` // Generate here to pass to print
+                                            }
 
-                                        // 1. Prepare Data
-                                        const orderData = {
-                                            id: resumeId,
-                                            status: 'COMPLETED',
-                                            totalAmount: total,
-                                            items: cart,
-                                            customerName: guestName,
-                                            customerMobile: guestMobile,
-                                            tableId: tableId || null,
-                                            tableName: tableName || null,
-                                            kotNo: `KOT${Date.now().toString().slice(-6)}` // Generate here to pass to print
-                                        }
+                                            // 2. Save
+                                            const result = await saveOrder(orderData)
 
-                                        // 2. Save
-                                        const result = await saveOrder(orderData)
+                                            if (result?.success) {
+                                                // Mark table as AVAILABLE since order is completed
+                                                if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
 
-                                        if (result?.success) {
-                                            // Mark table as AVAILABLE since order is completed
-                                            if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
+                                                // 3. Print (Set state -> Render -> Print)
+                                                setPrintOrder({ ...orderData, createdAt: new Date(), subtotal, taxAmount: tax })
 
-                                            // 3. Print (Set state -> Render -> Print)
-                                            setPrintOrder({ ...orderData, createdAt: new Date(), subtotal, taxAmount: tax })
-
-                                            // Wait for state to update and render the receipt
-                                            setTimeout(() => {
-                                                window.print()
-
-                                                // 4. Cleanup after print dialog usage (approximate)
-                                                // In a real app we might listen to window.onafterprint but timeout is often sufficient
+                                                // Wait for state to update and render the receipt
                                                 setTimeout(() => {
-                                                    setPrintOrder(null)
-                                                    setCart([])
-                                                    setGuestName('')
-                                                    setGuestMobile('')
-                                                    setResumeId(null)
-                                                    setDiscount('0')
-                                                    toast.success("Order Saved & Printed!")
-                                                }, 500)
-                                            }, 100)
-                                        } else {
-                                            toast.error("Failed to save order")
+                                                    window.print()
+
+                                                    // 4. Cleanup after print dialog usage (approximate)
+                                                    // In a real app we might listen to window.onafterprint but timeout is often sufficient
+                                                    setTimeout(() => {
+                                                        setPrintOrder(null)
+                                                        setCart([])
+                                                        setGuestName('')
+                                                        setGuestMobile('')
+                                                        setResumeId(null)
+                                                        setDiscount('0')
+                                                        toast.success("Order Saved & Printed!")
+
+                                                        // Clear URL parameters to prevent reloading
+                                                        router.push('/dashboard/new-order')
+                                                    }, 500)
+                                                }, 100)
+                                            } else {
+                                                toast.error("Failed to save order")
+                                            }
+                                        } finally {
+                                            setPrinting(false)
                                         }
                                     }}
-                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 shadow-sm active:scale-95 transition-all"
+                                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={saving || holding || printing}
                                 >
-                                    <Printer className="h-4 w-4" /> Save & Print
+                                    {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                                    {printing ? 'Printing...' : 'Save & Print'}
                                 </button>
                                 <button
                                     onClick={() => {

@@ -12,10 +12,45 @@ export async function saveOrder(orderData: any) {
         return { error: "Unauthorized or No Store Selected" }
     }
 
-    // Generate KOT Number if new (Simple timestamp based for now)
-    const kotNo = orderData.kotNo || `KOT${Date.now().toString().slice(-6)}`
-
     try {
+        // If orderData.id exists, UPDATE the existing order
+        if (orderData.id) {
+            const existingOrder = await prisma.order.findUnique({
+                where: { id: orderData.id }
+            })
+
+            if (!existingOrder) {
+                return { error: "Order not found" }
+            }
+
+            await prisma.order.update({
+                where: { id: orderData.id },
+                data: {
+                    status: orderData.status || 'HELD',
+                    totalAmount: orderData.totalAmount,
+                    items: orderData.items,
+                    customerName: orderData.customerName || null,
+                    customerMobile: orderData.customerMobile || null,
+                    tableId: orderData.tableId || null,
+                    tableName: orderData.tableName || null,
+                }
+            })
+
+            // Notify
+            await createNotification(
+                user.id,
+                orderData.status === 'COMPLETED' ? "Order Completed" : "Order Updated",
+                `Order ${existingOrder.kotNo} ${orderData.status === 'COMPLETED' ? 'completed' : 'updated'} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
+            )
+
+            revalidatePath('/dashboard/hold-orders')
+            revalidatePath('/dashboard/recent-orders')
+            return { success: true, message: orderData.status === 'COMPLETED' ? "Order Saved Successfully" : "Order Updated Successfully" }
+        }
+
+        // Otherwise, CREATE a new order
+        const kotNo = orderData.kotNo || `KOT${Date.now().toString().slice(-6)}`
+
         await prisma.order.create({
             data: {
                 kotNo,
@@ -39,7 +74,7 @@ export async function saveOrder(orderData: any) {
         )
 
         revalidatePath('/dashboard/hold-orders')
-        revalidatePath('/dashboard/recent-orders') // Also revalidate recent orders
+        revalidatePath('/dashboard/recent-orders')
         return { success: true, message: orderData.status === 'COMPLETED' ? "Order Saved Successfully" : "Order Held Successfully" }
     } catch (error) {
         console.error("Save Order Error:", error)
@@ -93,6 +128,50 @@ export async function getRecentOrders() {
     } catch (error) {
         console.error("Get Recent Orders Error:", error)
         return []
+    }
+}
+
+// Convert Completed Order to Held (for editing)
+export async function convertOrderToHeld(orderId: string) {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) {
+        return { error: "Unauthorized" }
+    }
+
+    try {
+        // Verify order exists and belongs to user's store
+        const order = await prisma.order.findFirst({
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId,
+                status: 'COMPLETED'
+            }
+        })
+
+        if (!order) {
+            return { error: "Order not found or already held" }
+        }
+
+        // Update status to HELD
+        await prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'HELD' }
+        })
+
+        // Notify
+        await createNotification(
+            user.id,
+            "Order Converted to Held",
+            `Order ${order.kotNo} converted to held status for editing.`
+        )
+
+        revalidatePath('/dashboard/recent-orders')
+        revalidatePath('/dashboard/hold-orders')
+
+        return { success: true, message: "Order converted to held status" }
+    } catch (error) {
+        console.error("Convert Order Error:", error)
+        return { error: "Failed to convert order" }
     }
 }
 

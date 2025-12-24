@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Calendar, ClipboardList, Eye, Printer } from "lucide-react"
+import { Search, Calendar, ClipboardList, Eye, Printer, Edit, Trash2, Play, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
     Dialog,
@@ -11,12 +11,15 @@ import {
     DialogDescription,
 } from "@/components/ui/dialog"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
-import { getRecentOrders } from "@/app/actions/orders"
+import { getRecentOrders, convertOrderToHeld, deleteOrder } from "@/app/actions/orders"
 import { getBusinessSettings } from "@/app/actions/settings"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 export default function RecentOrdersPage() {
+    const router = useRouter()
     const { currency } = useCurrency()
     const [searchQuery, setSearchQuery] = useState("")
     const [dateFilter, setDateFilter] = useState("")
@@ -25,6 +28,9 @@ export default function RecentOrdersPage() {
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
     const [printOrder, setPrintOrder] = useState<any | null>(null) // For Printing
     const [businessDetails, setBusinessDetails] = useState<any>(null)
+    const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<any | null>(null)
+    const [actionLoading, setActionLoading] = useState(false)
+    const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
 
     // Dynamic import to avoid server-component issues - Replacing with standard import as typical for Next.js 14+ client components using server actions
     // const { getRecentOrders } = require("@/app/actions/orders")
@@ -42,6 +48,50 @@ export default function RecentOrdersPage() {
         setOrders(data)
         setBusinessDetails(settings)
         setLoading(false)
+    }
+
+    // Handle Edit Order (Convert to HELD)
+    async function handleEditOrder(orderId: string) {
+        setActionLoading(true)
+        try {
+            const result = await convertOrderToHeld(orderId)
+            if (result.error) {
+                toast.error(result.error)
+            } else {
+                toast.success(result.message || "Order moved to held orders")
+                // Mark this order as edited to enable Resume button
+                setEditedOrders(prev => new Set(prev).add(orderId))
+                // Don't refresh - keep order visible with Resume enabled
+            }
+        } catch (error) {
+            toast.error("Failed to edit order")
+        } finally {
+            setActionLoading(false)
+        }
+    }
+
+    // Handle Delete Order
+    async function handleDeleteOrder(orderId: string) {
+        setActionLoading(true)
+        try {
+            const result = await deleteOrder(orderId)
+            if (result.error) {
+                toast.error(result.error)
+            } else {
+                toast.success("Order deleted successfully")
+                await loadData() // Refresh the list
+                setDeleteConfirmOrder(null)
+            }
+        } catch (error) {
+            toast.error("Failed to delete order")
+        } finally {
+            setActionLoading(false)
+        }
+    }
+
+    // Handle Resume Order (Navigate to New Order page)
+    function handleResumeOrder(orderId: string) {
+        router.push(`/dashboard/new-order?resumeOrderId=${orderId}`)
     }
 
     // Filter Logic
@@ -126,7 +176,7 @@ export default function RecentOrdersPage() {
                                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="px-6 py-4 font-bold text-gray-900">{order.kotNo}</td>
                                             <td className="px-6 py-4 text-gray-600">
-                                                {new Date(order.createdAt).toLocaleString()}
+                                                {new Date(order.updatedAt).toLocaleString()}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {order.customerName ? (
@@ -156,13 +206,43 @@ export default function RecentOrdersPage() {
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <button
-                                                    onClick={() => setSelectedOrder(order)}
-                                                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-blue-600 transition-colors"
-                                                    title="View Details"
-                                                >
-                                                    <Eye className="h-4 w-4" />
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => setSelectedOrder(order)}
+                                                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-blue-600 transition-colors"
+                                                        title="View Details"
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEditOrder(order.id)}
+                                                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-orange-600 transition-colors"
+                                                        title="Edit (Convert to Held)"
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDeleteConfirmOrder(order)}
+                                                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
+                                                        title="Delete Order"
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleResumeOrder(order.id)}
+                                                        className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${editedOrders.has(order.id)
+                                                            ? 'text-gray-500 hover:text-green-600 cursor-pointer'
+                                                            : 'text-gray-400 cursor-not-allowed opacity-50'
+                                                            }`}
+                                                        title={editedOrders.has(order.id) ? "Resume Order" : "Click Edit first to resume this order"}
+                                                        disabled={!editedOrders.has(order.id) || actionLoading}
+                                                    >
+                                                        <Play className="h-4 w-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -184,7 +264,7 @@ export default function RecentOrdersPage() {
                                         Order Summary
                                     </DialogTitle>
                                     <DialogDescription className="text-orange-50 font-medium">
-                                        #{selectedOrder?.kotNo} • {new Date(selectedOrder?.createdAt).toLocaleString()}
+                                        #{selectedOrder?.kotNo} • {new Date(selectedOrder?.updatedAt).toLocaleString()}
                                     </DialogDescription>
                                 </div>
                                 <div className="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-sm font-semibold border border-white/30">
@@ -320,6 +400,38 @@ export default function RecentOrdersPage() {
                                 </div>
                             </div>
                         )}
+                    </DialogContent>
+                </Dialog>
+
+                {/* Delete Confirmation Dialog */}
+                <Dialog open={!!deleteConfirmOrder} onOpenChange={(open) => !open && setDeleteConfirmOrder(null)}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                <Trash2 className="h-5 w-5 text-red-600" />
+                                Delete Order?
+                            </DialogTitle>
+                            <DialogDescription className="text-gray-600 pt-2">
+                                Are you sure you want to delete order <span className="font-bold">#{deleteConfirmOrder?.kotNo}</span>?
+                                This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={() => setDeleteConfirmOrder(null)}
+                                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                disabled={actionLoading}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => handleDeleteOrder(deleteConfirmOrder.id)}
+                                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                                disabled={actionLoading}
+                            >
+                                {actionLoading ? 'Deleting...' : 'Delete Order'}
+                            </button>
+                        </div>
                     </DialogContent>
                 </Dialog>
             </div>

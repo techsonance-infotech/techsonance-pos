@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Lock, Unlock, ShieldAlert, Settings, User, Edit, Trash2, Key, Plus } from "lucide-react"
+import { Lock, Unlock, ShieldAlert, Settings, User, Edit, Trash2, Key, Plus, Loader2 } from "lucide-react"
 import { deleteUser } from "@/app/actions/admin-users"
 import { lockUser, blockIP } from "@/app/actions/security"
 import { UserPermissionDialog } from "./user-permission-dialog"
@@ -29,6 +29,10 @@ export function UsersTable({ users, stores }: { users: any[], stores?: any[] }) 
     // Detail Modal State
     const [detailModalOpen, setDetailModalOpen] = useState(false)
     const [detailUser, setDetailUser] = useState<any>(null)
+
+    // Loading states
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [lockingId, setLockingId] = useState<string | null>(null)
 
     // Handle Create
     const handleCreate = () => {
