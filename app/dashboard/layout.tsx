@@ -3,6 +3,8 @@ import { Header } from "@/components/dashboard/header"
 import { SessionGuard } from "@/components/auth/session-guard"
 import { getUserProfile } from "@/app/actions/user"
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardLayout({
     children,
 }: {
