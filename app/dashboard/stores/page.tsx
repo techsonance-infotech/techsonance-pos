@@ -1,0 +1,17 @@
+import { getUserProfile } from "@/app/actions/user"
+import { redirect } from "next/navigation"
+import StoreManagementClient from "./store-client-impl"
+
+export default async function StoresPage() {
+    const user = await getUserProfile()
+    if (!user) redirect("/")
+
+    return (
+        <div className="p-6">
+            <h1 className="text-2xl font-bold text-gray-900">Stores Management</h1>
+            <p className="text-gray-500 mb-8">Manage your outlets and switch between stores</p>
+
+            <StoreManagementClient user={user} />
+        </div>
+    )
+}
