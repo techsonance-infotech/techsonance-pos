@@ -2,6 +2,8 @@ import { UserPlus } from "lucide-react"
 import { RegisterForm } from "@/components/auth/register-form"
 import Link from "next/link"
 
+export const dynamic = 'force-dynamic'
+
 export default async function RegisterPage() {
     const { getBusinessSettings } = await import("@/app/actions/settings")
     const settings = await getBusinessSettings()
