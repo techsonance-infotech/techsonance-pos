@@ -30,4 +30,6 @@ jobs:
       continue-on-error: true
 
     - name: Build application
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: npm run build

@@ -13,6 +13,7 @@ async function main() {
             password: 'password123', // In a real app, hash this!
             role: Role.SUPER_ADMIN,
             contactNo: '9876543210',
+            isApproved: true,
         },
     })
     console.log({ superAdmin })
@@ -50,6 +51,7 @@ async function main() {
             password: 'password123',
             role: Role.BUSINESS_OWNER,
             contactNo: '9876543211',
+            isApproved: true,
             stores: {
                 connect: [{ id: store1.id }, { id: store2.id }, { id: store3.id }]
             },
@@ -68,6 +70,7 @@ async function main() {
             password: 'password123',
             role: Role.USER,
             contactNo: '9876543212',
+            isApproved: true,
             stores: {
                 connect: [{ id: store2.id }]
             },

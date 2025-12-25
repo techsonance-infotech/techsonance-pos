@@ -69,6 +69,7 @@ export async function createPin(prevState: any, formData: FormData) {
         })
 
         // Set session cookie
+        const cookieStore = await cookies()
         cookieStore.set('session_role', user.role)
         cookieStore.set('session_user_id', user.id)
 
