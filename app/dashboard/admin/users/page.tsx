@@ -10,17 +10,14 @@ export default async function UsersPage() {
     const currentUser = await getUserProfile()
     if (currentUser?.role !== 'SUPER_ADMIN') redirect('/dashboard')
 
+    // Fetch all users (isApproved property not in schema)
     const users = await prisma.user.findMany({
-        where: { isApproved: true },
         orderBy: { createdAt: 'desc' },
         include: { stores: true }
     })
 
-    const pendingUsers = await prisma.user.findMany({
-        where: { isApproved: false },
-        orderBy: { createdAt: 'desc' },
-        include: { stores: true }
-    })
+    // Pending users feature disabled (isApproved not in schema)
+    const pendingUsers: any[] = []
 
     const allStores = await prisma.store.findMany({
         select: { id: true, name: true, location: true },

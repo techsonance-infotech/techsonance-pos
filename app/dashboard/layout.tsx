@@ -21,28 +21,28 @@ export default async function DashboardLayout({
     // Let's do a direct optimized check here for performance:
     const { prisma } = await import("@/lib/prisma")
 
-    // 1. IP Check
-    const ipBan = await prisma.securityRule.findUnique({
-        where: { value: ip, type: 'IP' }
-    })
-    if (ipBan) {
-        return <div className="h-screen flex items-center justify-center text-red-600 font-bold">Access Denied: IP Blocked</div>
-    }
+    // 1. IP Check (Disabled - securityRule table not in schema)
+    // const ipBan = await prisma.securityRule.findUnique({
+    //     where: { value: ip, type: 'IP' }
+    // })
+    // if (ipBan) {
+    //     return <div className="h-screen flex items-center justify-center text-red-600 font-bold">Access Denied: IP Blocked</div>
+    // }
 
-    // 2. Maintenance Mode
-    const maintenanceConfig = await prisma.systemConfig.findUnique({ where: { key: "maintenance_mode" } })
-    if (maintenanceConfig?.isEnabled) {
-        // Allow Super Admin to bypass
-        if (user?.role !== 'SUPER_ADMIN') {
-            const { redirect } = await import("next/navigation")
-            redirect('/maintenance')
-        }
-    }
+    // 2. Maintenance Mode (Disabled - systemConfig table not in schema)
+    // const maintenanceConfig = await prisma.systemConfig.findUnique({ where: { key: "maintenance_mode" } })
+    // if (maintenanceConfig?.isEnabled) {
+    //     // Allow Super Admin to bypass
+    //     if (user?.role !== 'SUPER_ADMIN') {
+    //         const { redirect } = await import("next/navigation")
+    //         redirect('/maintenance')
+    //     }
+    // }
 
-    // 3. User Lock
-    if (user?.isLocked) {
-        return <div className="h-screen flex items-center justify-center text-red-600 font-bold">Account Locked. Contact Support.</div>
-    }
+    // 3. User Lock (Disabled - isLocked not in schema)
+    // if (user?.isLocked) {
+    //     return <div className="h-screen flex items-center justify-center text-red-600 font-bold">Account Locked. Contact Support.</div>
+    // }
     // -----------------------
 
     if (!user) {
@@ -52,7 +52,7 @@ export default async function DashboardLayout({
 
     // Verify License
     const { verifySessionLicense } = await import("@/app/actions/license")
-    const licenseCheck = await verifySessionLicense(user.id)
+    const licenseCheck = await verifySessionLicense(user!.id)
 
     if (!licenseCheck.valid) {
         // We need to import redirect dynamically or use next/navigation
@@ -69,8 +69,6 @@ export default async function DashboardLayout({
             <div className="flex h-screen w-full overflow-hidden bg-white">
                 <Sidebar
                     userRole={user?.role}
-                    disabledModules={user?.disabledModules}
-                    storeTableMode={user?.defaultStore?.tableMode}
                     businessName={businessSettings.businessName}
                     logoUrl={businessSettings.logoUrl}
                 />

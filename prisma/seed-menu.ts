@@ -26,17 +26,28 @@ const PRODUCTS = [
 async function main() {
     console.log('Seeding Menu...')
 
+    // Get the first available store
+    const store = await prisma.store.findFirst()
+    if (!store) {
+        throw new Error('No store found. Please run the main seed script first.')
+    }
+    console.log(`Using store: ${store.name}`)
+
     // Create Categories
     const categoryMap = new Map()
 
     for (const cat of CATEGORIES) {
         // Upsert to avoid duplicates if re-running
-        const existing = await prisma.category.findFirst({ where: { name: cat.name } })
+        const existing = await prisma.category.findFirst({ where: { name: cat.name, storeId: store.id } })
         if (existing) {
             categoryMap.set(cat.name, existing.id)
         } else {
             const created = await prisma.category.create({
-                data: { name: cat.name, sortOrder: cat.sortOrder }
+                data: {
+                    name: cat.name,
+                    sortOrder: cat.sortOrder,
+                    storeId: store.id
+                }
             })
             categoryMap.set(cat.name, created.id)
         }
