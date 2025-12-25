@@ -1,6 +1,8 @@
 import { ReactivateForm } from "@/components/license/reactivate-form"
 import { Lock } from "lucide-react"
 
+export const dynamic = 'force-dynamic'
+
 export default async function LicenseExpiredPage() {
     return (
         <div className="flex h-screen w-full items-center justify-center bg-red-50">
