@@ -1,7 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { getUserProfile } from "./user"
 
 async function getCurrentStore() {
@@ -10,33 +10,46 @@ async function getCurrentStore() {
     return user.defaultStoreId
 }
 
-// --- Categories ---
+// Internal DB fetcher
+async function fetchCategories(storeId: string, includeInactive: boolean) {
+    const where = includeInactive ? { storeId } : { isActive: true, storeId }
+    const categories = await prisma.category.findMany({
+        where,
+        include: {
+            products: {
+                where: includeInactive ? {} : { isAvailable: true },
+                orderBy: { sortOrder: 'asc' },
+                include: {
+                    addons: {
+                        where: includeInactive ? {} : { isAvailable: true },
+                        orderBy: { sortOrder: 'asc' }
+                    }
+                }
+            }
+        },
+        orderBy: {
+            sortOrder: 'asc'
+        }
+    })
+    return categories
+}
 
 export async function getCategories(includeInactive = false) {
     try {
         const storeId = await getCurrentStore()
         if (!storeId) return []
 
-        const where = includeInactive ? { storeId } : { isActive: true, storeId }
-        const categories = await prisma.category.findMany({
-            where,
-            include: {
-                products: {
-                    where: includeInactive ? {} : { isAvailable: true },
-                    orderBy: { sortOrder: 'asc' },
-                    include: {
-                        addons: {
-                            where: includeInactive ? {} : { isAvailable: true },
-                            orderBy: { sortOrder: 'asc' }
-                        }
-                    }
-                }
-            },
-            orderBy: {
-                sortOrder: 'asc'
+        const tag = `store-menu-${storeId}`
+        const cacheKey = `categories-${storeId}-${includeInactive}`
+
+        return await unstable_cache(
+            async () => fetchCategories(storeId, includeInactive),
+            [cacheKey],
+            {
+                tags: [tag],
+                revalidate: 3600
             }
-        })
-        return categories
+        )()
     } catch (error) {
         console.error("Failed to fetch categories:", error)
         return []
@@ -67,6 +80,10 @@ export async function saveCategory(data: any) {
                 }
             })
         }
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
         return { success: true }
@@ -79,6 +96,10 @@ export async function saveCategory(data: any) {
 export async function deleteCategory(id: string) {
     try {
         await prisma.category.delete({ where: { id } })
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
         return { success: true }
@@ -100,6 +121,10 @@ export async function updateCategoryOrder(items: { id: string, sortOrder: number
         )
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+
         return { success: true }
     } catch (error) {
         console.error("Failed to reorder categories:", error)
@@ -112,6 +137,9 @@ export async function toggleCategoryStatus(id: string, isActive: boolean) {
         await prisma.category.update({ where: { id }, data: { isActive } })
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to update category status:", error)
@@ -178,6 +206,9 @@ export async function saveProduct(data: any) {
         }
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true, product }
     } catch (error) {
         console.error("Failed to save product:", error)
@@ -197,6 +228,9 @@ export async function updateProductOrder(items: { id: string, sortOrder: number 
         )
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to reorder products:", error)
@@ -210,6 +244,9 @@ export async function toggleProductStatus(id: string, isAvailable: boolean) {
         await prisma.product.update({ where: { id }, data: { isAvailable } })
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to update product status:", error)
@@ -222,6 +259,9 @@ export async function deleteProduct(id: string) {
         await prisma.product.delete({ where: { id } })
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to delete product:", error)
@@ -254,6 +294,9 @@ export async function saveAddon(data: any) {
         }
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to save addon:", error)
@@ -266,6 +309,9 @@ export async function deleteAddon(id: string) {
         await prisma.addon.delete({ where: { id } })
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        const storeId = await getCurrentStore()
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
         return { success: true }
     } catch (error) {
         console.error("Failed to delete addon:", error)

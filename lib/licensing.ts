@@ -35,9 +35,29 @@ export function generateKeyPair() {
  */
 export function generateProductKey(payload: LicensePayload, privateKeyPem: string): string {
     const data = JSON.stringify(payload);
+
+    // Ensure the private key is properly formatted
+    // Remove any extra whitespace and ensure proper newlines
+    let formattedKey = privateKeyPem.trim();
+
+    // If the key doesn't have proper newlines (common in env vars), add them
+    if (!formattedKey.includes('\n')) {
+        formattedKey = formattedKey
+            .replace(/-----BEGIN PRIVATE KEY-----/, '-----BEGIN PRIVATE KEY-----\n')
+            .replace(/-----END PRIVATE KEY-----/, '\n-----END PRIVATE KEY-----')
+            .replace(/-----BEGIN RSA PRIVATE KEY-----/, '-----BEGIN RSA PRIVATE KEY-----\n')
+            .replace(/-----END RSA PRIVATE KEY-----/, '\n-----END RSA PRIVATE KEY-----');
+    }
+
     const signer = crypto.createSign('SHA256');
     signer.update(data);
-    const signature = signer.sign(privateKeyPem, 'base64');
+    signer.end();
+
+    const signature = signer.sign({
+        key: formattedKey,
+        format: 'pem',
+        type: 'pkcs8'
+    }, 'base64');
 
     // Combine payload and signature
     const licenseData = {
@@ -61,9 +81,27 @@ export function verifyProductKey(productKey: string, publicKeyPem: string): Lice
             return { valid: false, error: 'Invalid license format' };
         }
 
+        // Ensure the public key is properly formatted
+        let formattedKey = publicKeyPem.trim();
+
+        // If the key doesn't have proper newlines (common in env vars), add them
+        if (!formattedKey.includes('\n')) {
+            formattedKey = formattedKey
+                .replace(/-----BEGIN PUBLIC KEY-----/, '-----BEGIN PUBLIC KEY-----\n')
+                .replace(/-----END PUBLIC KEY-----/, '\n-----END PUBLIC KEY-----')
+                .replace(/-----BEGIN RSA PUBLIC KEY-----/, '-----BEGIN RSA PUBLIC KEY-----\n')
+                .replace(/-----END RSA PUBLIC KEY-----/, '\n-----END RSA PUBLIC KEY-----');
+        }
+
         const verifier = crypto.createVerify('SHA256');
         verifier.update(JSON.stringify(licenseData.data));
-        const isValid = verifier.verify(publicKeyPem, licenseData.sig, 'base64');
+        verifier.end();
+
+        const isValid = verifier.verify({
+            key: formattedKey,
+            format: 'pem',
+            type: 'spki'
+        }, licenseData.sig, 'base64');
 
         if (!isValid) {
             return { valid: false, error: 'Invalid signature' };
@@ -79,6 +117,7 @@ export function verifyProductKey(productKey: string, publicKeyPem: string): Lice
         return { valid: true, payload };
 
     } catch (e) {
+        console.error('License verification error:', e);
         return { valid: false, error: 'Malformed license key' };
     }
 }

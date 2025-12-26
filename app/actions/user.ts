@@ -5,18 +5,10 @@ import { prisma } from "@/lib/prisma"
 
 import { cache } from 'react'
 
-export const getUserProfile = cache(async () => {
-    const cookieStore = await cookies()
-    const userId = cookieStore.get('session_user_id')?.value
+import { unstable_cache, revalidateTag } from "next/cache"
 
-    console.log("getUserProfile: Cookie ID:", userId)
-    console.log("getUserProfile: All Cookies:", cookieStore.getAll().map(c => c.name))
-
-    if (!userId) {
-        console.log("getUserProfile: No User ID in cookie")
-        return null
-    }
-
+// Internal DB fetcher
+async function fetchUser(userId: string) {
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -35,9 +27,37 @@ export const getUserProfile = cache(async () => {
             }
         }
     })
+    return user
+}
+
+// Cached DB call
+const getCachedUser = unstable_cache(
+    async (userId: string) => fetchUser(userId),
+    ['user-profile-data'], // Key parts - we'll append userId in usage? No, unstable_cache receives args.
+    {
+        tags: ['user-profile'],
+        revalidate: 3600
+    }
+)
+
+export const getUserProfile = cache(async () => {
+    const cookieStore = await cookies()
+    const userId = cookieStore.get('session_user_id')?.value
+
+    if (!userId) {
+        return null
+    }
+
+    // Use cached fetcher, passing userId as argument which forms part of the cache key automatically in newer Next.js? 
+    // Actually unstable_cache 2nd arg is keyParts. 
+    // To properly cache per user, we need to wrap the fetcher uniquely or rely on arguments.
+    // unstable_cache(fn, keyParts, options)(...args)
+    // So we need to define the cached function outside.
+
+    // Correct usage:
+    const user = await getCachedUser(userId)
 
     if (!user) {
-        console.log("getUserProfile: User not found in DB")
         return null
     }
 

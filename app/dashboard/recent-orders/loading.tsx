@@ -17,7 +17,7 @@ export default function RecentOrdersLoading() {
             </div>
 
             {/* Table Skeleton */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="bg-white shadow-sm rounded-lg overflow-hidden">
                 {/* Table Header */}
                 <div className="bg-gray-100 p-4 flex gap-4">
                     <div className="h-5 w-24 bg-gray-200 rounded"></div>
@@ -29,7 +29,7 @@ export default function RecentOrdersLoading() {
 
                 {/* Table Rows */}
                 {[...Array(8)].map((_, i) => (
-                    <div key={i} className="p-4 border-t flex gap-4 items-center">
+                    <div key={i} className="p-4 bg-gray-50/30 flex gap-4 items-center">
                         <div className="h-5 w-24 bg-gray-200 rounded"></div>
                         <div className="h-5 w-32 bg-gray-200 rounded"></div>
                         <div className="h-5 w-24 bg-gray-200 rounded"></div>

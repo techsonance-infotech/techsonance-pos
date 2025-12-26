@@ -5,7 +5,7 @@ export default function PreferencesLoading() {
             <div className="h-8 w-48 bg-gray-200 rounded"></div>
 
             {/* Preferences Form */}
-            <div className="border rounded-lg p-6 space-y-6">
+            <div className="bg-white shadow-sm rounded-lg p-6 space-y-6">
                 {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex items-center justify-between py-4 border-b last:border-0">
                         <div className="space-y-2 flex-1">

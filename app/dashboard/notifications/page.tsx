@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { getNotifications, markAllAsRead, markNotificationAsRead } from "@/app/actions/notifications"
 import { toast } from "sonner"
+import NotificationsLoading from "./loading"
 
 export default function NotificationsPage() {
     const [notifications, setNotifications] = useState<any[]>([])
@@ -32,6 +33,10 @@ export default function NotificationsPage() {
     const handleMarkRead = async (id: string) => {
         await markNotificationAsRead(id)
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+    }
+
+    if (loading) {
+        return <NotificationsLoading />
     }
 
     return (
@@ -71,11 +76,7 @@ export default function NotificationsPage() {
 
                     {/* List */}
                     <div className="flex-1 overflow-y-auto">
-                        {loading ? (
-                            <div className="flex items-center justify-center h-full">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
-                            </div>
-                        ) : notifications.length === 0 ? (
+                        {notifications.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center p-8 animate-in fade-in zoom-in-95">
                                 <div className="h-24 w-24 bg-gray-50 rounded-3xl flex items-center justify-center mb-6">
                                     <Bell className="h-10 w-10 text-gray-300 fill-current" />
