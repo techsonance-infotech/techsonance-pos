@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 
@@ -16,8 +16,6 @@ const SETTINGS_KEYS = [
     'tax_name',
     'show_tax_breakdown'
 ] as const
-
-import { unstable_cache, revalidateTag } from "next/cache"
 
 // Internal DB Fetcher
 async function fetchBusinessSettings() {
@@ -80,7 +78,7 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             )
         )
 
-        revalidateTag('business-settings')
+            ; (revalidateTag as any)('business-settings')
         revalidatePath('/')
         return { success: true, message: "Settings updated successfully" }
     } catch (error) {
@@ -119,7 +117,7 @@ export async function uploadLogo(formData: FormData) {
             create: { key: 'business_logo', value: url }
         })
 
-        revalidateTag('business-settings')
+            ; (revalidateTag as any)('business-settings')
         revalidatePath('/')
         return { success: true, url }
     } catch (error) {
