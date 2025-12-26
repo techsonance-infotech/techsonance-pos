@@ -14,6 +14,7 @@ import { getBusinessSettings } from "@/app/actions/settings"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import NewOrderLoading from "./loading"
 
 type CartItem = {
     cartId?: string
@@ -200,6 +201,8 @@ export default function NewOrderPage() {
             setHolding(false)
         }
     }
+
+    if (loading) return <NewOrderLoading />
 
     return (
         <>

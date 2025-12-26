@@ -10,7 +10,7 @@ export default function LicensesLoading() {
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[...Array(3)].map((_, i) => (
-                    <div key={i} className="border rounded-lg p-4 space-y-2">
+                    <div key={i} className="bg-white shadow-sm rounded-lg p-4 space-y-2">
                         <div className="h-4 bg-gray-200 rounded w-24"></div>
                         <div className="h-8 bg-gray-200 rounded w-16"></div>
                     </div>
@@ -18,7 +18,7 @@ export default function LicensesLoading() {
             </div>
 
             {/* Licenses Table */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="bg-white shadow-sm rounded-lg overflow-hidden">
                 <div className="bg-gray-100 p-4 flex gap-4">
                     <div className="h-5 w-32 bg-gray-200 rounded"></div>
                     <div className="h-5 w-24 bg-gray-200 rounded"></div>
@@ -27,7 +27,7 @@ export default function LicensesLoading() {
                 </div>
 
                 {[...Array(5)].map((_, i) => (
-                    <div key={i} className="p-4 border-t flex gap-4 items-center">
+                    <div key={i} className="p-4 border-t border-gray-100 flex gap-4 items-center">
                         <div className="h-5 bg-gray-200 rounded w-32"></div>
                         <div className="h-5 bg-gray-200 rounded w-24"></div>
                         <div className="h-5 bg-gray-200 rounded w-24"></div>

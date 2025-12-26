@@ -10,7 +10,7 @@ export default function PrintersLoading() {
             {/* Printers List */}
             <div className="space-y-4">
                 {[...Array(3)].map((_, i) => (
-                    <div key={i} className="border rounded-lg p-6 space-y-4">
+                    <div key={i} className="bg-white shadow-sm rounded-lg p-6 space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="space-y-2 flex-1">
                                 <div className="h-6 bg-gray-200 rounded w-48"></div>

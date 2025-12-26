@@ -37,9 +37,7 @@ export default async function LoginPage() {
               Register
             </a>
           </div>
-          <div className="mt-2 text-center text-sm text-gray-500">
-            Demo credentials: admin / admin
-          </div>
+
         </div>
       </div>
     </div>

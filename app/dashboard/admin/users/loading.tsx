@@ -14,7 +14,7 @@ export default function UsersLoading() {
             </div>
 
             {/* Users Table */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="bg-white shadow-sm rounded-lg overflow-hidden">
                 <div className="bg-gray-100 p-4 flex gap-4">
                     <div className="h-5 w-32 bg-gray-200 rounded"></div>
                     <div className="h-5 w-48 bg-gray-200 rounded"></div>

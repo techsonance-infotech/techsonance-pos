@@ -5,7 +5,7 @@ export default function BusinessSettingsLoading() {
             <div className="h-8 w-48 bg-gray-200 rounded"></div>
 
             {/* Form */}
-            <div className="border rounded-lg p-6 space-y-6">
+            <div className="bg-white shadow-sm rounded-lg p-6 space-y-6">
                 {/* Logo Upload */}
                 <div className="space-y-2">
                     <div className="h-5 bg-gray-200 rounded w-24"></div>

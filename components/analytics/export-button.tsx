@@ -22,25 +22,21 @@ export function ExportButton({ data, filename, headers }: ExportButtonProps) {
             return
         }
 
-        // Get headers from first object if not provided
         const csvHeaders = headers || Object.keys(data[0])
 
-        // Create CSV content
         const csvContent = [
             csvHeaders.join(','),
             ...data.map(row =>
                 csvHeaders.map(header => {
                     const value = row[header]
-                    // Handle values with commas or quotes
                     if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
                         return `"${value.replace(/"/g, '""')}"`
                     }
                     return value
                 }).join(',')
             )
-        ].join('\\n')
+        ].join('\n')
 
-        // Create blob and download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
         const link = document.createElement('a')
         const url = URL.createObjectURL(blob)
@@ -54,24 +50,26 @@ export function ExportButton({ data, filename, headers }: ExportButtonProps) {
     }
 
     const exportToPDF = () => {
-        // Use browser print dialog for PDF
-        window.print()
+        // Small delay to allow dropdown to close before printing
+        setTimeout(() => {
+            window.print()
+        }, 100)
     }
 
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2 print:hidden">
                     <Download className="h-4 w-4" />
                     Export
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="print:hidden">
                 <DropdownMenuItem onClick={exportToCSV}>
                     Export as CSV
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={exportToPDF}>
-                    Export as PDF
+                    Print / Save as PDF
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

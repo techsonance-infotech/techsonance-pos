@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { getAppPreferences, updateAppPreferences } from "@/app/actions/preferences"
 import { CURRENCIES, DATE_FORMATS } from "@/lib/currencies"
 import { formatCurrency, formatDate } from "@/lib/format"
+import PreferencesLoading from "./loading"
 
 export default function AppPreferencesPage() {
     const [loading, setLoading] = useState(true)
@@ -63,16 +64,7 @@ export default function AppPreferencesPage() {
     const selectedCurrency = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0]
     const selectedDateFormat = DATE_FORMATS.find(f => f.value === dateFormat) || DATE_FORMATS[0]
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <div className="text-center">
-                    <Palette className="h-12 w-12 text-gray-400 mx-auto mb-4 animate-pulse" />
-                    <p className="text-gray-500">Loading preferences...</p>
-                </div>
-            </div>
-        )
-    }
+    if (loading) return <PreferencesLoading />
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
@@ -115,8 +107,8 @@ export default function AppPreferencesPage() {
                             <button
                                 onClick={() => setTheme('light')}
                                 className={`p-6 rounded-xl border-2 transition-all ${theme === 'light'
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <Sun className={`h-8 w-8 mx-auto mb-3 ${theme === 'light' ? 'text-blue-600' : 'text-gray-400'}`} />
@@ -129,8 +121,8 @@ export default function AppPreferencesPage() {
                             <button
                                 onClick={() => setTheme('dark')}
                                 className={`p-6 rounded-xl border-2 transition-all ${theme === 'dark'
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <Moon className={`h-8 w-8 mx-auto mb-3 ${theme === 'dark' ? 'text-blue-600' : 'text-gray-400'}`} />

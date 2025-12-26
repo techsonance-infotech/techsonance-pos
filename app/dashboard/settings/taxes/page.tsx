@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import TaxesLoading from "./loading"
 
 export default function TaxConfigurationPage() {
     const { currency } = useCurrency()
@@ -87,7 +88,7 @@ export default function TaxConfigurationPage() {
         }
     }
 
-    if (loading) return <div className="p-10 text-center">Loading settings...</div>
+    if (loading) return <TaxesLoading />
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">

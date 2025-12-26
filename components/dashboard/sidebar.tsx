@@ -62,30 +62,32 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
     return (
         <aside
             className={cn(
-                "relative flex flex-col bg-white transition-all duration-300 shadow-xl z-10",
+                "relative flex flex-col bg-white transition-all duration-300 ease-in-out shadow-xl z-10 overflow-hidden print:hidden",
                 collapsed ? "w-20" : "w-72"
             )}
         >
-            <div className="flex h-20 items-center justify-between px-6">
-                {!collapsed && (
-                    <div className="flex items-center gap-3">
-                        {logoUrl && (
-                            <img src={logoUrl} alt="Logo" className="h-8 w-8 object-contain" />
-                        )}
-                        <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent truncate max-w-[150px]" title={businessName}>
-                            {businessName}
-                        </span>
-                    </div>
-                )}
+            <div className="flex h-20 items-center justify-between px-6 min-w-max">
+                <div className={cn(
+                    "flex items-center gap-3 transition-all duration-300 overflow-hidden",
+                    collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+                )}>
+                    {logoUrl && (
+                        <img src={logoUrl} alt="Logo" className="h-8 w-8 object-contain shrink-0" />
+                    )}
+                    <span className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent truncate max-w-[150px]" title={businessName}>
+                        {businessName}
+                    </span>
+                </div>
+
                 <button
                     onClick={() => setCollapsed(!collapsed)}
-                    className="rounded-full p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors"
+                    className="rounded-full p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors ml-auto"
                 >
                     {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
                 </button>
             </div>
 
-            <nav className="flex-1 space-y-1 p-4">
+            <nav className="flex-1 space-y-1 p-4 overflow-y-auto scrollbar-hide">
                 {items.map((item) => {
                     const isActive = pathname === item.href
                     return (
@@ -93,34 +95,51 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
                             key={item.href}
                             href={item.href}
                             className={cn(
-                                "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+                                "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200 whitespace-nowrap overflow-hidden",
                                 isActive
                                     ? "bg-orange-50 text-orange-600 shadow-sm"
                                     : "text-gray-500 hover:bg-gray-50 hover:text-gray-900",
                                 collapsed && "justify-center px-2"
                             )}
+                            title={collapsed ? item.label : undefined}
                         >
-                            <item.icon className={cn("h-5 w-5 transition-transform duration-200", isActive && "text-orange-600 scale-110")} />
-                            {!collapsed && <span>{item.label}</span>}
-                            {isActive && !collapsed && <div className="ml-auto w-1.5 h-1.5 bg-orange-600 rounded-full" />}
+                            <item.icon className={cn("h-5 w-5 shrink-0 transition-transform duration-200", isActive && "text-orange-600 scale-110")} />
+                            <span className={cn(
+                                "transition-all duration-300",
+                                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+                            )}>
+                                {item.label}
+                            </span>
+                            {isActive && (
+                                <div className={cn(
+                                    "ml-auto w-1.5 h-1.5 bg-orange-600 rounded-full shrink-0 transition-all duration-300",
+                                    collapsed ? "opacity-0 w-0" : "opacity-100"
+                                )} />
+                            )}
                         </Link>
                     )
                 })}
             </nav>
 
-            <div className="absolute bottom-8 w-full px-4">
+            <div className="absolute bottom-8 w-full px-4 text-center">
                 <button
                     onClick={async () => {
                         sessionStorage.removeItem('pin_verified')
                         await logout()
                     }}
-                    className={`
-                            flex w-full items-center gap-3 rounded-2xl p-3 text-sm font-medium transition-all duration-300
-                            text-gray-500 hover:bg-red-50 hover:text-red-600 hover:shadow-sm group
-                        `}
+                    className={cn(
+                        "flex w-full items-center gap-3 rounded-2xl p-3 text-sm font-medium transition-all duration-300 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:shadow-sm group overflow-hidden whitespace-nowrap",
+                        collapsed && "justify-center"
+                    )}
+                    title={collapsed ? "Logout" : undefined}
                 >
-                    <LogOut className="h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
-                    <span className={`transition-opacity duration-300 ${collapsed ? "opacity-0 w-0 hidden" : "opacity-100"}`}>Logout</span>
+                    <LogOut className="h-5 w-5 shrink-0 group-hover:scale-110 transition-transform duration-300" />
+                    <span className={cn(
+                        "transition-all duration-300",
+                        collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+                    )}>
+                        Logout
+                    </span>
                 </button>
             </div>
         </aside>

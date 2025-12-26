@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
+import systemInfo from "@/config/system-info.json"
+import SettingsLoading from "./loading"
 
 type SettingCardProps = {
     icon: any
@@ -48,12 +50,18 @@ function SettingCard({ icon: Icon, title, description, colorClass, iconBgClass, 
 
 export default function SettingsPage() {
     const [userRole, setUserRole] = useState<string | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
         getUserProfile().then(user => {
             if (user) setUserRole(user.role)
+            setIsLoading(false)
         })
     }, [])
+
+    if (isLoading) {
+        return <SettingsLoading />
+    }
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-8 pb-10">
@@ -137,6 +145,15 @@ export default function SettingsPage() {
                     iconBgClass="bg-amber-50"
                     href="/dashboard/settings/preferences"
                 />
+
+                <SettingCard
+                    icon={Info}
+                    title="About"
+                    description="Business details and support"
+                    colorClass="text-cyan-600"
+                    iconBgClass="bg-cyan-50"
+                    href="/dashboard/settings/about"
+                />
             </div>
 
             {/* System Information Panel */}
@@ -146,25 +163,25 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Version</p>
-                        <p className="font-semibold text-gray-900">1.0.0</p>
+                        <p className="font-semibold text-gray-900">{systemInfo.version}</p>
                     </div>
 
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Last Updated</p>
-                        <p className="font-semibold text-gray-900">December 17, 2025</p>
+                        <p className="font-semibold text-gray-900">{systemInfo.lastUpdated}</p>
                     </div>
 
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">License</p>
                         <p className="font-semibold text-gray-900 flex items-center gap-2">
-                            <HeartHandshake className="h-4 w-4 text-orange-500" /> Professional
+                            <HeartHandshake className="h-4 w-4 text-orange-500" /> {systemInfo.license}
                         </p>
                     </div>
 
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Support</p>
                         <p className="font-semibold text-gray-900 flex items-center gap-2 mb-1">
-                            <Mail className="h-4 w-4 text-gray-400" /> support@cafepos.com
+                            <Mail className="h-4 w-4 text-gray-400" /> {systemInfo.support.email}
                         </p>
                     </div>
                 </div>
