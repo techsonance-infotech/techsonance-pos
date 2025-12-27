@@ -13,6 +13,7 @@ import {
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { getRecentOrders, convertOrderToHeld, deleteOrder } from "@/app/actions/orders"
 import { getBusinessSettings } from "@/app/actions/settings"
+import { getUserStoreDetails } from "@/app/actions/user"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import { toast } from "sonner"
@@ -32,6 +33,7 @@ export default function RecentOrdersPage() {
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
     const [printOrder, setPrintOrder] = useState<any | null>(null) // For Printing
     const [businessDetails, setBusinessDetails] = useState<any>(null)
+    const [storeDetails, setStoreDetails] = useState<any>(null)
     const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<any | null>(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
@@ -61,12 +63,14 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const [data, settings] = await Promise.all([
+        const [data, settings, store] = await Promise.all([
             getRecentOrders(),
-            getBusinessSettings()
+            getBusinessSettings(),
+            getUserStoreDetails()
         ])
         setOrders(data)
         setBusinessDetails(settings)
+        setStoreDetails(store)
         setLoading(false)
     }
 
@@ -463,6 +467,7 @@ export default function RecentOrdersPage() {
                         <ReceiptTemplate
                             order={printOrder}
                             businessDetails={businessDetails}
+                            storeDetails={storeDetails}
                         />
                     </div>
                 )

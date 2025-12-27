@@ -23,9 +23,16 @@ export function Header({ initialUser }: { initialUser: any | null }) {
     const [unreadOnly, setUnreadOnly] = useState(false)
 
 
-    // Load User Data (Fallback or Refresh)
+    // Sync with server prop (Revalidation fix)
     useEffect(() => {
-        if (!user) {
+        if (initialUser) {
+            setUser(initialUser)
+        }
+    }, [initialUser])
+
+    // Load User Data (Fallback if no initialUser)
+    useEffect(() => {
+        if (!user && !initialUser) {
             async function loadData() {
                 const profile = await getUserProfile()
                 if (profile) {
@@ -34,7 +41,7 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             }
             loadData()
         }
-    }, [user])
+    }, [user, initialUser])
 
     // Load Notifications
     useEffect(() => {

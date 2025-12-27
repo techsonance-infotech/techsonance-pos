@@ -29,6 +29,7 @@ import { subDays, startOfMonth, endOfMonth } from "date-fns"
 import { toast } from "sonner"
 import AnalyticsLoading from "./loading"
 
+// HMR Rebuild Trigger
 export default function AnalyticsPage() {
     const router = useRouter()
     const { currency } = useCurrency()

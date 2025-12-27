@@ -4,7 +4,6 @@ import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
 import { cache } from 'react'
-
 import { unstable_cache, revalidateTag } from "next/cache"
 
 // Internal DB fetcher
@@ -30,15 +29,10 @@ async function fetchUser(userId: string) {
     return user
 }
 
-// Cached DB call
-const getCachedUser = unstable_cache(
-    async (userId: string) => fetchUser(userId),
-    ['user-profile-data'], // Key parts - we'll append userId in usage? No, unstable_cache receives args.
-    {
-        tags: ['user-profile'],
-        revalidate: 3600
-    }
-)
+// Direct DB call (No Cache for Critical User State)
+const getCachedUser = async (userId: string) => {
+    return fetchUser(userId)
+}
 
 export const getUserProfile = cache(async () => {
     const cookieStore = await cookies()
@@ -128,5 +122,28 @@ export async function rejectUser(userId: string) {
     } catch (error) {
         console.error("Failed to reject user:", error)
         return { success: false, error: "Failed to reject user" }
+    }
+}
+
+export async function getUserStoreDetails() {
+    try {
+        const cookieStore = await cookies()
+        const userId = cookieStore.get('session_user_id')?.value
+        if (!userId) return null
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                defaultStore: {
+                    select: {
+                        name: true,
+                        location: true
+                    }
+                }
+            }
+        })
+        return user?.defaultStore || null
+    } catch (error) {
+        return null
     }
 }

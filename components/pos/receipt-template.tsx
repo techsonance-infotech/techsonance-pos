@@ -8,11 +8,15 @@ interface ReceiptProps {
         address?: string
         phone?: string
         email?: string
-        logoUrl?: string
         taxRate?: string
         taxName?: string
         showTaxBreakdown?: boolean
     }
+    storeDetails?: {
+        name?: string | null
+        location?: string | null
+        contactNo?: string | null
+    } | null
     order: {
         kotNo: string
         createdAt: Date | string
@@ -24,10 +28,12 @@ interface ReceiptProps {
         subtotal?: number
         taxAmount?: number
         discount?: string | number
+        discountAmount?: number
+        paymentMode?: string
     }
 }
 
-export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails }, ref) => {
+export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails, storeDetails }, ref) => {
     // Calculate defaults if not provided (fallback logic)
     const calculatedSubtotal = order.items.reduce((sum, item) => {
         const itemTotal = item.unitPrice * item.quantity;
@@ -41,13 +47,15 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     return (
         <div ref={ref} className="hidden print:block print:w-[80mm] print:p-2 bg-white text-black font-mono text-sm leading-tight">
             {/* Header */}
+            {/* Header */}
             <div className="text-center mb-4 border-b border-black pb-2 border-dashed flex flex-col items-center justify-center">
-                {businessDetails?.logoUrl && (
-                    <img src={businessDetails.logoUrl} alt="Logo" className="h-16 w-16 mb-2 object-contain" />
-                )}
-                <h1 className="text-xl font-bold uppercase tracking-wider">{businessDetails?.name || 'TechSonance'}</h1>
-                {businessDetails?.address && <p className="text-xs whitespace-pre-wrap px-4">{businessDetails.address}</p>}
-                {businessDetails?.phone && <p className="text-xs mt-1">Ph: {businessDetails.phone}</p>}
+                <h1 className="text-xl font-bold uppercase tracking-wider">{storeDetails?.name || businessDetails?.name || 'TechSonance'}</h1>
+                {storeDetails?.location && <p className="text-xs whitespace-pre-wrap px-4 font-medium">{storeDetails.location}</p>}
+                {!storeDetails?.location && businessDetails?.address && <p className="text-xs whitespace-pre-wrap px-4">{businessDetails.address}</p>}
+
+                {storeDetails?.contactNo && <p className="text-xs mt-1">Ph: {storeDetails.contactNo}</p>}
+                {!storeDetails?.contactNo && businessDetails?.phone && <p className="text-xs mt-1">Ph: {businessDetails.phone}</p>}
+
                 {businessDetails?.email && <p className="text-xs">Email: {businessDetails.email}</p>}
             </div>
 
@@ -120,11 +128,16 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     </div>
                 )}
 
-                {/* Discount (Mock logic if you had discount field in order items or total) */}
-                {/* <div className="flex justify-between">
-                    <span>Discount:</span>
-                    <span>0.00</span>
-                </div> */}
+                {order.discountAmount && order.discountAmount > 0 && (
+                    <div className="flex justify-between">
+                        <span>Discount:</span>
+                        <span>- {Number(order.discountAmount).toFixed(2)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between">
+                    <span>Payment Mode:</span>
+                    <span>{order.paymentMode || 'CASH'}</span>
+                </div>
                 <div className="flex justify-between font-bold text-lg mt-2 border-t border-black pt-2 border-dashed">
                     <span>Total:</span>
                     <span>₹{order.totalAmount.toFixed(0)}</span>

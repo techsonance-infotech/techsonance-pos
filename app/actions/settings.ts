@@ -14,7 +14,9 @@ const SETTINGS_KEYS = [
     'business_gst',
     'tax_rate',
     'tax_name',
-    'show_tax_breakdown'
+    'show_tax_breakdown',
+    'enable_discount',
+    'default_discount'
 ] as const
 
 // Internal DB Fetcher
@@ -40,7 +42,9 @@ async function fetchBusinessSettings() {
         gstNo: settingsMap.business_gst || '',
         taxRate: settingsMap.tax_rate || '5',
         taxName: settingsMap.tax_name || 'GST',
-        showTaxBreakdown: settingsMap.show_tax_breakdown === 'true'
+        showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
+        enableDiscount: settingsMap.enable_discount === 'true',
+        defaultDiscount: settingsMap.default_discount || '0'
     }
 }
 
@@ -50,7 +54,7 @@ export const getBusinessSettings = unstable_cache(
     ['business-settings-data'], // Key parts
     {
         tags: ['business-settings'],
-        revalidate: 3600 // Fallback revalidate every hour
+        revalidate: 30 // Reduced from 3600 for better responsiveness
     }
 )
 
@@ -65,6 +69,8 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             tax_rate: formData.get('taxRate') as string,
             tax_name: formData.get('taxName') as string,
             show_tax_breakdown: formData.get('showTaxBreakdown') as string,
+            enable_discount: formData.get('enableDiscount') as string,
+            default_discount: formData.get('defaultDiscount') as string,
         }
 
         // Parallel updates

@@ -193,27 +193,62 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
         return <div className="flex items-center justify-center h-64 text-gray-400">No data available</div>
     }
 
-    const total = data.reduce((sum, item) => sum + item.value, 0)
-    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+    // Filter and Validate
+    const validData = data.map(item => ({
+        ...item,
+        value: typeof item.value === 'number' && !isNaN(item.value) ? Math.max(0, item.value) : 0
+    }))
 
+    const total = validData.reduce((sum, item) => sum + item.value, 0)
+
+    if (total === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-2" style={{ height: size }}>
+                <div className="w-32 h-32 rounded-full border-4 border-gray-100 flex items-center justify-center">
+                    <span className="text-gray-400 text-sm">No Activity</span>
+                </div>
+            </div>
+        )
+    }
+
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
     let currentAngle = -90 // Start from top
 
     return (
         <div className="flex items-center gap-8">
-            <svg width={size} height={size} viewBox="0 0 100 100">
-                {data.map((item, index) => {
+            <svg width={size} height={size} viewBox="0 0 100 100" className="overflow-visible">
+                {validData.map((item, index) => {
                     const percentage = (item.value / total) * 100
                     const angle = (percentage / 100) * 360
+
+                    // Handle single item 100% case to avoid arc drawing errors
+                    if (percentage === 100) {
+                        return (
+                            <circle
+                                key={index}
+                                cx="50"
+                                cy="50"
+                                r="40"
+                                fill={item.color || colors[index % colors.length]}
+                            >
+                                <title>{item.label}: 100%</title>
+                            </circle>
+                        )
+                    }
+
                     const startAngle = currentAngle
                     const endAngle = currentAngle + angle
 
                     // Calculate path
                     const startRad = (startAngle * Math.PI) / 180
                     const endRad = (endAngle * Math.PI) / 180
+
                     const x1 = 50 + 40 * Math.cos(startRad)
                     const y1 = 50 + 40 * Math.sin(startRad)
                     const x2 = 50 + 40 * Math.cos(endRad)
                     const y2 = 50 + 40 * Math.sin(endRad)
+
+                    // SVG Arc flag: large-arc-flag
                     const largeArc = angle > 180 ? 1 : 0
 
                     const path = `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArc} 1 ${x2} ${y2} Z`
@@ -226,8 +261,10 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
                             d={path}
                             fill={item.color || colors[index % colors.length]}
                             className="hover:opacity-80 transition-opacity cursor-pointer"
+                            stroke="white"
+                            strokeWidth="1"
                         >
-                            <title>{item.label}: {(percentage || 0).toFixed(1)}%</title>
+                            <title>{item.label}: {percentage.toFixed(1)}%</title>
                         </path>
                     )
                 })}
@@ -235,7 +272,7 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
 
             {/* Legend */}
             <div className="space-y-2">
-                {data.map((item, index) => {
+                {validData.map((item, index) => {
                     const percentage = (item.value / total) * 100
                     return (
                         <div key={index} className="flex items-center gap-2">
@@ -244,7 +281,7 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
                                 style={{ backgroundColor: item.color || colors[index % colors.length] }}
                             />
                             <span className="text-sm text-gray-700">
-                                {item.label} ({(percentage || 0).toFixed(1)}%)
+                                {item.label} ({percentage.toFixed(1)}%)
                             </span>
                         </div>
                     )

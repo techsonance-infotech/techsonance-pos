@@ -90,7 +90,9 @@ export default async function DashboardPage() {
                         <h2 className="text-lg font-bold text-gray-800">Recent Orders</h2>
                         {/* Could add a link to full Order History page later */}
                         {recentOrders.length > 0 && (
-                            <Button variant="ghost" className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 font-medium">View All</Button>
+                            <Link href="/dashboard/recent-orders">
+                                <Button variant="ghost" className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 font-medium">View All</Button>
+                            </Link>
                         )}
                     </div>
 
@@ -104,30 +106,32 @@ export default async function DashboardPage() {
                     ) : (
                         <div className="space-y-4">
                             {recentOrders.map((order) => (
-                                <div key={order.id} className="flex items-center justify-between p-4 rounded-xl bg-gray-50/50 hover:bg-gray-100 transition-colors border border-transparent hover:border-gray-200">
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm text-lg font-bold text-gray-700">
-                                            {order.type === 'DINE_IN' ? '🍽️' : '🛍️'}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">{order.customerName}</p>
-                                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                                                <span>#{order.kotNo}</span>
-                                                <span>•</span>
-                                                <span>{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <Link key={order.id} href={`/dashboard/recent-orders?viewOrderId=${order.id}`} className="block group">
+                                    <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50/50 group-hover:bg-gray-100 transition-colors border border-transparent group-hover:border-gray-200">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm text-lg font-bold text-gray-700">
+                                                {order.type === 'DINE_IN' ? '🍽️' : '🛍️'}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800">{order.customerName}</p>
+                                                <div className="flex items-center gap-2 text-sm text-gray-500">
+                                                    <span>#{order.kotNo}</span>
+                                                    <span>•</span>
+                                                    <span>{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <Badge variant="outline" className={getBadgeStyles(order.status)}>
-                                            {order.status}
-                                        </Badge>
-                                        <div className="text-right">
-                                            <p className="font-bold text-gray-900">{formatCurrency(order.totalAmount, symbol)}</p>
+                                        <div className="flex items-center gap-4">
+                                            <Badge variant="outline" className={getBadgeStyles(order.status)}>
+                                                {order.status}
+                                            </Badge>
+                                            <div className="text-right">
+                                                <p className="font-bold text-gray-900">{formatCurrency(order.totalAmount, symbol)}</p>
+                                            </div>
+                                            <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-orange-600 transition-colors" />
                                         </div>
-                                        <ChevronRight className="h-4 w-4 text-gray-400" />
                                     </div>
-                                </div>
+                                </Link>
                             ))}
                         </div>
                     )}
