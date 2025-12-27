@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Plus, Minus } from "lucide-react"
+import { X, Plus, Minus, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
 
 // Types
 export type Addon = {
@@ -36,12 +37,14 @@ interface ProductCustomizationModalProps {
 export function ProductCustomizationModal({ isOpen, onClose, product, addons, onAddToBill }: ProductCustomizationModalProps) {
     const [quantity, setQuantity] = useState(1)
     const [selectedAddons, setSelectedAddons] = useState<{ [key: string]: number }>({})
+    const [addonSearch, setAddonSearch] = useState("")
 
     // Reset state when product opens
     useEffect(() => {
         if (isOpen) {
             setQuantity(1)
             setSelectedAddons({})
+            setAddonSearch("")
         }
     }, [isOpen, product])
 
@@ -51,7 +54,8 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
     const updateAddonQuantity = (addonId: string, delta: number) => {
         setSelectedAddons(prev => {
             const current = prev[addonId] || 0
-            const newQty = Math.max(0, current + delta)
+            // Limit max 4 per addon
+            const newQty = Math.max(0, Math.min(4, current + delta))
             if (newQty === 0) {
                 const { [addonId]: _, ...rest } = prev
                 return rest
@@ -93,7 +97,7 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
                         </button>
                         <span className="w-6 text-center font-bold text-lg text-gray-800">{quantity}</span>
                         <button
-                            onClick={() => setQuantity(quantity + 1)}
+                            onClick={() => setQuantity(Math.min(100, quantity + 1))}
                             className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
                         >
                             <Plus className="h-4 w-4" />
@@ -112,9 +116,22 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
                     {/* Add-ons List */}
                     {addons && addons.length > 0 && (
                         <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add ons</h3>
-                            <div className="space-y-3">
-                                {addons.map(addon => {
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add ons</h3>
+                                <div className="relative w-40">
+                                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                                    <Input
+                                        placeholder="Search..."
+                                        value={addonSearch}
+                                        onChange={(e) => setAddonSearch(e.target.value)}
+                                        className="h-8 pl-7 text-xs bg-gray-50 border-gray-100"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
+                                {addons.filter(addon =>
+                                    addon.name.toLowerCase().includes(addonSearch.toLowerCase())
+                                ).map(addon => {
                                     if (addon.isAvailable === false) return null // Skip unavailable
                                     const qty = selectedAddons[addon.id] || 0
                                     return (
@@ -138,7 +155,10 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
                                                 </span>
                                                 <button
                                                     onClick={() => updateAddonQuantity(addon.id, 1)}
-                                                    className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
+                                                    className={cn(
+                                                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                                                        qty >= 4 ? "bg-gray-50 text-gray-300 pointer-events-none" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                                    )}
                                                 >
                                                     <Plus className="h-4 w-4" />
                                                 </button>

@@ -503,7 +503,21 @@ export default function MenuManagementPage() {
                         <div className="space-y-4 py-4">
                             <div className="grid gap-2">
                                 <Label>Name</Label>
-                                <Input value={catForm.name} onChange={e => setCatForm({ ...catForm, name: e.target.value })} />
+                                <Input
+                                    value={catForm.name}
+                                    onChange={e => {
+                                        const val = e.target.value
+                                        if (val.length > 30) {
+                                            toast.error("Name cannot exceed 30 characters")
+                                            return
+                                        }
+                                        if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                            toast.error("Only alphabets are allowed")
+                                            return
+                                        }
+                                        setCatForm({ ...catForm, name: val })
+                                    }}
+                                />
                             </div>
                             <div className="flex items-center gap-2">
                                 <Label>Active</Label>
@@ -534,11 +548,37 @@ export default function MenuManagementPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Name</Label>
-                                        <Input value={prodForm.name} onChange={e => setProdForm({ ...prodForm, name: e.target.value })} />
+                                        <Input
+                                            value={prodForm.name}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (val.length > 30) {
+                                                    toast.error("Name cannot exceed 30 characters")
+                                                    return
+                                                }
+                                                if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                                    toast.error("Only alphabets are allowed")
+                                                    return
+                                                }
+                                                setProdForm({ ...prodForm, name: val })
+                                            }}
+                                        />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Price</Label>
-                                        <Input type="number" value={prodForm.price} onChange={e => setProdForm({ ...prodForm, price: e.target.value })} />
+                                        <Input
+                                            type="number"
+                                            value={prodForm.price}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value)
+                                                if (val > 5000) {
+                                                    toast.error("Price cannot exceed 5000")
+                                                    return
+                                                }
+                                                if (e.target.value && val < 0) return
+                                                setProdForm({ ...prodForm, price: e.target.value })
+                                            }}
+                                        />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
@@ -557,11 +597,39 @@ export default function MenuManagementPage() {
                                 <div className="flex gap-2 items-end border-b border-gray-100 pb-4">
                                     <div className="space-y-1 flex-1">
                                         <Label>Add-on Name</Label>
-                                        <Input placeholder="Extra Cheese" value={newAddon.name} onChange={e => setNewAddon({ ...newAddon, name: e.target.value })} />
+                                        <Input
+                                            placeholder="Extra Cheese"
+                                            value={newAddon.name}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (val.length > 30) {
+                                                    toast.error("Name cannot exceed 30 characters")
+                                                    return
+                                                }
+                                                if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                                    toast.error("Only alphabets are allowed")
+                                                    return
+                                                }
+                                                setNewAddon({ ...newAddon, name: val })
+                                            }}
+                                        />
                                     </div>
                                     <div className="space-y-1 w-24">
                                         <Label>Price</Label>
-                                        <Input type="number" placeholder="20" value={newAddon.price} onChange={e => setNewAddon({ ...newAddon, price: e.target.value })} />
+                                        <Input
+                                            type="number"
+                                            placeholder="20"
+                                            value={newAddon.price}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value)
+                                                if (val > 5000) {
+                                                    toast.error("Add-on price cannot exceed 5000")
+                                                    return
+                                                }
+                                                if (e.target.value && val < 0) return
+                                                setNewAddon({ ...newAddon, price: e.target.value })
+                                            }}
+                                        />
                                     </div>
                                     <Button onClick={handleAddAddon}>Add</Button>
                                 </div>

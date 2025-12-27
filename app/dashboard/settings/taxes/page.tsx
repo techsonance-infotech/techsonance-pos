@@ -18,6 +18,8 @@ export default function TaxConfigurationPage() {
     const [taxRate, setTaxRate] = useState("5")
     const [taxName, setTaxName] = useState("GST")
     const [showBreakdown, setShowBreakdown] = useState(true)
+    const [enableDiscount, setEnableDiscount] = useState(false)
+    const [defaultDiscount, setDefaultDiscount] = useState("0")
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(true)
 
@@ -31,6 +33,8 @@ export default function TaxConfigurationPage() {
             setTaxRate(settings.taxRate || "5")
             setTaxName(settings.taxName || "GST")
             setShowBreakdown(settings.showTaxBreakdown !== false) // Default to true if undefined
+            setEnableDiscount(settings.enableDiscount === true)
+            setDefaultDiscount(settings.defaultDiscount || "0")
         } catch (error) {
             toast.error("Failed to load settings")
         } finally {
@@ -44,6 +48,8 @@ export default function TaxConfigurationPage() {
         formData.append('taxRate', taxRate)
         formData.append('taxName', taxName)
         formData.append('showTaxBreakdown', String(showBreakdown))
+        formData.append('enableDiscount', String(enableDiscount))
+        formData.append('defaultDiscount', defaultDiscount)
 
         // Preserve other settings not being edited here
         // Ideally updateBusinessSettings should perform partial updates, but currently it upserts.
@@ -74,6 +80,8 @@ export default function TaxConfigurationPage() {
             fullFormData.append('taxRate', taxRate)
             fullFormData.append('taxName', taxName)
             fullFormData.append('showTaxBreakdown', String(showBreakdown))
+            fullFormData.append('enableDiscount', String(enableDiscount))
+            fullFormData.append('defaultDiscount', defaultDiscount)
 
             const result = await updateBusinessSettings(null, fullFormData)
             if (result.success) {
@@ -153,6 +161,33 @@ export default function TaxConfigurationPage() {
                             />
                         </div>
                     </div>
+
+                    <div className="space-y-3 pt-6 mt-6 border-t border-gray-100 max-w-md">
+                        <h3 className="font-semibold text-gray-900">Discount Settings</h3>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                                <Label className="text-gray-700 cursor-pointer" htmlFor="discount">Enable fixed discount</Label>
+                                <Switch
+                                    id="discount"
+                                    checked={enableDiscount}
+                                    onCheckedChange={setEnableDiscount}
+                                />
+                            </div>
+                            {enableDiscount && (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                    <Label className="text-gray-700 font-medium">Default Discount Amount (₹)</Label>
+                                    <Input
+                                        type="number"
+                                        value={defaultDiscount}
+                                        onChange={(e) => setDefaultDiscount(e.target.value)}
+                                        className="h-12 text-lg"
+                                        placeholder="0.00"
+                                    />
+                                    <p className="text-xs text-gray-500">This amount will be automatically deducted from the total bill.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Right: Info Panel */}
@@ -170,28 +205,6 @@ export default function TaxConfigurationPage() {
                         <div className="flex gap-3 text-blue-800">
                             <div className="h-1.5 w-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
                             <p className="text-sm font-medium leading-relaxed">Tax is applied to all orders automatically at checkout.</p>
-                        </div>
-                        <div className="flex gap-3 text-blue-800">
-                            <div className="h-1.5 w-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
-                            <p className="text-sm font-medium leading-relaxed">Changes usually take effect immediately for new orders.</p>
-                        </div>
-
-                        <div className="mt-4 p-4 bg-white/60 rounded-xl border border-blue-100">
-                            <p className="text-xs font-bold text-blue-900 mb-2 uppercase tracking-wider">Preview</p>
-                            <div className="flex justify-between text-sm text-gray-600 mb-1">
-                                <span>Subtotal</span>
-                                <span>₹100.00</span>
-                            </div>
-                            {showBreakdown && (
-                                <div className="flex justify-between text-sm text-blue-600 font-medium mb-1">
-                                    <span>{taxName} ({taxRate}%)</span>
-                                    <span>₹{(100 * (parseFloat(taxRate) || 0) / 100).toFixed(2)}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between text-base font-bold text-gray-800 border-t border-blue-200 pt-2 mt-2">
-                                <span>Total</span>
-                                <span>₹{(100 + (100 * (parseFloat(taxRate) || 0) / 100)).toFixed(2)}</span>
-                            </div>
                         </div>
                     </div>
 

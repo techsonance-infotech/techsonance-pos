@@ -160,7 +160,9 @@ model Order {
   status         OrderStatus @default(HELD)
   
   totalAmount    Float
+  discountAmount Float       @default(0)
   items          Json
+  paymentMode    PaymentMode?
   
   customerName   String?
   customerMobile String?
@@ -182,6 +184,13 @@ enum OrderStatus {
   HELD
   COMPLETED
   CANCELLED
+}
+
+enum PaymentMode {
+  CASH
+  CARD
+  UPI
+  OTHER
 }
 
 model Category {

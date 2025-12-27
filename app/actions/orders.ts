@@ -33,6 +33,8 @@ export async function saveOrder(orderData: any) {
                     customerMobile: orderData.customerMobile || null,
                     tableId: orderData.tableId || null,
                     tableName: orderData.tableName || null,
+                    paymentMode: orderData.paymentMode || 'CASH',
+                    discountAmount: orderData.discountAmount || 0,
                 }
             })
 

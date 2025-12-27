@@ -47,7 +47,7 @@ export async function getCategories(includeInactive = false) {
             [cacheKey],
             {
                 tags: [tag],
-                revalidate: 3600
+                revalidate: 30
             }
         )()
     } catch (error) {
@@ -151,7 +151,14 @@ export async function toggleCategoryStatus(id: string, isActive: boolean) {
 
 export async function getProducts(categoryId?: string, includeInactive = false) {
     try {
-        const where: any = {}
+        const storeId = await getCurrentStore()
+        if (!storeId) return []
+
+        const where: any = {
+            category: {
+                storeId: storeId
+            }
+        }
         if (categoryId && categoryId !== 'all') where.categoryId = categoryId
         if (!includeInactive) where.isAvailable = true
 
