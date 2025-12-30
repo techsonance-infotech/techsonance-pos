@@ -7,7 +7,8 @@ import { format as dateFnsFormat, parse } from 'date-fns'
  * @returns Formatted currency string
  */
 export function formatCurrency(amount: number, currencySymbol: string = '$'): string {
-    const formatted = amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    const safeAmount = amount || 0
+    const formatted = safeAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
     return `${currencySymbol}${formatted}`
 }
 

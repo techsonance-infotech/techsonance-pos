@@ -3,6 +3,8 @@ import { Header } from "@/components/dashboard/header"
 import { SessionGuard } from "@/components/auth/session-guard"
 import { getUserProfile } from "@/app/actions/user"
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardLayout({
     children,
 }: {
@@ -36,6 +38,17 @@ export default async function DashboardLayout({
     //     if (user?.role !== 'SUPER_ADMIN') {
     //         const { redirect } = await import("next/navigation")
     //         redirect('/maintenance')
+
+    // 3. License Expiry Check
+    if (user && user.role !== 'SUPER_ADMIN') {
+        const { verifySessionLicense } = await import("@/app/actions/license")
+        const licenseCheck = await verifySessionLicense(user.id)
+
+        if (!licenseCheck.valid) {
+            const { redirect } = await import("next/navigation")
+            redirect('/license/expired')
+        }
+    }
     //     }
     // }
 

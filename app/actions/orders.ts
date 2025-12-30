@@ -33,6 +33,8 @@ export async function saveOrder(orderData: any) {
                     customerMobile: orderData.customerMobile || null,
                     tableId: orderData.tableId || null,
                     tableName: orderData.tableName || null,
+                    paymentMode: orderData.paymentMode || 'CASH',
+                    discountAmount: orderData.discountAmount || 0,
                 }
             })
 
@@ -202,5 +204,40 @@ export async function getOrder(orderId: string) {
         return order
     } catch (error) {
         return null
+    }
+}
+
+// Search Orders (Header Search)
+export async function searchOrders(query: string) {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) return []
+
+    if (!query || query.length < 2) return []
+
+    try {
+        const orders = await prisma.order.findMany({
+            where: {
+                storeId: user.defaultStoreId,
+                OR: [
+                    { kotNo: { contains: query, mode: 'insensitive' } },
+                    { customerName: { contains: query, mode: 'insensitive' } }
+                ]
+            },
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                kotNo: true,
+                totalAmount: true,
+                status: true,
+                createdAt: true,
+                customerName: true,
+                tableName: true
+            }
+        })
+        return orders
+    } catch (error) {
+        console.error("Search Orders Error:", error)
+        return []
     }
 }

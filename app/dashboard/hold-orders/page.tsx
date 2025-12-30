@@ -8,20 +8,24 @@ import { getHeldOrders, deleteOrder } from "@/app/actions/orders"
 import { useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import HoldOrdersLoading from "./loading"
 
 export default function HoldOrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
     const router = useRouter()
     const { currency } = useCurrency()
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
         loadData()
     }, [])
 
     async function loadData() {
+        setLoading(true)
         const data = await getHeldOrders()
         setOrders(data)
+        setLoading(false)
     }
 
     const handleDelete = async (id: string) => {
@@ -39,6 +43,8 @@ export default function HoldOrdersPage() {
     const handleResume = (id: string) => {
         router.push(`/dashboard/new-order?resumeId=${id}`)
     }
+
+    if (loading) return <HoldOrdersLoading />
 
     return (
         <div className="flex-1 space-y-6">

@@ -27,11 +27,14 @@ import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import { subDays, startOfMonth, endOfMonth } from "date-fns"
 import { toast } from "sonner"
+import AnalyticsLoading from "./loading"
 
+// HMR Rebuild Trigger
 export default function AnalyticsPage() {
     const router = useRouter()
     const { currency } = useCurrency()
     const [loading, setLoading] = useState(true)
+    const [tabLoading, setTabLoading] = useState(false)
     const [activeTab, setActiveTab] = useState("overview")
 
     // Date range state
@@ -78,6 +81,7 @@ export default function AnalyticsPage() {
     }
 
     async function loadOverview() {
+        setTabLoading(true)
         try {
             const data = await getSalesOverview()
             console.log('Overview data loaded:', data)
@@ -100,70 +104,93 @@ export default function AnalyticsPage() {
                 topCategory: 'N/A',
                 trend: []
             })
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadDailyReport(date: Date) {
+        setTabLoading(true)
         try {
             const data = await getDailySalesReport(date)
             setDailyReport(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load daily report")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadCategoryReport() {
+        setTabLoading(true)
         try {
             const data = await getCategoryWiseReport(startDate, endDate)
             setCategoryReport(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load category report")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadDateRangeReport() {
+        setTabLoading(true)
         try {
             const data = await getDateRangeReport(startDate, endDate)
             setDateRangeData(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load date range report")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadMonthlyReport() {
+        setTabLoading(true)
         try {
             const data = await getMonthlySalesReport(new Date().getFullYear())
             setMonthlyReport(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load monthly report")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadTopItems() {
+        setTabLoading(true)
         try {
             const data = await getTopSellingItems(10, startDate, endDate)
             setTopItems(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load top items")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadPaymentAnalysis() {
+        setTabLoading(true)
         try {
             const data = await getPaymentMethodAnalysis(startDate, endDate)
             setPaymentAnalysis(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load payment analysis")
+        } finally {
+            setTabLoading(false)
         }
     }
 
     async function loadProfitLoss() {
+        setTabLoading(true)
         try {
             const now = new Date()
             const data = await getProfitLossReport(now.getMonth() + 1, now.getFullYear())
             setProfitLoss(data)
         } catch (error: any) {
             toast.error(error.message || "Failed to load profit & loss")
+        } finally {
+            setTabLoading(false)
         }
     }
 
@@ -205,16 +232,7 @@ export default function AnalyticsPage() {
         if (activeTab === "payment") loadPaymentAnalysis()
     }, [startDate, endDate])
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-500">Loading Analytics...</p>
-                </div>
-            </div>
-        )
-    }
+    if (loading) return <AnalyticsLoading />
 
     return (
         <div className="space-y-6">
@@ -249,9 +267,57 @@ export default function AnalyticsPage() {
                     <TabsTrigger value="profitloss">P&L</TabsTrigger>
                 </TabsList>
 
+
+                {/* Tab Loading Skeleton */}
+                {tabLoading && (
+                    <div className="space-y-6 animate-pulse">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {[...Array(4)].map((_, i) => (
+                                <div key={i} className="bg-white shadow-sm rounded-lg p-6 space-y-3">
+                                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                                    <div className="h-8 bg-gray-200 rounded w-16"></div>
+                                    <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="bg-white shadow-sm rounded-lg p-6 space-y-4">
+                                <div className="h-6 bg-gray-200 rounded w-32"></div>
+                                <div className="h-64 bg-gray-200 rounded"></div>
+                            </div>
+                            <div className="bg-white shadow-sm rounded-lg p-6 space-y-4">
+                                <div className="h-6 bg-gray-200 rounded w-32"></div>
+                                <div className="h-64 bg-gray-200 rounded"></div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Overview Tab */}
                 <TabsContent value="overview" className="space-y-6">
-                    {overview && (
+                    {tabLoading ? (
+                        <div className="space-y-6 animate-pulse">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className="bg-white shadow-sm rounded-lg p-6 space-y-3">
+                                        <div className="h-4 bg-gray-200 rounded w-24"></div>
+                                        <div className="h-8 bg-gray-200 rounded w-16"></div>
+                                        <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-white shadow-sm rounded-lg p-6 space-y-4">
+                                    <div className="h-6 bg-gray-200 rounded w-32"></div>
+                                    <div className="h-64 bg-gray-200 rounded"></div>
+                                </div>
+                                <div className="bg-white shadow-sm rounded-lg p-6 space-y-4">
+                                    <div className="h-6 bg-gray-200 rounded w-32"></div>
+                                    <div className="h-64 bg-gray-200 rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : overview && (
                         <>
                             {/* Summary Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -555,7 +621,16 @@ export default function AnalyticsPage() {
                 {/* Monthly Sales Report Tab */}
                 <TabsContent value="monthly" className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold text-gray-900">Monthly Sales Report</h2>
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-bold text-gray-900">Monthly Sales Report</h2>
+                            {monthlyReport && (
+                                <ExportButton
+                                    data={monthlyReport.months}
+                                    filename={`monthly-sales-${monthlyReport.year}`}
+                                    headers={['month', 'sales', 'orders']}
+                                />
+                            )}
+                        </div>
                         <select
                             className="px-4 py-2 border border-gray-200 rounded-lg"
                             defaultValue={new Date().getFullYear()}
@@ -570,63 +645,66 @@ export default function AnalyticsPage() {
                         </select>
                     </div>
 
-                    {monthlyReport && (
-                        <>
-                            {/* Summary Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
-                                    <p className="text-green-100 mb-2">Total Annual Sales</p>
-                                    <h3 className="text-4xl font-bold">{formatCurrency(monthlyReport.totalSales, currency.symbol)}</h3>
-                                    <p className="text-green-100 mt-2 text-sm">Year {monthlyReport.year}</p>
-                                </div>
-                                <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
-                                    <p className="text-purple-100 mb-2">Best Performing Month</p>
-                                    <h3 className="text-4xl font-bold">{monthlyReport.bestMonth}</h3>
-                                    <p className="text-purple-100 mt-2 text-sm">Highest revenue month</p>
-                                </div>
-                            </div>
 
-                            {/* Monthly Bar Chart */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Sales by Month</h3>
-                                <BarChart
-                                    data={monthlyReport.months.map((m: any) => ({
-                                        label: m.month,
-                                        value: m.sales
-                                    }))}
-                                    height={350}
-                                    valuePrefix={currency.symbol}
-                                />
-                            </div>
+                    <div className="space-y-6">
+                        {monthlyReport && (
+                            <>
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+                                        <p className="text-green-100 mb-2">Total Annual Sales</p>
+                                        <h3 className="text-4xl font-bold">{formatCurrency(monthlyReport.totalSales, currency.symbol)}</h3>
+                                        <p className="text-green-100 mt-2 text-sm">Year {monthlyReport.year}</p>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+                                        <p className="text-purple-100 mb-2">Best Performing Month</p>
+                                        <h3 className="text-4xl font-bold">{monthlyReport.bestMonth}</h3>
+                                        <p className="text-purple-100 mt-2 text-sm">Highest revenue month</p>
+                                    </div>
+                                </div>
 
-                            {/* Monthly Table */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Monthly Breakdown</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Month</th>
-                                                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Sales</th>
-                                                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Orders</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {monthlyReport.months.map((month: any, index: number) => (
-                                                <tr key={index} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{month.month}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                                                        {formatCurrency(month.sales, currency.symbol)}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600 text-right">{month.orders}</td>
+                                {/* Monthly Bar Chart */}
+                                <div className="bg-white rounded-xl border border-gray-100 p-6">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Sales by Month</h3>
+                                    <BarChart
+                                        data={monthlyReport.months.map((m: any) => ({
+                                            label: m.month,
+                                            value: m.sales
+                                        }))}
+                                        height={350}
+                                        valuePrefix={currency.symbol}
+                                    />
+                                </div>
+
+                                {/* Monthly Table */}
+                                <div className="bg-white rounded-xl border border-gray-100 p-6">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Monthly Breakdown</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Month</th>
+                                                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Sales</th>
+                                                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Orders</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {monthlyReport.months.map((month: any, index: number) => (
+                                                    <tr key={index} className="hover:bg-gray-50">
+                                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{month.month}</td>
+                                                        <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                                                            {formatCurrency(month.sales, currency.symbol)}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{month.orders}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                            </div>
-                        </>
-                    )}
+                            </>
+                        )}
+                    </div>
                 </TabsContent>
 
                 {/* Top Selling Items Tab */}
@@ -813,7 +891,22 @@ export default function AnalyticsPage() {
                 {/* Profit & Loss Tab */}
                 <TabsContent value="profitloss" className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold text-gray-900">Profit & Loss Report</h2>
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-bold text-gray-900">Profit & Loss Report</h2>
+                            {profitLoss && (
+                                <ExportButton
+                                    data={[
+                                        { metric: 'Total Revenue', value: profitLoss.revenue },
+                                        { metric: 'Total Orders', value: profitLoss.orders },
+                                        { metric: 'Average Order Value', value: profitLoss.averageOrderValue },
+                                        { metric: 'Previous Month Revenue', value: profitLoss.previousMonthRevenue },
+                                        { metric: 'Growth', value: `${(profitLoss.growth || 0).toFixed(1)}%` }
+                                    ]}
+                                    filename={`profit-loss-${profitLoss.month}`}
+                                    headers={['metric', 'value']}
+                                />
+                            )}
+                        </div>
                         <select
                             className="px-4 py-2 border border-gray-200 rounded-lg"
                             defaultValue={new Date().getMonth() + 1}
@@ -913,6 +1006,6 @@ export default function AnalyticsPage() {
                     )}
                 </TabsContent>
             </Tabs>
-        </div>
+        </div >
     )
 }

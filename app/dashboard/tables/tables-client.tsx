@@ -33,7 +33,8 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
     // user prop is available if needed, though previously it was only used to set state.
 
     const [isAddOpen, setIsAddOpen] = useState(false)
-    const [newTableName, setNewTableName] = useState("")
+    const [floorName, setFloorName] = useState("")
+    const [tableNumber, setTableNumber] = useState("")
     const [newTableCapacity, setNewTableCapacity] = useState(4)
     const router = useRouter()
     const [adding, setAdding] = useState(false)
@@ -41,12 +42,18 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
     const [vacatingId, setVacatingId] = useState<string | null>(null)
 
     const handleAddTable = async () => {
-        if (!newTableName || adding) return
+        if (!tableNumber || adding) return
         setAdding(true)
+
+        const finalName = floorName.trim()
+            ? `${floorName.trim()} Table ${tableNumber}`
+            : `Table ${tableNumber}`
+
         try {
-            const newTable = await addTable(newTableName, newTableCapacity)
+            const newTable = await addTable(finalName, newTableCapacity)
             setTables(prev => [...prev, newTable])
-            setNewTableName("")
+            // Keep floor name for easier sequential adding
+            setTableNumber("")
             setNewTableCapacity(4)
             setIsAddOpen(false)
         } finally {
@@ -100,20 +107,51 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
                             <DialogTitle>Add New Table</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Table Name / Number</label>
-                                <Input
-                                    value={newTableName}
-                                    onChange={(e) => setNewTableName(e.target.value)}
-                                    placeholder="e.g. T1, Table 5, Patio 1"
-                                />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Floor / Area</label>
+                                    <Input
+                                        value={floorName}
+                                        onChange={(e) => setFloorName(e.target.value)}
+                                        placeholder="e.g. Ground Floor"
+                                        list="floor-options"
+                                    />
+                                    <datalist id="floor-options">
+                                        <option value="Ground Floor" />
+                                        <option value="First Floor" />
+                                        <option value="Second Floor" />
+                                        <option value="Third Floor" />
+                                        <option value="Terrace" />
+                                        <option value="Garden" />
+                                    </datalist>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Table Number</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">Table</span>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            className="pl-14"
+                                            value={tableNumber}
+                                            onChange={(e) => setTableNumber(e.target.value)}
+                                            placeholder="1"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="text-xs text-gray-500 block mb-1">Preview Name:</span>
+                                <span className="font-bold text-gray-900">
+                                    {floorName ? `${floorName} Table ${tableNumber}` : tableNumber ? `Table ${tableNumber}` : '...'}
+                                </span>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Capacity (Pax)</label>
                                 <div className="flex items-center gap-4">
                                     <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.max(1, newTableCapacity - 1))}>-</Button>
                                     <span className="font-bold w-8 text-center">{newTableCapacity}</span>
-                                    <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(newTableCapacity + 1)}>+</Button>
+                                    <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.min(30, newTableCapacity + 1))} disabled={newTableCapacity >= 30}>+</Button>
                                 </div>
                             </div>
                         </div>
@@ -131,7 +169,7 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
                         key={table.id}
                         onClick={() => handleTableClick(table)}
                         className={cn(
-                            "relative aspect-square rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all hover:shadow-md group active:scale-95",
+                            "relative min-h-[140px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all hover:shadow-md group active:scale-95",
                             table.status === 'OCCUPIED'
                                 ? "bg-yellow-50 border-yellow-200"
                                 : table.status === 'RESERVED'
@@ -145,8 +183,8 @@ export default function TablesClient({ initialTables, user }: TablesClientProps)
                             table.status === 'OCCUPIED' ? "bg-yellow-500" : table.status === 'RESERVED' ? "bg-blue-500" : "bg-green-500"
                         )} />
 
-                        <h3 className="text-2xl font-bold text-gray-800 mb-1">{table.name}</h3>
-                        <div className="flex items-center gap-1 text-gray-500 text-sm">
+                        <h3 className="text-lg font-bold text-gray-800 mb-1 text-center leading-tight break-words w-full px-2">{table.name}</h3>
+                        <div className="flex items-center gap-1 text-gray-500 text-sm mt-1">
                             <Users className="h-4 w-4" />
                             <span>{table.capacity} Pax</span>
                         </div>

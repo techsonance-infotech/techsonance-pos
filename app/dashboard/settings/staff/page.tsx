@@ -8,6 +8,7 @@ import { getStoreStaff } from "@/app/actions/user"
 import { StaffModal } from "@/components/admin/staff-modal"
 import { StaffDetailModal } from "@/components/admin/staff-detail-modal"
 import { cn } from "@/lib/utils"
+import StaffLoading from "./loading"
 
 export default function StaffSettingsPage() {
     const [staff, setStaff] = useState<any[]>([])
@@ -93,6 +94,8 @@ export default function StaffSettingsPage() {
         }
     }
 
+    if (loading) return <StaffLoading />
+
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
             {/* Breadcrumb */}
@@ -127,9 +130,7 @@ export default function StaffSettingsPage() {
                     </div>
 
                     <div className="space-y-3">
-                        {loading ? (
-                            <div className="py-8 text-center text-gray-400">Loading staff...</div>
-                        ) : staff.length === 0 ? (
+                        {staff.length === 0 ? (
                             <div className="py-12 text-center">
                                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                                 <p className="text-gray-400 mb-4">No staff members found.</p>

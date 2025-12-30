@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Search, Plus, Minus, Trash2, ShoppingCart, Save, Printer, Clock, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { ProductCustomizationModal, Product, Addon } from "@/components/pos/product-modal"
@@ -11,9 +12,11 @@ import { updateTableStatus } from "@/app/actions/tables"
 import { saveOrder, getOrder } from "@/app/actions/orders"
 import { getCategories, getProducts } from "@/app/actions/menu"
 import { getBusinessSettings } from "@/app/actions/settings"
+import { getUserStoreDetails } from "@/app/actions/user"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import NewOrderLoading from "./loading"
 
 type CartItem = {
     cartId?: string
@@ -39,7 +42,6 @@ export default function NewOrderPage() {
     const [selectedCategory, setSelectedCategory] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
-    const [discount, setDiscount] = useState<string>('0')
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
     const [resumeId, setResumeId] = useState<string | null>(null)
     const [guestName, setGuestName] = useState('')
@@ -50,6 +52,8 @@ export default function NewOrderPage() {
     const [saving, setSaving] = useState(false)
     const [holding, setHolding] = useState(false)
     const [printing, setPrinting] = useState(false)
+    const [paymentMode, setPaymentMode] = useState<string>('CASH')
+    const [storeDetails, setStoreDetails] = useState<any>(null)
 
     // URL Params
     const tableId = searchParams.get('tableId')
@@ -63,10 +67,11 @@ export default function NewOrderPage() {
     async function loadInitialData() {
         setLoading(true)
         try {
-            const [cats, prods, settings] = await Promise.all([
+            const [cats, prods, settings, store] = await Promise.all([
                 getCategories(),
                 getProducts('all'),
-                getBusinessSettings()
+                getBusinessSettings(),
+                getUserStoreDetails()
             ])
             setCategories(cats)
             // Fix type mismatch: Prisma returns null, Product type expects undefined
@@ -76,6 +81,7 @@ export default function NewOrderPage() {
             }))
             setProducts(sanitizedProds)
             setBusinessDetails(settings)
+            setStoreDetails(store)
             // Set default category
             if (cats.length > 0) setSelectedCategory(cats[0].id)
         } catch (error) {
@@ -155,13 +161,27 @@ export default function NewOrderPage() {
 
     const taxRate = parseFloat(businessDetails?.taxRate || '5')
     const taxName = businessDetails?.taxName || 'Tax'
-    const tax = subtotal * (taxRate / 100)
+    // Only calculate tax if tax breakdown is enabled (treating it as enabled/disabled)
+    const isTaxEnabled = businessDetails?.showTaxBreakdown !== false
+    const tax = isTaxEnabled ? (subtotal * (taxRate / 100)) : 0
 
-    const discountAmount = Number(discount) || 0
-    const total = subtotal + tax - discountAmount
+    // Calculate discount based on settings
+    const discountAmount = (businessDetails?.enableDiscount && businessDetails?.defaultDiscount)
+        ? parseFloat(businessDetails.defaultDiscount)
+        : 0
+
+    // Ensure discount doesn't exceed total (subtotal + tax)
+    const appliedDiscount = Math.min(discountAmount, subtotal + tax)
+    const total = subtotal + tax - appliedDiscount
 
     const handleHoldOrder = async () => {
         if (cart.length === 0) return
+
+        if (guestMobile && guestMobile.length !== 10) {
+            toast.error("Mobile number must be exactly 10 digits")
+            return
+        }
+
         setHolding(true)
         try {
             const orderData = {
@@ -172,6 +192,7 @@ export default function NewOrderPage() {
                 customerMobile: guestMobile,
                 tableId: tableId || null,
                 tableName: tableName || null,
+                paymentMode: paymentMode,
             }
 
             const result = await saveOrder(orderData)
@@ -185,7 +206,7 @@ export default function NewOrderPage() {
                 setGuestName('')
                 setGuestMobile('')
                 setResumeId(null)
-                setDiscount('0')
+                setPaymentMode('CASH')
 
                 // Dispatch event to update header counter
                 window.dispatchEvent(new Event('holdOrderUpdated'))
@@ -200,6 +221,8 @@ export default function NewOrderPage() {
             setHolding(false)
         }
     }
+
+    if (loading) return <NewOrderLoading />
 
     return (
         <>
@@ -302,7 +325,7 @@ export default function NewOrderPage() {
                                 placeholder="Guest Name"
                                 className="h-9 bg-white border-gray-200 focus:border-orange-500 rounded-lg text-sm"
                                 value={guestName}
-                                onChange={(e) => setGuestName(e.target.value)}
+                                onChange={(e) => setGuestName(e.target.value.slice(0, 10))}
                             />
                         </div>
                         <div>
@@ -310,7 +333,7 @@ export default function NewOrderPage() {
                                 placeholder="Mobile No"
                                 className="h-9 bg-white border-gray-200 focus:border-orange-500 rounded-lg text-sm"
                                 value={guestMobile}
-                                onChange={(e) => setGuestMobile(e.target.value)}
+                                onChange={(e) => setGuestMobile(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
                             />
                         </div>
                     </div>
@@ -375,15 +398,27 @@ export default function NewOrderPage() {
                                 <span className="font-medium">{formatCurrency(tax, currency.symbol)}</span>
                             </div>
                         )}
+                        {businessDetails?.enableDiscount && (
+                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                <span>Discount</span>
+                                <span className="font-medium text-orange-600">- {formatCurrency(appliedDiscount, currency.symbol)}</span>
+                            </div>
+                        )}
+
                         <div className="flex items-center justify-between text-sm text-gray-600">
-                            <span>Discount</span>
-                            <div className="w-20">
-                                <Input
-                                    type="number"
-                                    value={discount}
-                                    onChange={(e) => setDiscount(e.target.value)}
-                                    className="h-7 text-right bg-white border-gray-200 text-sm"
-                                />
+                            <span>Payment Mode</span>
+                            <div className="w-32">
+                                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                                    <SelectTrigger className="h-7 bg-white border-gray-200 focus:ring-orange-500 rounded-lg text-xs">
+                                        <SelectValue placeholder="Mode" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="CASH">Cash</SelectItem>
+                                        <SelectItem value="CARD">Card</SelectItem>
+                                        <SelectItem value="UPI">UPI / Online</SelectItem>
+                                        <SelectItem value="OTHER">Other</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 
@@ -397,6 +432,12 @@ export default function NewOrderPage() {
                                 <button
                                     onClick={async () => {
                                         if (cart.length === 0) return
+
+                                        if (guestMobile && guestMobile.length !== 10) {
+                                            toast.error("Mobile number must be exactly 10 digits")
+                                            return
+                                        }
+
                                         setSaving(true)
                                         try {
                                             // Mark table as AVAILABLE since order is completed
@@ -411,6 +452,7 @@ export default function NewOrderPage() {
                                                 customerMobile: guestMobile,
                                                 tableId: tableId || null,
                                                 tableName: tableName || null,
+                                                paymentMode,
                                             }
 
                                             const result = await saveOrder(orderData)
@@ -421,7 +463,7 @@ export default function NewOrderPage() {
                                                 setGuestName('')
                                                 setGuestMobile('')
                                                 setResumeId(null)
-                                                setDiscount('0')
+                                                setPaymentMode('CASH')
 
                                                 // Clear URL parameters to prevent reloading
                                                 router.push('/dashboard/new-order')
@@ -449,6 +491,12 @@ export default function NewOrderPage() {
                                 <button
                                     onClick={async () => {
                                         if (cart.length === 0) return
+
+                                        if (guestMobile && guestMobile.length !== 10) {
+                                            toast.error("Mobile number must be exactly 10 digits")
+                                            return
+                                        }
+
                                         setPrinting(true)
                                         try {
                                             // 1. Prepare Data
@@ -461,6 +509,7 @@ export default function NewOrderPage() {
                                                 customerMobile: guestMobile,
                                                 tableId: tableId || null,
                                                 tableName: tableName || null,
+                                                paymentMode,
                                                 kotNo: `KOT${Date.now().toString().slice(-6)}` // Generate here to pass to print
                                             }
 
@@ -486,7 +535,7 @@ export default function NewOrderPage() {
                                                         setGuestName('')
                                                         setGuestMobile('')
                                                         setResumeId(null)
-                                                        setDiscount('0')
+                                                        setPaymentMode('CASH')
                                                         toast.success("Order Saved & Printed!")
 
                                                         // Clear URL parameters to prevent reloading
@@ -513,7 +562,7 @@ export default function NewOrderPage() {
                                             setGuestName('')
                                             setGuestMobile('')
                                             setResumeId(null)
-                                            setDiscount('0')
+                                            setPaymentMode('CASH')
                                         }
                                     }}
                                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 shadow-sm active:scale-95 transition-all"
@@ -541,6 +590,7 @@ export default function NewOrderPage() {
                         <ReceiptTemplate
                             order={printOrder}
                             businessDetails={businessDetails}
+                            storeDetails={storeDetails}
                         />
                     </div>
                 )

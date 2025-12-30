@@ -36,8 +36,17 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
-# Allow .env.example to be committed
+# local env files
+.env
+.env*.local
 !.env.example
+
+# Secrets (environment-specific)
+secrets/secrets.dev.json
+secrets/secrets.qa.json
+secrets/secrets.prod.json
+# Keep example template
+!secrets/secrets.example.json
 
 # vercel
 .vercel

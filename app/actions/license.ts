@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { generateProductKey, LicensePayload } from "@/lib/licensing"
+import { generateProductKey, verifyProductKey, LicensePayload } from "@/lib/licensing"
 import { revalidatePath } from "next/cache"
 import { LicenseType } from "@prisma/client"
 import { getUserProfile } from "@/app/actions/user"
@@ -46,10 +46,6 @@ export async function createLicense(formData: FormData) {
         where: { storeId }
     })
 
-    if (existing) {
-        return { error: "Store already has a license. Revoke or update it first." }
-    }
-
     const payload: LicensePayload = {
         storeId,
         productKeyId: "",
@@ -61,15 +57,29 @@ export async function createLicense(formData: FormData) {
     const signedKey = generateProductKey(payload, privateKey);
 
     try {
-        await prisma.license.create({
-            data: {
-                key: signedKey,
-                type,
-                status: 'ACTIVE',
-                validUntil,
-                storeId
-            }
-        })
+        if (existing) {
+            // Update existing license (renewal)
+            await prisma.license.update({
+                where: { id: existing.id },
+                data: {
+                    key: signedKey,
+                    type,
+                    status: 'ACTIVE',
+                    validUntil
+                }
+            })
+        } else {
+            // Create new license
+            await prisma.license.create({
+                data: {
+                    key: signedKey,
+                    type,
+                    status: 'ACTIVE',
+                    validUntil,
+                    storeId
+                }
+            })
+        }
     } catch (e) {
         console.error(e)
         return { error: "Database error creating license" }
@@ -79,21 +89,24 @@ export async function createLicense(formData: FormData) {
     return { success: true, key: signedKey }
 }
 
-export async function getStoresWithoutLicense() {
+export async function getAllStoresForLicensing() {
     const stores = await prisma.store.findMany({
-        where: {
-            license: null
-        },
-        select: {
-            id: true,
-            name: true,
-            location: true,
+        include: {
+            license: {
+                select: {
+                    id: true,
+                    type: true,
+                    status: true,
+                    validUntil: true
+                }
+            },
             users: {
                 where: { role: 'BUSINESS_OWNER' },
                 select: { email: true, username: true },
                 take: 1
             }
-        }
+        },
+        orderBy: { name: 'asc' }
     })
     return stores
 }
@@ -104,6 +117,7 @@ export async function getAllLicenses() {
             store: {
                 select: {
                     name: true,
+                    location: true,
                     users: {
                         where: { role: 'BUSINESS_OWNER' },
                         select: { email: true, username: true },
@@ -116,6 +130,132 @@ export async function getAllLicenses() {
         orderBy: { createdAt: 'desc' }
     })
 }
+
+export async function getLicenseStats() {
+    const licenses = await prisma.license.findMany({
+        include: {
+            devices: true
+        }
+    })
+
+    const total = licenses.length
+    const active = licenses.filter(l => l.status === 'ACTIVE').length
+    const expired = licenses.filter(l => l.status === 'REVOKED' || (l.validUntil && new Date(l.validUntil) < new Date())).length
+    const totalDevices = licenses.reduce((sum, l) => sum + (l.devices?.length || 0), 0)
+
+    return { total, active, expired, totalDevices }
+}
+
+export async function createBulkLicenses(formData: FormData) {
+    if (!await checkSuperAdmin()) {
+        return { error: "Unauthorized" }
+    }
+
+    const storeIds = formData.getAll("storeIds") as string[]
+    const type = formData.get("type") as LicenseType
+    const expiryDateStr = formData.get("expiryDate") as string
+
+    if (!storeIds || storeIds.length === 0 || !type) {
+        return { error: "Missing required fields" }
+    }
+
+    let validUntil: Date | null = null
+    let expiryTimestamp = 0
+
+    if (type === 'PERPETUAL') {
+        expiryTimestamp = 9999999999999
+    } else {
+        if (!expiryDateStr) return { error: "Expiry date required for non-perpetual licenses" }
+        validUntil = new Date(expiryDateStr)
+        validUntil.setHours(23, 59, 59, 999)
+        expiryTimestamp = validUntil.getTime()
+    }
+
+    const privateKey = process.env.LICENSE_PRIVATE_KEY
+    if (!privateKey) {
+        return { error: "Server configuration error: Missing Private Key" }
+    }
+
+    const results: Array<{ storeId: string, storeName: string, key: string, success: boolean, error?: string }> = []
+
+    for (const storeId of storeIds) {
+        try {
+            // Check if license already exists
+            const existing = await prisma.license.findUnique({
+                where: { storeId },
+                include: { store: { select: { name: true } } }
+            })
+
+            if (existing) {
+                results.push({
+                    storeId,
+                    storeName: existing.store.name,
+                    key: '',
+                    success: false,
+                    error: 'Store already has a license'
+                })
+                continue
+            }
+
+            // Get store name
+            const store = await prisma.store.findUnique({
+                where: { id: storeId },
+                select: { name: true }
+            })
+
+            if (!store) {
+                results.push({
+                    storeId,
+                    storeName: 'Unknown',
+                    key: '',
+                    success: false,
+                    error: 'Store not found'
+                })
+                continue
+            }
+
+            const payload: LicensePayload = {
+                storeId,
+                productKeyId: "",
+                expiry: expiryTimestamp,
+                type: type,
+                issuedAt: Date.now()
+            }
+
+            const signedKey = generateProductKey(payload, privateKey)
+
+            await prisma.license.create({
+                data: {
+                    key: signedKey,
+                    type,
+                    status: 'ACTIVE',
+                    validUntil,
+                    storeId
+                }
+            })
+
+            results.push({
+                storeId,
+                storeName: store.name,
+                key: signedKey,
+                success: true
+            })
+        } catch (e) {
+            console.error(`Error creating license for store ${storeId}:`, e)
+            results.push({
+                storeId,
+                storeName: 'Unknown',
+                key: '',
+                success: false,
+                error: 'Database error'
+            })
+        }
+    }
+
+    revalidatePath('/dashboard/admin/licenses')
+    return { success: true, results }
+}
+
 
 export async function revokeLicense(licenseId: string) {
     if (!await checkSuperAdmin()) {

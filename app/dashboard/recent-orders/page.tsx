@@ -13,13 +13,18 @@ import {
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { getRecentOrders, convertOrderToHeld, deleteOrder } from "@/app/actions/orders"
 import { getBusinessSettings } from "@/app/actions/settings"
+import { getUserStoreDetails } from "@/app/actions/user"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import RecentOrdersLoading from "./loading"
 
 export default function RecentOrdersPage() {
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const viewOrderId = searchParams.get("viewOrderId")
+
     const { currency } = useCurrency()
     const [searchQuery, setSearchQuery] = useState("")
     const [dateFilter, setDateFilter] = useState("")
@@ -28,25 +33,44 @@ export default function RecentOrdersPage() {
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
     const [printOrder, setPrintOrder] = useState<any | null>(null) // For Printing
     const [businessDetails, setBusinessDetails] = useState<any>(null)
+    const [storeDetails, setStoreDetails] = useState<any>(null)
     const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<any | null>(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
 
     // Dynamic import to avoid server-component issues - Replacing with standard import as typical for Next.js 14+ client components using server actions
-    // const { getRecentOrders } = require("@/app/actions/orders")
+    const { getOrder } = require("@/app/actions/orders")
 
     useEffect(() => {
         loadData()
     }, [])
 
+    // Open order from URL if present
+    useEffect(() => {
+        if (viewOrderId) {
+            async function fetchOrder() {
+                const order = await getOrder(viewOrderId)
+                if (order) {
+                    setSelectedOrder(order)
+                    // Clear param so it doesn't reopen on refresh if user closes it? 
+                    // Or keep it. Let's keep it simple for now. 
+                    // Actually better to remove it from URL shallowly to be clean, but purely optional.
+                }
+            }
+            fetchOrder()
+        }
+    }, [viewOrderId])
+
     async function loadData() {
         setLoading(true)
-        const [data, settings] = await Promise.all([
+        const [data, settings, store] = await Promise.all([
             getRecentOrders(),
-            getBusinessSettings()
+            getBusinessSettings(),
+            getUserStoreDetails()
         ])
         setOrders(data)
         setBusinessDetails(settings)
+        setStoreDetails(store)
         setLoading(false)
     }
 
@@ -107,6 +131,8 @@ export default function RecentOrdersPage() {
         return matchesSearch && matchesDate
     })
 
+    if (loading) return <RecentOrdersLoading />
+
     return (
         <>
             <div className="flex-1 space-y-6 no-print">
@@ -144,9 +170,7 @@ export default function RecentOrdersPage() {
                 </div>
 
                 {/* Content Area */}
-                {loading ? (
-                    <div className="text-center py-10 text-gray-500">Loading orders...</div>
-                ) : filteredOrders.length === 0 ? (
+                {filteredOrders.length === 0 ? (
                     <div className="bg-white rounded-xl border border-gray-100 min-h-[400px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in-95 duration-300">
                         <div className="h-20 w-20 bg-orange-50 rounded-2xl flex items-center justify-center mb-4">
                             <ClipboardList className="h-10 w-10 text-orange-200" />
@@ -443,6 +467,7 @@ export default function RecentOrdersPage() {
                         <ReceiptTemplate
                             order={printOrder}
                             businessDetails={businessDetails}
+                            storeDetails={storeDetails}
                         />
                     </div>
                 )

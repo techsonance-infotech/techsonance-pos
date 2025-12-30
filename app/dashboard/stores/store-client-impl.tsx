@@ -114,7 +114,7 @@ export default function StoreManagementClient({ user }: { user: any }) {
                 {user.stores.map((store: any) => {
                     const isActive = user.defaultStoreId === store.id
                     return (
-                        <div key={store.id} className={`bg-white rounded-xl p-6 border transition-all ${isActive ? 'border-orange-200 ring-4 ring-orange-50 shadow-md' : 'border-gray-100 hover:shadow-lg'}`}>
+                        <div key={store.id} className={`bg-white rounded-xl p-6 border transition-all ${isActive ? 'border-orange-200 ring-4 ring-orange-50 shadow-md' : 'border-gray-100 shadow-sm hover:shadow-md'}`}>
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-2 text-gray-700 font-semibold mb-1">
                                     <Building2 className="h-5 w-5 text-gray-400" />

@@ -43,6 +43,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import MenuLoading from "./loading"
 
 function SortableCategoryItem({ category, isSelected, onSelect, onEdit }: { category: any, isSelected: boolean, onSelect: () => void, onEdit: () => void }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category.id })
@@ -124,6 +125,7 @@ export default function MenuManagementPage() {
     const [categories, setCategories] = useState<any[]>([])
     const [products, setProducts] = useState<any[]>([]) // Products of selected category
     const [loading, setLoading] = useState(true)
+    const [productsLoading, setProductsLoading] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<any>(null)
     const [searchQuery, setSearchQuery] = useState("")
     const [isSaving, setIsSaving] = useState(false)
@@ -168,8 +170,10 @@ export default function MenuManagementPage() {
     }
 
     async function loadProducts(catId: string) {
+        setProductsLoading(true)
         const prods = await getProducts(catId, true)
         setProducts(prods)
+        setProductsLoading(false)
     }
 
     // --- Category Actions ---
@@ -380,6 +384,8 @@ export default function MenuManagementPage() {
         }
     }
 
+    if (loading) return <MenuLoading />
+
     return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <div className="flex h-[calc(100vh-theme(spacing.20))] gap-6 overflow-hidden">
@@ -432,7 +438,31 @@ export default function MenuManagementPage() {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6">
-                                {products.length === 0 ? (
+                                {productsLoading ? (
+                                    <div className="space-y-3">
+                                        {[...Array(6)].map((_, i) => (
+                                            <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-white shadow-sm border border-gray-100">
+                                                <div className="h-5 w-5 bg-gray-200 rounded animate-pulse" />
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="space-y-1 flex-1">
+                                                            <div className="h-5 bg-gray-200 rounded animate-pulse w-48" />
+                                                            <div className="h-4 bg-gray-100 rounded animate-pulse w-64" />
+                                                        </div>
+                                                        <div className="h-5 bg-orange-200 rounded animate-pulse w-16" />
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="h-6 bg-gray-100 rounded animate-pulse w-24" />
+                                                        <div className="flex items-center gap-2 ml-auto">
+                                                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+                                                            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : products.length === 0 ? (
                                     <div className="text-center py-20 text-gray-400">No products in this category.</div>
                                 ) : (
                                     <div className="space-y-3">
@@ -473,7 +503,21 @@ export default function MenuManagementPage() {
                         <div className="space-y-4 py-4">
                             <div className="grid gap-2">
                                 <Label>Name</Label>
-                                <Input value={catForm.name} onChange={e => setCatForm({ ...catForm, name: e.target.value })} />
+                                <Input
+                                    value={catForm.name}
+                                    onChange={e => {
+                                        const val = e.target.value
+                                        if (val.length > 30) {
+                                            toast.error("Name cannot exceed 30 characters")
+                                            return
+                                        }
+                                        if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                            toast.error("Only alphabets are allowed")
+                                            return
+                                        }
+                                        setCatForm({ ...catForm, name: val })
+                                    }}
+                                />
                             </div>
                             <div className="flex items-center gap-2">
                                 <Label>Active</Label>
@@ -504,11 +548,37 @@ export default function MenuManagementPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Name</Label>
-                                        <Input value={prodForm.name} onChange={e => setProdForm({ ...prodForm, name: e.target.value })} />
+                                        <Input
+                                            value={prodForm.name}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (val.length > 30) {
+                                                    toast.error("Name cannot exceed 30 characters")
+                                                    return
+                                                }
+                                                if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                                    toast.error("Only alphabets are allowed")
+                                                    return
+                                                }
+                                                setProdForm({ ...prodForm, name: val })
+                                            }}
+                                        />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Price</Label>
-                                        <Input type="number" value={prodForm.price} onChange={e => setProdForm({ ...prodForm, price: e.target.value })} />
+                                        <Input
+                                            type="number"
+                                            value={prodForm.price}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value)
+                                                if (val > 5000) {
+                                                    toast.error("Price cannot exceed 5000")
+                                                    return
+                                                }
+                                                if (e.target.value && val < 0) return
+                                                setProdForm({ ...prodForm, price: e.target.value })
+                                            }}
+                                        />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
@@ -527,11 +597,39 @@ export default function MenuManagementPage() {
                                 <div className="flex gap-2 items-end border-b border-gray-100 pb-4">
                                     <div className="space-y-1 flex-1">
                                         <Label>Add-on Name</Label>
-                                        <Input placeholder="Extra Cheese" value={newAddon.name} onChange={e => setNewAddon({ ...newAddon, name: e.target.value })} />
+                                        <Input
+                                            placeholder="Extra Cheese"
+                                            value={newAddon.name}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (val.length > 30) {
+                                                    toast.error("Name cannot exceed 30 characters")
+                                                    return
+                                                }
+                                                if (!/^[a-zA-Z\s]*$/.test(val)) {
+                                                    toast.error("Only alphabets are allowed")
+                                                    return
+                                                }
+                                                setNewAddon({ ...newAddon, name: val })
+                                            }}
+                                        />
                                     </div>
                                     <div className="space-y-1 w-24">
                                         <Label>Price</Label>
-                                        <Input type="number" placeholder="20" value={newAddon.price} onChange={e => setNewAddon({ ...newAddon, price: e.target.value })} />
+                                        <Input
+                                            type="number"
+                                            placeholder="20"
+                                            value={newAddon.price}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value)
+                                                if (val > 5000) {
+                                                    toast.error("Add-on price cannot exceed 5000")
+                                                    return
+                                                }
+                                                if (e.target.value && val < 0) return
+                                                setNewAddon({ ...newAddon, price: e.target.value })
+                                            }}
+                                        />
                                     </div>
                                     <Button onClick={handleAddAddon}>Add</Button>
                                 </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
-import { Bell, Search, MapPin, LogOut, Settings, Check, CheckCheck, Filter, Clock, LayoutGrid } from "lucide-react"
+import { Bell, Search, MapPin, LogOut, Settings, Check, CheckCheck, Filter, Clock, LayoutGrid, Receipt, Loader2 } from "lucide-react"
 import { getUserProfile } from "@/app/actions/user"
 import { getNotifications, markNotificationAsRead, markAllAsRead } from "@/app/actions/notifications"
 import { logout } from "@/app/actions/logout"
@@ -23,9 +23,16 @@ export function Header({ initialUser }: { initialUser: any | null }) {
     const [unreadOnly, setUnreadOnly] = useState(false)
 
 
-    // Load User Data (Fallback or Refresh)
+    // Sync with server prop (Revalidation fix)
     useEffect(() => {
-        if (!user) {
+        if (initialUser) {
+            setUser(initialUser)
+        }
+    }, [initialUser])
+
+    // Load User Data (Fallback if no initialUser)
+    useEffect(() => {
+        if (!user && !initialUser) {
             async function loadData() {
                 const profile = await getUserProfile()
                 if (profile) {
@@ -34,7 +41,7 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             }
             loadData()
         }
-    }, [user])
+    }, [user, initialUser])
 
     // Load Notifications
     useEffect(() => {
@@ -85,8 +92,39 @@ export function Header({ initialUser }: { initialUser: any | null }) {
         await logout()
     }
 
+    // Search State
+    const [searchQuery, setSearchQuery] = useState("")
+    const [searchResults, setSearchResults] = useState<any[]>([])
+    const [isSearching, setIsSearching] = useState(false)
+    const [showResults, setShowResults] = useState(false)
+    const { searchOrders } = require("@/app/actions/orders") // Dynamic import
+
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (searchQuery.length >= 2) {
+                setIsSearching(true)
+                const results = await searchOrders(searchQuery)
+                setSearchResults(results)
+                setIsSearching(false)
+                setShowResults(true)
+            } else {
+                setSearchResults([])
+                setShowResults(false)
+            }
+        }, 300)
+
+        return () => clearTimeout(timer)
+    }, [searchQuery])
+
+    // Close on click outside
+    useEffect(() => {
+        const handleClickOutside = () => setShowResults(false)
+        window.addEventListener('click', handleClickOutside)
+        return () => window.removeEventListener('click', handleClickOutside)
+    }, [])
+
     return (
-        <header className="flex h-20 items-center justify-between bg-white px-8 shadow-sm z-50 relative transition-colors">
+        <header className="flex h-20 items-center justify-between bg-white px-8 shadow-sm z-50 relative transition-colors print:hidden">
             {/* Left: Outlet Selector */}
             <div className="flex items-center gap-4">
                 <a href="/dashboard/stores" className="flex items-center gap-2 text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-full cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
@@ -96,13 +134,75 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             </div>
 
             {/* Center: Search Bar (Big) */}
-            <div className="flex flex-1 items-center justify-center px-8">
-                <div className="relative w-full max-w-2xl">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <div className="flex flex-1 items-center justify-center px-8 z-50">
+                <div className="relative w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+                    {isSearching ? (
+                        <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-500 animate-spin" />
+                    ) : (
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    )}
                     <Input
                         placeholder="Search by KOT No / Bill No..."
                         className="pl-12 h-12 text-base bg-white border-gray-200 rounded-full focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 transition-all shadow-sm w-full"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => {
+                            if (searchQuery.length >= 2) setShowResults(true)
+                        }}
                     />
+
+                    {/* Search Results Dropdown */}
+                    {showResults && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden max-h-[400px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                            {isSearching ? (
+                                <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center gap-2">
+                                    <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                                    <span className="text-xs">Searching orders...</span>
+                                </div>
+                            ) : searchResults.length > 0 ? (
+                                <div className="divide-y divide-gray-50">
+                                    {searchResults.map((order) => (
+                                        <div
+                                            key={order.id}
+                                            onClick={() => {
+                                                window.location.href = `/dashboard/recent-orders?viewOrderId=${order.id}`
+                                            }}
+                                            className="p-4 hover:bg-gray-50 cursor-pointer transition-colors flex items-center justify-between group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "h-10 w-10 rounded-full flex items-center justify-center",
+                                                    order.status === 'COMPLETED' ? "bg-green-100 text-green-600" : "bg-orange-100 text-orange-600"
+                                                )}>
+                                                    <Receipt className="h-5 w-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900 group-hover:text-orange-600 transition-colors">
+                                                        {order.kotNo}
+                                                        {order.customerName && <span className="text-gray-500 font-normal"> • {order.customerName}</span>}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {new Date(order.createdAt).toLocaleString()} • {order.tableName || 'N/A'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-gray-900">₹{order.totalAmount}</p>
+                                                <p className={cn(
+                                                    "text-[10px] font-bold uppercase tracking-wider",
+                                                    order.status === 'COMPLETED' ? "text-green-600" : "text-orange-600"
+                                                )}>
+                                                    {order.status}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-4 text-center text-gray-400 text-sm">No orders found</div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

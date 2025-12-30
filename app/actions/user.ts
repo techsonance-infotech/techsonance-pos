@@ -4,19 +4,10 @@ import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
 import { cache } from 'react'
+import { unstable_cache, revalidateTag } from "next/cache"
 
-export const getUserProfile = cache(async () => {
-    const cookieStore = await cookies()
-    const userId = cookieStore.get('session_user_id')?.value
-
-    console.log("getUserProfile: Cookie ID:", userId)
-    console.log("getUserProfile: All Cookies:", cookieStore.getAll().map(c => c.name))
-
-    if (!userId) {
-        console.log("getUserProfile: No User ID in cookie")
-        return null
-    }
-
+// Internal DB fetcher
+async function fetchUser(userId: string) {
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -35,9 +26,32 @@ export const getUserProfile = cache(async () => {
             }
         }
     })
+    return user
+}
+
+// Direct DB call (No Cache for Critical User State)
+const getCachedUser = async (userId: string) => {
+    return fetchUser(userId)
+}
+
+export const getUserProfile = cache(async () => {
+    const cookieStore = await cookies()
+    const userId = cookieStore.get('session_user_id')?.value
+
+    if (!userId) {
+        return null
+    }
+
+    // Use cached fetcher, passing userId as argument which forms part of the cache key automatically in newer Next.js? 
+    // Actually unstable_cache 2nd arg is keyParts. 
+    // To properly cache per user, we need to wrap the fetcher uniquely or rely on arguments.
+    // unstable_cache(fn, keyParts, options)(...args)
+    // So we need to define the cached function outside.
+
+    // Correct usage:
+    const user = await getCachedUser(userId)
 
     if (!user) {
-        console.log("getUserProfile: User not found in DB")
         return null
     }
 
@@ -108,5 +122,28 @@ export async function rejectUser(userId: string) {
     } catch (error) {
         console.error("Failed to reject user:", error)
         return { success: false, error: "Failed to reject user" }
+    }
+}
+
+export async function getUserStoreDetails() {
+    try {
+        const cookieStore = await cookies()
+        const userId = cookieStore.get('session_user_id')?.value
+        if (!userId) return null
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                defaultStore: {
+                    select: {
+                        name: true,
+                        location: true
+                    }
+                }
+            }
+        })
+        return user?.defaultStore || null
+    } catch (error) {
+        return null
     }
 }

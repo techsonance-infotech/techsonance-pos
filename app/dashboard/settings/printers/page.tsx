@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getPrinterSettings, updatePrinterSettings, testPrint } from "@/app/actions/printer"
+import PrintersLoading from "./loading"
 
 export default function PrinterSettingsPage() {
     const [loading, setLoading] = useState(true)
@@ -148,16 +149,7 @@ export default function PrinterSettingsPage() {
         }
     }
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <div className="text-center">
-                    <Printer className="h-12 w-12 text-gray-400 mx-auto mb-4 animate-pulse" />
-                    <p className="text-gray-500">Loading printer settings...</p>
-                </div>
-            </div>
-        )
-    }
+    if (loading) return <PrintersLoading />
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">

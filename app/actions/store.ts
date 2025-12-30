@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { getUserProfile } from "./user"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { redirect } from "next/navigation"
 
 export async function switchStore(storeId: string) {
@@ -21,6 +21,7 @@ export async function switchStore(storeId: string) {
             data: { defaultStoreId: storeId },
             include: { defaultStore: true }
         })
+            ; (revalidateTag as any)(`user-profile-${user.id}`)
         revalidatePath("/dashboard")
         return { success: true, tableMode: updatedUser.defaultStore?.tableMode }
     } catch (error) {

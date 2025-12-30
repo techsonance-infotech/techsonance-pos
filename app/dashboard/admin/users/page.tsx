@@ -4,20 +4,26 @@ import { redirect } from "next/navigation"
 import { UsersTable } from "@/components/admin/users-table"
 import { PendingApprovals } from "@/components/admin/pending-approvals"
 import { Badge } from "@/components/ui/badge"
-import { Home, Users, Shield, UserCheck, UserX, Clock } from "lucide-react"
+import { Home, Users, Shield, UserCheck, UserX, Clock, ChevronRight } from "lucide-react"
+import Link from "next/link"
 
 export default async function UsersPage() {
     const currentUser = await getUserProfile()
     if (currentUser?.role !== 'SUPER_ADMIN') redirect('/dashboard')
 
-    // Fetch all users (isApproved property not in schema)
+    // Fetch approved users
     const users = await prisma.user.findMany({
+        where: { isApproved: true },
         orderBy: { createdAt: 'desc' },
         include: { stores: true }
     })
 
-    // Pending users feature disabled (isApproved not in schema)
-    const pendingUsers: any[] = []
+    // Fetch pending users (not yet approved)
+    const pendingUsers = await prisma.user.findMany({
+        where: { isApproved: false },
+        orderBy: { createdAt: 'desc' },
+        include: { stores: true }
+    })
 
     const allStores = await prisma.store.findMany({
         select: { id: true, name: true, location: true },
@@ -34,10 +40,14 @@ export default async function UsersPage() {
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-3 rounded-xl shadow-sm w-fit">
-                <Home className="h-4 w-4 text-orange-500" />
-                <span>/</span>
-                <span className="text-gray-400">Settings</span>
-                <span>/</span>
+                <Link href="/dashboard" className="hover:text-orange-600 transition-colors">
+                    <Home className="h-4 w-4 text-orange-500" />
+                </Link>
+                <ChevronRight className="h-4 w-4" />
+                <Link href="/dashboard/settings" className="hover:text-orange-600 transition-colors">
+                    More Options
+                </Link>
+                <ChevronRight className="h-4 w-4" />
                 <span className="font-medium text-orange-600">User Management</span>
             </div>
 
