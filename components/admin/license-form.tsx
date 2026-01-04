@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { Copy, Check, Sparkles } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export function LicenseForm({ stores }: {
     stores: {
@@ -19,12 +20,14 @@ export function LicenseForm({ stores }: {
         license: {
             id: string,
             type: 'TRIAL' | 'ANNUAL' | 'PERPETUAL',
-            status: 'ACTIVE' | 'REVOKED' | 'EXPIRED',
+            status: 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'PENDING',
             validUntil: Date | null
         } | null
     }[]
 }) {
     const [copied, setCopied] = useState(false)
+
+    const router = useRouter()
 
     // Basic form state handling
     const [state, action, isPending] = useActionState(async (prev: any, formData: FormData) => {
@@ -35,6 +38,8 @@ export function LicenseForm({ stores }: {
         }
         if (result.success) {
             toast.success("License created successfully!")
+            // Trigger server re-fetch so the list updates
+            router.refresh()
             return { success: true, key: result.key }
         }
         return prev
@@ -90,9 +95,10 @@ export function LicenseForm({ stores }: {
                                     statusBadge = '✅ No License'
                                 }
 
+                                // Requirement: Show User Email (Owner)
                                 const label = owner
                                     ? `${store.name} (${owner.email}) - ${statusBadge}`
-                                    : `${store.name} - ${statusBadge}`
+                                    : `${store.name} (No Owner) - ${statusBadge}`
 
                                 return (
                                     <SelectItem key={store.id} value={store.id}>

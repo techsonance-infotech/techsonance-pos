@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { getUserProfile } from "./user"
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, format } from "date-fns"
+import { unstable_cache } from "next/cache"
 
 // Check if user has analytics access
 async function checkAnalyticsAccess() {
@@ -19,82 +20,57 @@ async function checkAnalyticsAccess() {
     return { user, storeId: user.defaultStoreId }
 }
 
-// Sales Overview - Quick summary stats
+// Sales Overview - Quick summary stats (Parallelized + Cached)
 export async function getSalesOverview() {
     const { storeId } = await checkAnalyticsAccess()
 
-    const today = new Date()
-    const startToday = startOfDay(today)
-    const endToday = endOfDay(today)
-    const startWeek = startOfDay(subDays(today, 7))
-    const startMonth = startOfMonth(today)
+    const getCachedOverview = unstable_cache(
+        async () => {
+            const today = new Date()
+            const startToday = startOfDay(today)
+            const endToday = endOfDay(today)
+            const startWeek = startOfDay(subDays(today, 7))
+            const startMonth = startOfMonth(today)
 
-    // Today's sales
-    const todaySales = await prisma.order.aggregate({
-        where: {
-            storeId,
-            status: 'COMPLETED',
-            createdAt: { gte: startToday, lte: endToday }
-        },
-        _sum: { totalAmount: true },
-        _count: true
-    })
+            // Run all queries in parallel
+            const [todaySales, weekSales, monthSales, last7Days] = await Promise.all([
+                prisma.order.aggregate({
+                    where: { storeId, status: 'COMPLETED', createdAt: { gte: startToday, lte: endToday } },
+                    _sum: { totalAmount: true },
+                    _count: true
+                }),
+                prisma.order.aggregate({
+                    where: { storeId, status: 'COMPLETED', createdAt: { gte: startWeek } },
+                    _sum: { totalAmount: true },
+                    _count: true
+                }),
+                prisma.order.aggregate({
+                    where: { storeId, status: 'COMPLETED', createdAt: { gte: startMonth } },
+                    _sum: { totalAmount: true },
+                    _count: true
+                }),
+                prisma.$queryRaw<Array<{ date: Date, total: number }>>`
+                    SELECT DATE("createdAt") as date, SUM("totalAmount") as total
+                    FROM "Order"
+                    WHERE status = 'COMPLETED' AND "storeId" = ${storeId}
+                    AND "createdAt" >= ${startWeek}
+                    GROUP BY DATE("createdAt")
+                    ORDER BY date ASC
+                `
+            ])
 
-    // This week's sales
-    const weekSales = await prisma.order.aggregate({
-        where: {
-            storeId,
-            status: 'COMPLETED',
-            createdAt: { gte: startWeek }
+            return {
+                today: { sales: todaySales._sum.totalAmount || 0, orders: todaySales._count },
+                week: { sales: weekSales._sum.totalAmount || 0, orders: weekSales._count },
+                month: { sales: monthSales._sum.totalAmount || 0, orders: monthSales._count },
+                topCategory: 'N/A',
+                trend: last7Days.map(d => ({ date: format(new Date(d.date), 'MMM dd'), sales: Number(d.total) }))
+            }
         },
-        _sum: { totalAmount: true },
-        _count: true
-    })
-
-    // This month's sales
-    const monthSales = await prisma.order.aggregate({
-        where: {
-            storeId,
-            status: 'COMPLETED',
-            createdAt: { gte: startMonth }
-        },
-        _sum: { totalAmount: true },
-        _count: true
-    })
-
-    // Top category - Since items are JSON, returning N/A
-    // This would require parsing JSON items from all orders
-    const topCategory = 'N/A'
-
-    // Last 7 days trend
-    const last7Days = await prisma.$queryRaw<Array<{ date: Date, total: number }>>`
-        SELECT DATE("createdAt") as date, SUM("totalAmount") as total
-        FROM "Order"
-        WHERE status = 'COMPLETED' AND "storeId" = ${storeId}
-        AND "createdAt" >= ${startWeek}
-        GROUP BY DATE("createdAt")
-        ORDER BY date ASC
-    `
-
-    return {
-        today: {
-            sales: todaySales._sum.totalAmount || 0,
-            orders: todaySales._count
-        },
-        week: {
-            sales: weekSales._sum.totalAmount || 0,
-            orders: weekSales._count
-        },
-        month: {
-            sales: monthSales._sum.totalAmount || 0,
-            orders: monthSales._count
-        },
-        topCategory: topCategory,
-        trend: last7Days.map(d => ({
-            date: format(new Date(d.date), 'MMM dd'),
-            sales: Number(d.total)
-        }))
-    }
+        [`sales-overview-${storeId}`],
+        { revalidate: 30, tags: ['analytics'] }
+    )
+    return getCachedOverview()
 }
 
 // Daily Sales Report

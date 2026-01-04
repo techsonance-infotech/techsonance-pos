@@ -164,9 +164,21 @@ export async function getProducts(categoryId?: string, includeInactive = false) 
 
         const products = await prisma.product.findMany({
             where,
-            include: {
-                category: true,
+            select: {
+                id: true,
+                name: true,
+                price: true,
+                categoryId: true,
+                description: true,
+                isAvailable: true,
+                image: true,
                 addons: {
+                    select: {
+                        id: true,
+                        name: true,
+                        price: true,
+                        isAvailable: true
+                    },
                     orderBy: { sortOrder: 'asc' }
                 }
             },

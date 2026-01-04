@@ -82,6 +82,7 @@ export default async function DashboardLayout({
             <div className="flex h-screen w-full overflow-hidden bg-white">
                 <Sidebar
                     userRole={user?.role}
+                    disabledModules={user?.disabledModules}
                     businessName={businessSettings.businessName}
                     logoUrl={businessSettings.logoUrl}
                 />

@@ -1,82 +1,93 @@
-const CACHE_NAME = 'cafepos-v1';
+const CACHE_NAME = 'cafepos-v2'; // Incremented to force update
 
 const urlsToCache = [
-    '/',
-    '/dashboard',
     '/icon-192.png',
-    '/icon-512.png'
+    '/icon-512.png',
+    '/offline' // Fallback page if offline
 ];
 
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(async (cache) => {
-            // Cache each URL individually to prevent one failure from breaking all
-            const cachePromises = urlsToCache.map(async (url) => {
-                try {
-                    await cache.add(url);
-                    console.log(`Cached: ${url}`);
-                } catch (error) {
-                    console.warn(`Failed to cache ${url}:`, error);
-                    // Continue even if one URL fails
-                }
-            });
+    // Force immediate activation
+    self.skipWaiting();
 
-            await Promise.allSettled(cachePromises);
-            console.log('Service worker installation complete');
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            return cache.addAll(urlsToCache);
         })
     );
-
-    // Force the waiting service worker to become the active service worker
-    self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+    // Claim clients immediately
+    event.waitUntil(self.clients.claim());
+
+    // Clean up old caches
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
                     if (cacheName !== CACHE_NAME) {
-                        console.log('Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
         })
     );
-
-    // Take control of all pages immediately
-    self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        caches.match(event.request).then((response) => {
-            if (response) {
-                return response;
-            }
+    const request = event.request;
+    const url = new URL(request.url);
 
-            // Clone the request
-            const fetchRequest = event.request.clone();
+    // 1. API Calls: Network Only (Never cache API responses in SW)
+    if (url.pathname.startsWith('/api/')) {
+        return;
+    }
 
-            return fetch(fetchRequest).then((response) => {
-                // Check if valid response
-                if (!response || response.status !== 200 || response.type !== 'basic') {
-                    return response;
-                }
+    // 2. Navigation (HTML Pages): Network First, Fallback to Cache
+    // This ensures the user ALWAYS sees the latest version if online.
+    if (request.mode === 'navigate') {
+        event.respondWith(
+            fetch(request)
+                .then((networkResponse) => {
+                    return caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(request, networkResponse.clone());
+                        return networkResponse;
+                    });
+                })
+                .catch(() => {
+                    return caches.match(request)
+                        .then((cachedResponse) => {
+                            if (cachedResponse) return cachedResponse;
+                            return caches.match('/offline'); // Optional offline fallback
+                        });
+                })
+        );
+        return;
+    }
 
-                // Clone the response
-                const responseToCache = response.clone();
-
-                // Cache the fetched response for future use
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, responseToCache);
+    // 3. Static Assets (JS, CSS, Images): Stale-While-Revalidate
+    // Serve from cache immediately, then update cache in background.
+    if (
+        url.pathname.startsWith('/_next/static/') ||
+        url.pathname.startsWith('/images/') ||
+        url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico)$/)
+    ) {
+        event.respondWith(
+            caches.match(request).then((cachedResponse) => {
+                const fetchPromise = fetch(request).then((networkResponse) => {
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(request, networkResponse.clone());
+                    });
+                    return networkResponse;
                 });
 
-                return response;
-            }).catch((error) => {
-                console.error('Fetch failed:', error);
-                throw error;
-            });
-        })
-    );
+                return cachedResponse || fetchPromise;
+            })
+        );
+        return;
+    }
+
+    // 4. Default: Network Only
+    // Let everything else go through normal network (socket.io, etc)
 });

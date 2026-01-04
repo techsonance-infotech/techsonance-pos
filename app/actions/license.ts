@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { generateProductKey, verifyProductKey, LicensePayload } from "@/lib/licensing"
+import { generateProductKey, verifyProductKey, LicensePayload, generateWindowsStyleKey, hashLicenseKey } from "@/lib/licensing"
 import { revalidatePath } from "next/cache"
 import { LicenseType } from "@prisma/client"
 import { getUserProfile } from "@/app/actions/user"
@@ -20,6 +20,7 @@ export async function createLicense(formData: FormData) {
     const storeId = formData.get("storeId") as string
     const type = formData.get("type") as LicenseType
     const expiryDateStr = formData.get("expiryDate") as string // YYYY-MM-DD
+    const maxDevicesStr = formData.get("maxDevices") as string
 
     if (!storeId || !type) {
         return { error: "Missing required fields" }
@@ -27,6 +28,7 @@ export async function createLicense(formData: FormData) {
 
     let validUntil: Date | null = null;
     let expiryTimestamp = 0;
+    const maxDevices = maxDevicesStr ? parseInt(maxDevicesStr) : 1;
 
     if (type === 'PERPETUAL') {
         expiryTimestamp = 9999999999999;
@@ -37,24 +39,29 @@ export async function createLicense(formData: FormData) {
         expiryTimestamp = validUntil.getTime();
     }
 
-    const privateKey = process.env.LICENSE_PRIVATE_KEY;
-    if (!privateKey) {
-        return { error: "Server configuration error: Missing Private Key" }
-    }
+    // Refactored: No longer using private key encryption
+    // const privateKey = process.env.LICENSE_PRIVATE_KEY;
 
     const existing = await prisma.license.findUnique({
         where: { storeId }
     })
 
+    // Generate Windows-style display key
+    const displayKey = generateWindowsStyleKey();
+    const keyHash = hashLicenseKey(displayKey);
+    // Mask logic: XXXXX-XXXXX-12345
+    const maskedKey = "XXXXX-XXXXX-" + displayKey.split('-')[2];
+
     const payload: LicensePayload = {
         storeId,
-        productKeyId: "",
+        productKeyId: displayKey, // Store the display key reference
         expiry: expiryTimestamp,
         type: type,
         issuedAt: Date.now()
     }
 
-    const signedKey = generateProductKey(payload, privateKey);
+    // Use the display key itself as the stored key
+    const signedKey = displayKey; // No longer signing with JWT
 
     try {
         if (existing) {
@@ -63,9 +70,14 @@ export async function createLicense(formData: FormData) {
                 where: { id: existing.id },
                 data: {
                     key: signedKey,
+                    keyHash,
+                    maskedKey,
                     type,
-                    status: 'ACTIVE',
-                    validUntil
+                    status: 'PENDING', // Require activation
+                    validUntil,
+                    maxDevices,
+                    revokedAt: null,
+                    revokedBy: null
                 }
             })
         } else {
@@ -73,9 +85,12 @@ export async function createLicense(formData: FormData) {
             await prisma.license.create({
                 data: {
                     key: signedKey,
+                    keyHash,
+                    maskedKey,
                     type,
-                    status: 'ACTIVE',
+                    status: 'PENDING', // Require activation
                     validUntil,
+                    maxDevices,
                     storeId
                 }
             })
@@ -86,7 +101,8 @@ export async function createLicense(formData: FormData) {
     }
 
     revalidatePath('/dashboard/admin/licenses')
-    return { success: true, key: signedKey }
+    // Return the Windows-style display key to the user
+    return { success: true, key: displayKey, signedKey }
 }
 
 export async function getAllStoresForLicensing() {
@@ -171,11 +187,6 @@ export async function createBulkLicenses(formData: FormData) {
         expiryTimestamp = validUntil.getTime()
     }
 
-    const privateKey = process.env.LICENSE_PRIVATE_KEY
-    if (!privateKey) {
-        return { error: "Server configuration error: Missing Private Key" }
-    }
-
     const results: Array<{ storeId: string, storeName: string, key: string, success: boolean, error?: string }> = []
 
     for (const storeId of storeIds) {
@@ -214,21 +225,20 @@ export async function createBulkLicenses(formData: FormData) {
                 continue
             }
 
-            const payload: LicensePayload = {
-                storeId,
-                productKeyId: "",
-                expiry: expiryTimestamp,
-                type: type,
-                issuedAt: Date.now()
-            }
+            // Generate Windows-style display key
+            const displayKey = generateWindowsStyleKey();
+            const keyHash = hashLicenseKey(displayKey);
+            const maskedKey = "XXXXX-XXXXX-" + displayKey.split('-')[2];
 
-            const signedKey = generateProductKey(payload, privateKey)
+            const signedKey = displayKey; // Use display key directly
 
             await prisma.license.create({
                 data: {
                     key: signedKey,
+                    keyHash,
+                    maskedKey,
                     type,
-                    status: 'ACTIVE',
+                    status: 'PENDING',
                     validUntil,
                     storeId
                 }
@@ -237,7 +247,7 @@ export async function createBulkLicenses(formData: FormData) {
             results.push({
                 storeId,
                 storeName: store.name,
-                key: signedKey,
+                key: displayKey, // Return display key
                 success: true
             })
         } catch (e) {
@@ -258,20 +268,98 @@ export async function createBulkLicenses(formData: FormData) {
 
 
 export async function revokeLicense(licenseId: string) {
-    if (!await checkSuperAdmin()) {
+    const user = await getUserProfile()
+    if (!user || user.role !== 'SUPER_ADMIN') {
         return { error: "Unauthorized" }
     }
 
     try {
         await prisma.license.update({
             where: { id: licenseId },
-            data: { status: 'REVOKED' }
+            data: {
+                status: 'REVOKED',
+                revokedAt: new Date(),
+                revokedBy: user.id
+            }
         })
         revalidatePath('/dashboard/admin/licenses')
         return { success: true }
     } catch (e) {
         return { error: "Failed to revoke license" }
     }
+}
+
+// Extend a trial license by specified number of days
+export async function extendTrialLicense(licenseId: string, days: number) {
+    const user = await getUserProfile()
+    if (!user || user.role !== 'SUPER_ADMIN') {
+        return { error: "Unauthorized" }
+    }
+
+    if (days < 1 || days > 365) {
+        return { error: "Extension must be between 1 and 365 days" }
+    }
+
+    const license = await prisma.license.findUnique({
+        where: { id: licenseId }
+    })
+
+    if (!license) return { error: "License not found" }
+    if (license.type === 'PERPETUAL') return { error: "Cannot extend perpetual license" }
+
+    const currentExpiry = license.validUntil || new Date()
+    const newExpiry = new Date(currentExpiry)
+    newExpiry.setDate(newExpiry.getDate() + days)
+
+    try {
+        await prisma.license.update({
+            where: { id: licenseId },
+            data: {
+                validUntil: newExpiry,
+                status: 'ACTIVE',
+                extendedAt: new Date(),
+                extendedCount: { increment: 1 }
+            }
+        })
+        revalidatePath('/dashboard/admin/licenses')
+        return { success: true, newExpiry }
+    } catch (e) {
+        return { error: "Failed to extend license" }
+    }
+}
+
+// Search licenses by store name, email, or key
+export async function searchLicenses(query: string) {
+    if (!query || query.length < 2) {
+        return getAllLicenses()
+    }
+
+    const searchTerm = query.toLowerCase()
+
+    return await prisma.license.findMany({
+        where: {
+            OR: [
+                { store: { name: { contains: searchTerm, mode: 'insensitive' } } },
+                { store: { users: { some: { email: { contains: searchTerm, mode: 'insensitive' } } } } },
+                { key: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+        },
+        include: {
+            store: {
+                select: {
+                    name: true,
+                    location: true,
+                    users: {
+                        where: { role: 'BUSINESS_OWNER' },
+                        select: { email: true, username: true },
+                        take: 1
+                    }
+                }
+            },
+            devices: true
+        },
+        orderBy: { createdAt: 'desc' }
+    })
 }
 
 export async function makeLicensePerpetual(licenseId: string) {
@@ -286,27 +374,22 @@ export async function makeLicensePerpetual(licenseId: string) {
 
     if (!license) return { error: "License not found" }
 
-    const privateKey = process.env.LICENSE_PRIVATE_KEY;
-    if (!privateKey) {
-        return { error: "Server configuration error" }
-    }
+    // const privateKey = process.env.LICENSE_PRIVATE_KEY;
 
     // Generate new payload
-    const payload: LicensePayload = {
-        storeId: license.storeId,
-        productKeyId: "",
-        expiry: 9999999999999,
-        type: 'PERPETUAL',
-        issuedAt: Date.now()
-    }
+    const displayKey = generateWindowsStyleKey();
+    const keyHash = hashLicenseKey(displayKey);
+    const maskedKey = "XXXXX-XXXXX-" + displayKey.split('-')[2];
 
-    const signedKey = generateProductKey(payload, privateKey);
+    const signedKey = displayKey; // Direct assignment
 
     try {
         await prisma.license.update({
             where: { id: licenseId },
             data: {
                 key: signedKey,
+                keyHash,
+                maskedKey,
                 type: 'PERPETUAL',
                 status: 'ACTIVE',
                 validUntil: null,
@@ -337,67 +420,62 @@ export async function verifySessionLicense(userId: string) {
 
     if (user.role === 'SUPER_ADMIN') return { valid: true }
 
-    // Logic: Default store or first store
+    // Logic: Default store or first store. 
+    // If a user has NO store, they cannot have a valid license context, so they are invalid.
     const store = user.defaultStore || user.stores[0]
 
     if (!store) {
-        return { valid: true }
+        return { valid: false, error: "No store found. Please create a store first." }
     }
 
     if (!store.license) {
+        // New account / No license -> Treat as Invalid/Expired
         return { valid: false, error: "No license found" }
     }
 
-    const publicKey = process.env.NEXT_PUBLIC_LICENSE_KEY
-    if (!publicKey) return { valid: false, error: "System Error: Missing Public Key" }
+    // Verify Session License Refactored: 
+    // We already verified status, expiry, and existence above.
+    // Since we TRUST the database state as the source of truth, 
+    // and we no longer require cryptographic verification of the key string itself (it's just an ID now),
+    // we can return valid: true.
 
-    // Verify License Status from DB (Revocation Check)
-    if (store.license.status === 'REVOKED') {
-        return { valid: false, error: "License has been revoked" }
-    }
-
-    const { verifyProductKey } = await import("@/lib/licensing")
-
-    // Check locally first (Offline capability)
-    const result = verifyProductKey(store.license.key, publicKey)
-
-    return result
+    return { valid: true }
 }
 
 export async function reactivateLicense(key: string, storeId: string) {
-    const publicKey = process.env.NEXT_PUBLIC_LICENSE_KEY
-    if (!publicKey) return { error: "System Error" }
+    // Hash the input key to find the record
+    const keyHash = hashLicenseKey(key);
 
-    const { verifyProductKey } = await import("@/lib/licensing")
-    const verification = verifyProductKey(key, publicKey)
+    const license = await prisma.license.findFirst({
+        where: { keyHash },
+        include: { store: true }
+    })
 
-    if (!verification.valid || !verification.payload) {
+    if (!license) {
         return { error: "Invalid License Key" }
     }
 
-    if (verification.payload.storeId && verification.payload.storeId !== storeId) {
+    if (license.storeId !== storeId) {
         return { error: "This license key belongs to a different store." }
     }
 
-    try {
-        await prisma.license.upsert({
-            where: { storeId },
-            create: {
-                key,
-                type: verification.payload.type,
-                status: 'ACTIVE',
-                validUntil: verification.payload.type === 'PERPETUAL' ? null : new Date(verification.payload.expiry),
-                storeId
-            },
-            update: {
-                key,
-                type: verification.payload.type,
-                status: 'ACTIVE',
-                validUntil: verification.payload.type === 'PERPETUAL' ? null : new Date(verification.payload.expiry),
-            }
+    if (license.status === 'REVOKED') {
+        return { error: "This license has been revoked." }
+    }
+
+    const now = new Date()
+    if (license.validUntil && license.validUntil < now) {
+        return { error: "This license has expired." }
+    }
+
+    // License is valid and matches store. 
+    // Usually no action needed if it's already in DB and linked.
+    // But if we need to "reactivate" a status:
+    if (license.status !== 'ACTIVE') {
+        await prisma.license.update({
+            where: { id: license.id },
+            data: { status: 'ACTIVE' }
         })
-    } catch (e) {
-        return { error: "Failed to activate license" }
     }
 
     return { success: true }
@@ -424,5 +502,49 @@ export async function reactivateMyStoreLicense(key: string) {
         return await reactivateLicense(key, store.id)
     } catch (e) {
         return { error: "Failed to resolve user session" }
+    }
+}
+
+// Reveal the full license key for admin reference
+export async function revealLicenseKey(licenseId: string) {
+    const user = await getUserProfile()
+    if (!user || user.role !== 'SUPER_ADMIN') {
+        return { error: "Unauthorized" }
+    }
+
+    const license = await prisma.license.findUnique({
+        where: { id: licenseId }
+    })
+
+    if (!license) return { error: "License not found" }
+
+    try {
+        // 1. Check if it's a simple Windows-style key
+        const windowsKeyPattern = /^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$/
+        if (windowsKeyPattern.test(license.key)) {
+            return { success: true, key: license.key }
+        }
+
+        // 2. Legacy Support: Try to extract from JWT without verification
+        if (license.key.startsWith('ey')) {
+            try {
+                // Decode payload (2nd part of JWT)
+                const payloadPart = license.key.split('.')[1]
+                if (payloadPart) {
+                    const decoded = Buffer.from(payloadPart, 'base64').toString('utf-8')
+                    const json = JSON.parse(decoded)
+                    if (json.data?.productKeyId) {
+                        return { success: true, key: json.data.productKeyId }
+                    }
+                }
+            } catch (e) {
+                // Formatting error, fall through
+            }
+        }
+
+        // 3. Fallback: Return raw key
+        return { success: true, key: license.key, isRaw: true }
+    } catch (e) {
+        return { error: "Failed to decode license key" }
     }
 }

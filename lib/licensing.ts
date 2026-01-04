@@ -121,3 +121,45 @@ export function verifyProductKey(productKey: string, publicKeyPem: string): Lice
         return { valid: false, error: 'Malformed license key' };
     }
 }
+
+/**
+ * Generates a Windows-style license key in format: XXXXX-XXXXX-XXXXX
+ * Uses cryptographically secure random bytes
+ * @returns A 15-character alphanumeric key with dashes
+ */
+export function generateWindowsStyleKey(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const segments = 3;
+    const segmentLength = 5;
+    const keyParts: string[] = [];
+
+    for (let i = 0; i < segments; i++) {
+        let segment = '';
+        const randomBytes = crypto.randomBytes(segmentLength);
+        for (let j = 0; j < segmentLength; j++) {
+            segment += chars[randomBytes[j] % chars.length];
+        }
+        keyParts.push(segment);
+    }
+
+    return keyParts.join('-');
+}
+
+/**
+ * Creates a secure hash of the license key for database storage
+ * @param key The plain text license key
+ * @returns SHA-256 hash of the key
+ */
+export function hashLicenseKey(key: string): string {
+    return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+/**
+ * Validates if a key matches the Windows-style format
+ * @param key The key to validate
+ * @returns boolean indicating if format is valid
+ */
+export function isValidKeyFormat(key: string): boolean {
+    const pattern = /^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$/;
+    return pattern.test(key);
+}

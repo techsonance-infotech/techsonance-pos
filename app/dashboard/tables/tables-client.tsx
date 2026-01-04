@@ -25,10 +25,9 @@ type Table = {
 
 interface TablesClientProps {
     initialTables: Table[]
-    user: any
 }
 
-export default function TablesClient({ initialTables, user }: TablesClientProps) {
+export default function TablesClient({ initialTables }: TablesClientProps) {
     const [tables, setTables] = useState<Table[]>(initialTables)
     // user prop is available if needed, though previously it was only used to set state.
 

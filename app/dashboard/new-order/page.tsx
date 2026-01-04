@@ -8,11 +8,8 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { ProductCustomizationModal, Product, Addon } from "@/components/pos/product-modal"
 import { useSearchParams, useRouter } from "next/navigation"
-import { updateTableStatus } from "@/app/actions/tables"
 import { saveOrder, getOrder } from "@/app/actions/orders"
-import { getCategories, getProducts } from "@/app/actions/menu"
-import { getBusinessSettings } from "@/app/actions/settings"
-import { getUserStoreDetails } from "@/app/actions/user"
+import { getPOSInitialData } from "@/app/actions/pos"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
@@ -67,23 +64,15 @@ export default function NewOrderPage() {
     async function loadInitialData() {
         setLoading(true)
         try {
-            const [cats, prods, settings, store] = await Promise.all([
-                getCategories(),
-                getProducts('all'),
-                getBusinessSettings(),
-                getUserStoreDetails()
-            ])
-            setCategories(cats)
-            // Fix type mismatch: Prisma returns null, Product type expects undefined
-            const sanitizedProds = prods.map((p: any) => ({
-                ...p,
-                image: p.image || undefined
-            }))
-            setProducts(sanitizedProds)
-            setBusinessDetails(settings)
-            setStoreDetails(store)
-            // Set default category
-            if (cats.length > 0) setSelectedCategory(cats[0].id)
+            const data = await getPOSInitialData()
+            if (data) {
+                setCategories(data.categories)
+                setProducts(data.products)
+                setBusinessDetails(data.businessDetails)
+                setStoreDetails(data.storeDetails)
+                // Set default category
+                if (data.categories.length > 0) setSelectedCategory(data.categories[0].id)
+            }
         } catch (error) {
             console.error("Failed to load menu data", error)
         } finally {
@@ -197,9 +186,6 @@ export default function NewOrderPage() {
 
             const result = await saveOrder(orderData)
             if (result?.success) {
-                // Mark table as OCCUPIED since order is held/in progress
-                if (tableId) await updateTableStatus(tableId, 'OCCUPIED')
-
                 // Success feedback (using alert for now)
                 toast.success("Order Held Successfully! Check 'Hold Orders' in header.")
                 setCart([])
@@ -440,9 +426,6 @@ export default function NewOrderPage() {
 
                                         setSaving(true)
                                         try {
-                                            // Mark table as AVAILABLE since order is completed
-                                            if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
-
                                             const orderData = {
                                                 id: resumeId,
                                                 status: 'COMPLETED',
@@ -517,8 +500,6 @@ export default function NewOrderPage() {
                                             const result = await saveOrder(orderData)
 
                                             if (result?.success) {
-                                                // Mark table as AVAILABLE since order is completed
-                                                if (tableId) await updateTableStatus(tableId, 'AVAILABLE')
 
                                                 // 3. Print (Set state -> Render -> Print)
                                                 setPrintOrder({ ...orderData, createdAt: new Date(), subtotal, taxAmount: tax })
