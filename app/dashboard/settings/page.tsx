@@ -1,5 +1,6 @@
 "use client"
 
+// Force HMR Update
 import { useState, useEffect } from "react"
 import {
     Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info

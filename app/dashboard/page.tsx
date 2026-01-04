@@ -14,9 +14,12 @@ export default async function DashboardPage() {
     if (!user.defaultStoreId) redirect("/dashboard/stores")
     // Note: We might want to pass the store name to UI if needed, but not required yet.
 
-    const stats = await getDashboardStats(user.defaultStoreId)
-    const recentOrders = await getRecentOrders(user.defaultStoreId)
-    const { symbol } = await getCurrency()
+    // Fetch dashboard data in parallel
+    const [stats, recentOrders, { symbol }] = await Promise.all([
+        getDashboardStats(user.defaultStoreId),
+        getRecentOrders(user.defaultStoreId),
+        getCurrency()
+    ])
 
     return (
         <div className="space-y-8">

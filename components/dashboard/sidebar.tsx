@@ -44,18 +44,45 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
     const pathname = usePathname()
     const [items, setItems] = useState(baseSidebarItems)
 
+    // Module Mapping (Sidebar Item Label or Href Segment -> Module ID)
+    const getModuleId = (item: any): string | null => {
+        if (item.href.includes('new-order') || item.href.includes('recent-orders') || item.href.includes('hold-orders')) return 'orders'
+        if (item.href.includes('tables')) return 'tables'
+        if (item.href.includes('menu')) return 'menu'
+        if (item.href.includes('stores')) return 'stores'
+        if (item.href.includes('notifications')) return 'notifications'
+        return null
+    }
+
     useEffect(() => {
-        // Filter items based on user role
+        // Filter items based on user role AND disabled modules
         const filteredItems = baseSidebarItems.filter(item => {
-            // If item has roles restriction, check if user role is allowed
-            if ('roles' in item && item.roles) {
-                return userRole && item.roles.includes(userRole)
+            // 1. Module Based Blocking for "User" / "Manager"
+            // If the user has explicitly disabled this module, hide it
+            const moduleId = getModuleId(item)
+            if (moduleId && disabledModules && disabledModules.includes(moduleId)) {
+                return false
             }
+
+            // 2. Strict Role Checks
+            // Existing 'roles' array check
+            if ('roles' in item && item.roles) {
+                if (!userRole || !item.roles.includes(userRole)) return false
+            }
+
+            // 3. Special Case: Settings ("More Options")
+            // Only visible to SUPER_ADMIN and BUSINESS_OWNER
+            if (item.href.includes('settings')) {
+                if (userRole !== 'SUPER_ADMIN' && userRole !== 'BUSINESS_OWNER') {
+                    return false
+                }
+            }
+
             // Otherwise, show the item
             return true
         })
         setItems(filteredItems)
-    }, [userRole])
+    }, [userRole, disabledModules])
 
     // ... (existing logic)
 

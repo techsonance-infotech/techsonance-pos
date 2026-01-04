@@ -37,6 +37,7 @@ import {
     saveAddon,
     deleteAddon
 } from "@/app/actions/menu"
+import { getMenuPageData } from "@/app/actions/pos"
 import { cn } from "@/lib/utils"
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -151,21 +152,33 @@ export default function MenuManagementPage() {
     const [newAddon, setNewAddon] = useState({ name: "", price: "", isAvailable: true })
 
     useEffect(() => {
-        loadCategories()
+        loadInitialData()
     }, [])
 
     useEffect(() => {
-        if (selectedCategory) {
+        // Only load products when category changes AFTER initial load
+        if (selectedCategory && categories.length > 0 && selectedCategory.id !== categories[0]?.id) {
             loadProducts(selectedCategory.id)
-        } else if (categories.length > 0) {
-            setSelectedCategory(categories[0])
         }
-    }, [selectedCategory, categories])
+    }, [selectedCategory])
 
     async function loadCategories(silent = false) {
         if (!silent) setLoading(true)
         const cats = await getCategories(true)
         setCategories(cats)
+        setLoading(false)
+    }
+
+    async function loadInitialData() {
+        setLoading(true)
+        const data = await getMenuPageData()
+        if (data) {
+            setCategories(data.categories)
+            setProducts(data.products)
+            if (data.categories.length > 0) {
+                setSelectedCategory(data.categories[0])
+            }
+        }
         setLoading(false)
     }
 

@@ -1,10 +1,11 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache } from "next/cache"
 import { getUserProfile } from "./user"
 import { createNotification } from "@/app/actions/notifications"
 
+// Hold Order (Create or Update if we had an ID)
 // Hold Order (Create or Update if we had an ID)
 export async function saveOrder(orderData: any) {
     const user = await getUserProfile()
@@ -13,71 +14,90 @@ export async function saveOrder(orderData: any) {
     }
 
     try {
-        // If orderData.id exists, UPDATE the existing order
-        if (orderData.id) {
-            const existingOrder = await prisma.order.findUnique({
-                where: { id: orderData.id }
+        const orderStatus = orderData.status || 'HELD'
+        const tableId = orderData.tableId
+
+        // Determine table status update if tableId is present
+        let tableUpdatePromise = null
+        if (tableId) {
+            const newTableStatus = orderStatus === 'COMPLETED' ? 'AVAILABLE' : 'OCCUPIED'
+            tableUpdatePromise = prisma.table.update({
+                where: { id: tableId },
+                data: { status: newTableStatus }
             })
+        }
 
-            if (!existingOrder) {
-                return { error: "Order not found" }
-            }
+        // Prepare Order Operation
+        let orderOperation
 
-            await prisma.order.update({
+        if (orderData.id) {
+            // Check existence first if needed, but update will throw if not found usually, 
+            // but we want to be safe or just let it fail. 
+            // However, we need existing order for notification context if we want "Order Updated" vs "Created".
+            // Since we are inside transaction, we can't easily "read then write" dependent logic unless interactive transaction,
+            // or we accept we might not have old data for notification diffs. 
+            // For simplicity/perf, we'll just upsert or update. 
+            // Let's stick to update for existing ID.
+
+            orderOperation = prisma.order.update({
                 where: { id: orderData.id },
                 data: {
-                    status: orderData.status || 'HELD',
+                    status: orderStatus,
                     totalAmount: orderData.totalAmount,
                     items: orderData.items,
                     customerName: orderData.customerName || null,
                     customerMobile: orderData.customerMobile || null,
-                    tableId: orderData.tableId || null,
+                    tableId: tableId || null,
                     tableName: orderData.tableName || null,
                     paymentMode: orderData.paymentMode || 'CASH',
                     discountAmount: orderData.discountAmount || 0,
                 }
             })
-
-            // Notify
-            await createNotification(
-                user.id,
-                orderData.status === 'COMPLETED' ? "Order Completed" : "Order Updated",
-                `Order ${existingOrder.kotNo} ${orderData.status === 'COMPLETED' ? 'completed' : 'updated'} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
-            )
-
-            revalidatePath('/dashboard/hold-orders')
-            revalidatePath('/dashboard/recent-orders')
-            return { success: true, message: orderData.status === 'COMPLETED' ? "Order Saved Successfully" : "Order Updated Successfully" }
+        } else {
+            const kotNo = orderData.kotNo || `KOT${Date.now().toString().slice(-6)}`
+            orderOperation = prisma.order.create({
+                data: {
+                    kotNo,
+                    status: orderStatus,
+                    totalAmount: orderData.totalAmount,
+                    items: orderData.items, // JSON
+                    customerName: orderData.customerName || null,
+                    customerMobile: orderData.customerMobile || null,
+                    tableId: tableId || null,
+                    tableName: orderData.tableName || null,
+                    userId: user.id,
+                    storeId: user.defaultStoreId
+                }
+            })
         }
 
-        // Otherwise, CREATE a new order
-        const kotNo = orderData.kotNo || `KOT${Date.now().toString().slice(-6)}`
+        // Execute Transaction
+        // We put table update first or second doesn't matter much, but let's do them in transaction.
+        const operations: any[] = [orderOperation]
+        if (tableUpdatePromise) operations.push(tableUpdatePromise)
 
-        await prisma.order.create({
-            data: {
-                kotNo,
-                status: orderData.status || 'HELD',
-                totalAmount: orderData.totalAmount,
-                items: orderData.items, // JSON
-                customerName: orderData.customerName || null,
-                customerMobile: orderData.customerMobile || null,
-                tableId: orderData.tableId || null,
-                tableName: orderData.tableName || null,
-                userId: user.id,
-                storeId: user.defaultStoreId
-            }
-        })
+        const results = await prisma.$transaction(operations)
+        const savedOrder = results[0]
 
-        // Notify
+        // Notifications happen AFTER transaction to avoid slowing it down (fire and forget mostly, or await after)
+        // We can await them to ensure delivery before returning success.
         await createNotification(
             user.id,
-            orderData.status === 'COMPLETED' ? "Order Completed" : "Order Held",
-            `Order ${kotNo} ${orderData.status === 'COMPLETED' ? 'completed' : 'held'} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
+            orderStatus === 'COMPLETED' ? "Order Completed" : (orderData.id ? "Order Updated" : "Order Held"),
+            `Order ${savedOrder.kotNo} ${orderStatus === 'COMPLETED' ? 'completed' : (orderData.id ? 'updated' : 'held')} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
         )
 
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
-        return { success: true, message: orderData.status === 'COMPLETED' ? "Order Saved Successfully" : "Order Held Successfully" }
+        // Also revalidate tables since status changed
+        if (tableId) revalidatePath('/dashboard/tables')
+
+        return {
+            success: true,
+            message: orderStatus === 'COMPLETED' ? "Order Saved Successfully" : (orderData.id ? "Order Updated Successfully" : "Order Held Successfully"),
+            order: savedOrder
+        }
+
     } catch (error) {
         console.error("Save Order Error:", error)
         return { error: "Failed to save order" }
@@ -99,15 +119,22 @@ export async function getHeldOrdersCount() {
     }
 }
 
-// Get All Held Orders
-export async function getHeldOrders() {
-    const user = await getUserProfile()
-    if (!user?.defaultStoreId) return []
-
+// Get All Held Orders (Cached)
+const fetchHeldOrders = async (storeId: string) => {
     try {
         const orders = await prisma.order.findMany({
-            where: { status: 'HELD', storeId: user.defaultStoreId },
-            orderBy: { createdAt: 'desc' }
+            where: { status: 'HELD', storeId },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                kotNo: true,
+                totalAmount: true,
+                customerName: true,
+                customerMobile: true,
+                tableName: true,
+                createdAt: true,
+                items: true
+            }
         })
         return orders
     } catch (error) {
@@ -115,22 +142,54 @@ export async function getHeldOrders() {
     }
 }
 
-// Get Recent Completed Orders
-export async function getRecentOrders() {
+export async function getHeldOrders() {
     const user = await getUserProfile()
     if (!user?.defaultStoreId) return []
 
+    const getCachedHeldOrders = unstable_cache(
+        () => fetchHeldOrders(user.defaultStoreId!),
+        [`held-orders-${user.defaultStoreId}`],
+        { revalidate: 10, tags: ['held-orders'] }
+    )
+    return getCachedHeldOrders()
+}
+
+// Get Recent Completed Orders (Cached)
+const fetchRecentOrders = async (storeId: string) => {
     try {
         const orders = await prisma.order.findMany({
-            where: { status: 'COMPLETED', storeId: user.defaultStoreId },
+            where: { status: 'COMPLETED', storeId },
             orderBy: { createdAt: 'desc' },
-            take: 50 // Limit to last 50 orders
+            take: 50,
+            select: {
+                id: true,
+                kotNo: true,
+                totalAmount: true,
+                customerName: true,
+                customerMobile: true,
+                tableName: true,
+                createdAt: true,
+                updatedAt: true,
+                items: true
+            }
         })
         return orders
     } catch (error) {
         console.error("Get Recent Orders Error:", error)
         return []
     }
+}
+
+export async function getRecentOrders() {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) return []
+
+    const getCachedRecentOrders = unstable_cache(
+        () => fetchRecentOrders(user.defaultStoreId!),
+        [`recent-orders-${user.defaultStoreId}`],
+        { revalidate: 10, tags: ['recent-orders'] }
+    )
+    return getCachedRecentOrders()
 }
 
 // Convert Completed Order to Held (for editing)

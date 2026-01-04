@@ -16,6 +16,8 @@ async function fetchUser(userId: string) {
             role: true,
             defaultStoreId: true,
             defaultStore: true,
+            // Security fields
+            disabledModules: true,
             stores: {
                 select: {
                     id: true,

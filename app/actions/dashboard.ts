@@ -25,41 +25,44 @@ export async function getDashboardStats(storeId: string): Promise<DashboardStats
     const todayStart = startOfDay(new Date())
     const todayEnd = endOfDay(new Date())
 
-    // 1. Today's Sales (Completed orders today)
-    const salesAgg = await prisma.order.aggregate({
-        where: {
-            storeId,
-            status: 'COMPLETED',
-            createdAt: { gte: todayStart, lte: todayEnd }
-        },
-        _sum: { totalAmount: true }
-    })
+    // Run all queries in parallel
+    const [salesAgg, totalOrders, activeOrders, holdOrders] = await Promise.all([
+        // 1. Today's Sales (Completed orders today)
+        prisma.order.aggregate({
+            where: {
+                storeId,
+                status: 'COMPLETED',
+                createdAt: { gte: todayStart, lte: todayEnd }
+            },
+            _sum: { totalAmount: true }
+        }),
 
-    // 2. Total Orders (All orders created today)
-    const totalOrders = await prisma.order.count({
-        where: {
-            storeId,
-            createdAt: { gte: todayStart, lte: todayEnd }
-        }
-    })
+        // 2. Total Orders (All orders created today)
+        prisma.order.count({
+            where: {
+                storeId,
+                createdAt: { gte: todayStart, lte: todayEnd }
+            }
+        }),
 
-    // 3. Active Orders (HELD orders with a Table ID - Dine In)
-    const activeOrders = await prisma.order.count({
-        where: {
-            storeId,
-            status: 'HELD',
-            tableId: { not: null }
-        }
-    })
+        // 3. Active Orders (HELD orders with a Table ID - Dine In)
+        prisma.order.count({
+            where: {
+                storeId,
+                status: 'HELD',
+                tableId: { not: null }
+            }
+        }),
 
-    // 4. Hold Orders (HELD orders without a Table ID - Quick/Takeaway)
-    const holdOrders = await prisma.order.count({
-        where: {
-            storeId,
-            status: 'HELD',
-            tableId: null
-        }
-    })
+        // 4. Hold Orders (HELD orders without a Table ID - Quick/Takeaway)
+        prisma.order.count({
+            where: {
+                storeId,
+                status: 'HELD',
+                tableId: null
+            }
+        })
+    ])
 
     return {
         todaySales: salesAgg._sum.totalAmount || 0,
