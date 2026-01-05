@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+  MANAGER
+  USER
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  location  String
+  tableMode Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]   @relation("UserStores")
+  
+  categories Category[]
+  tables     Table[]
+  orders     Order[]
+
+  defaultForUsers User[] @relation("DefaultStore")
+
+  license   License?
+}
+
+model License {
+  id          String   @id @default(uuid())
+  key         String   @unique // Stores the SIGNED VALIDATION TOKEN or Legacy Token
+  keyHash     String?  // SHA-256 hash of the valid Windows-style key (for secure lookup)
+  maskedKey   String?  // Masked version of the key (XXXXX-XXXXX-12345) for display
+  status      LicenseStatus @default(ACTIVE)
+  type        LicenseType   @default(PERPETUAL)
+  
+  validFrom   DateTime @default(now())
+  validUntil  DateTime? // Null for perpetual
+  
+  maxDevices  Int      @default(1)
+  devices     LicenseDevice[]
+
+  // Audit fields
+  revokedAt     DateTime?
+  revokedBy     String?
+  extendedAt    DateTime?
+  extendedCount Int      @default(0)
+
+  storeId     String   @unique
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+}
+
+model LicenseDevice {
+  id          String   @id @default(uuid())
+  licenseId   String
+  license     License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  
+  fingerprint String
+  deviceName  String?
+  lastSeen    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([licenseId, fingerprint])
+}
+
+enum LicenseStatus {
+  ACTIVE
+  PENDING
+  EXPIRED
+  REVOKED
+}
+
+enum LicenseType {
+  TRIAL
+  ANNUAL
+  PERPETUAL
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  isEnabled Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityRule {
+  id        String   @id @default(uuid())
+  type      SecurityRuleType
+  value     String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+enum SecurityRuleType {
+  IP
+  COUNTRY
+  USER_AGENT
+}
+
+model User {
+  id           String      @id @default(uuid())
+  username     String      @unique
+  email        String      @unique
+  contactNo    String?
+  password     String
+  pin          String?
+  role         Role        @default(USER)
+  tableMode    Boolean?
+
+  // Security & Control
+  isLocked        Boolean  @default(false)
+  isApproved      Boolean  @default(false) // Track admin approval for new registrations
+  disabledModules String[] @default([]) // Array of module IDs e.g. ["orders", "reports"]
+  lastIp          String?  // Track last login IP
+
+  // Store Relations
+  stores         Store[]   @relation("UserStores")
+  defaultStoreId String?
+  defaultStore   Store?    @relation("DefaultStore", fields: [defaultStoreId], references: [id])
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  notifications Notification[]
+  orders       Order[]
+}
+
+model Table {
+  id        String   @id @default(uuid())
+  name      String
+  capacity  Int      @default(4)
+  status    TableStatus @default(AVAILABLE)
+
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  kotNo          String      @unique
+  status         OrderStatus @default(HELD)
+  
+  totalAmount    Float
+  discountAmount Float       @default(0)
+  items          Json
+  paymentMode    PaymentMode?
+  
+  customerName   String?
+  customerMobile String?
+  
+  tableId        String?
+  tableName      String?
+  
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+
+  storeId        String
+  store          Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Indexes for fast queries
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
+}
+
+enum OrderStatus {
+  HELD
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMode {
+  CASH
+  CARD
+  UPI
+  OTHER
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  image     String?
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  
+  storeId   String
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([storeId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  description String?
+  image       String?
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  addons      Addon[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Addon {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
