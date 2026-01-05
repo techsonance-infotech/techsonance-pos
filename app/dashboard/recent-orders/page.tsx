@@ -11,9 +11,8 @@ import {
     DialogDescription,
 } from "@/components/ui/dialog"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
-import { getRecentOrders, convertOrderToHeld, deleteOrder } from "@/app/actions/orders"
-import { getBusinessSettings } from "@/app/actions/settings"
-import { getUserStoreDetails } from "@/app/actions/user"
+import { convertOrderToHeld, deleteOrder, getOrder } from "@/app/actions/orders"
+import { getRecentOrdersPageData } from "@/app/actions/pos"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import { toast } from "sonner"
@@ -38,8 +37,7 @@ export default function RecentOrdersPage() {
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
 
-    // Dynamic import to avoid server-component issues - Replacing with standard import as typical for Next.js 14+ client components using server actions
-    const { getOrder } = require("@/app/actions/orders")
+    // Use getOrder from server actions instead of require
 
     useEffect(() => {
         loadData()
@@ -49,7 +47,7 @@ export default function RecentOrdersPage() {
     useEffect(() => {
         if (viewOrderId) {
             async function fetchOrder() {
-                const order = await getOrder(viewOrderId)
+                const order = await getOrder(viewOrderId as string)
                 if (order) {
                     setSelectedOrder(order)
                     // Clear param so it doesn't reopen on refresh if user closes it? 
@@ -63,14 +61,12 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const [data, settings, store] = await Promise.all([
-            getRecentOrders(),
-            getBusinessSettings(),
-            getUserStoreDetails()
-        ])
-        setOrders(data)
-        setBusinessDetails(settings)
-        setStoreDetails(store)
+        const data = await getRecentOrdersPageData()
+        if (data) {
+            setOrders(data.orders)
+            setBusinessDetails(data.businessDetails)
+            setStoreDetails(data.storeDetails)
+        }
         setLoading(false)
     }
 

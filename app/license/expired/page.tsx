@@ -13,8 +13,8 @@ export default async function LicenseExpiredPage() {
                     </div>
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">License Expired</h1>
                     <p className="mt-4 text-gray-600">
-                        Your product license has expired or is invalid.
-                        Please contact the administrator or enter a new valid product key below to continue using the software.
+                        A valid license is required to access the system.
+                        If you have a new account or your license has expired, please enter a valid product key below.
                     </p>
                 </div>
 

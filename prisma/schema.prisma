@@ -35,21 +35,32 @@ model Store {
 
 model License {
   id          String   @id @default(uuid())
-  key         String   @unique // The signed JWT/String
+  key         String   @unique // Stores the SIGNED VALIDATION TOKEN or Legacy Token
+  keyHash     String?  // SHA-256 hash of the valid Windows-style key (for secure lookup)
+  maskedKey   String?  // Masked version of the key (XXXXX-XXXXX-12345) for display
   status      LicenseStatus @default(ACTIVE)
   type        LicenseType   @default(PERPETUAL)
   
   validFrom   DateTime @default(now())
-  validUntil  DateTime? // Null for perpetual, but practically can set far future
+  validUntil  DateTime? // Null for perpetual
   
   maxDevices  Int      @default(1)
   devices     LicenseDevice[]
+
+  // Audit fields
+  revokedAt     DateTime?
+  revokedBy     String?
+  extendedAt    DateTime?
+  extendedCount Int      @default(0)
 
   storeId     String   @unique
   store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
 }
 
 model LicenseDevice {
@@ -67,6 +78,7 @@ model LicenseDevice {
 
 enum LicenseStatus {
   ACTIVE
+  PENDING
   EXPIRED
   REVOKED
 }
@@ -136,6 +148,8 @@ model Table {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([storeId])
 }
 
 enum TableStatus {
@@ -152,6 +166,8 @@ model Notification {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
 }
 
 model Order {
@@ -178,6 +194,10 @@ model Order {
   
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+
+  // Indexes for fast queries
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
 }
 
 enum OrderStatus {
@@ -206,6 +226,8 @@ model Category {
   products  Product[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  @@index([storeId])
 }
 
 model Product {
@@ -221,6 +243,8 @@ model Product {
   addons      Addon[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
 }
 
 model Addon {

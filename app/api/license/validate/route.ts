@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { hashLicenseKey } from "@/lib/licensing"
 
 export async function POST(req: NextRequest) {
     try {
@@ -10,8 +11,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ valid: false, error: "Missing key or fingerprint" }, { status: 400 })
         }
 
-        const license = await prisma.license.findUnique({
-            where: { key },
+        // Support both Legacy (JWT) and New (Windows-style) keys
+        const keyHash = hashLicenseKey(key)
+
+        const license = await prisma.license.findFirst({
+            where: {
+                OR: [
+                    { key },           // Legacy direct match
+                    { keyHash }        // New hash match
+                ]
+            },
             include: { devices: true }
         })
 
