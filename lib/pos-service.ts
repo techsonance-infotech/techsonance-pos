@@ -1,4 +1,4 @@
-import { db, LocalOrder, LocalProduct, LocalCategory, LocalSettings } from '@/lib/db';
+import { db, LocalOrder, LocalProduct, LocalCategory, LocalSettings, LocalTable } from '@/lib/db';
 
 export interface POSDataService {
     getProducts: () => Promise<LocalProduct[]>;
@@ -15,6 +15,16 @@ export interface POSDataService {
     saveProductsBulk: (products: LocalProduct[]) => Promise<void>;
     saveCategoriesBulk: (categories: LocalCategory[]) => Promise<void>;
     saveSettingsBulk: (settings: LocalSettings[]) => Promise<void>;
+
+    // Orders (Offline Cache)
+    getRecentOrders: () => Promise<LocalOrder[]>;
+    getHeldOrders: () => Promise<LocalOrder[]>;
+    getOrder: (id: string) => Promise<LocalOrder | undefined>;
+    saveOrdersBulk: (orders: LocalOrder[]) => Promise<void>;
+
+    // Tables (Offline Cache)
+    getTables: () => Promise<LocalTable[]>;
+    saveTablesBulk: (tables: LocalTable[]) => Promise<void>;
 }
 
 // ----------------------------------------------------------------------
@@ -48,6 +58,28 @@ const electronService: POSDataService = {
     },
     saveSettingsBulk: async (settings) => {
         await (window as any).electron.saveSettingsBulk(settings);
+    },
+    getRecentOrders: async () => {
+        // Placeholder for electron
+        return [];
+    },
+    getHeldOrders: async () => {
+        // Placeholder for electron
+        return [];
+    },
+    getOrder: async (id) => {
+        // Placeholder for electron
+        return undefined;
+    },
+    saveOrdersBulk: async (orders) => {
+        // Placeholder for electron
+    },
+    getTables: async () => {
+        // Placeholder for electron
+        return [];
+    },
+    saveTablesBulk: async (tables) => {
+        // Placeholder for electron
     }
 };
 
@@ -100,6 +132,51 @@ const dexieService: POSDataService = {
         await db.transaction('rw', db.settings, async () => {
             await db.settings.clear();
             await db.settings.bulkPut(settings);
+        });
+    },
+
+    // New: Get Recent Orders (Cached/Offline) - COMPLETED orders
+    getRecentOrders: async () => {
+        // Return COMPLETED orders (either synced or originalStatus === COMPLETED)
+        return await db.orders
+            .filter(o => o.originalStatus === 'COMPLETED' || o.status === 'SYNCED')
+            .reverse()
+            .limit(50)
+            .toArray();
+    },
+
+    // New: Get Held Orders (Cached/Offline) - HELD orders
+    getHeldOrders: async () => {
+        // Return HELD orders that are either pending sync or already synced but still HELD
+        return await db.orders
+            .filter(o => o.originalStatus === 'HELD')
+            .reverse()
+            .toArray();
+    },
+
+    // New: Get Single Order (for Resume)
+    getOrder: async (id: string) => {
+        return await db.orders.get(id);
+    },
+
+    // New: Bulk save orders from server (for caching)
+    saveOrdersBulk: async (orders) => {
+        await db.transaction('rw', db.orders, async () => {
+            // Don't clear - we may have pending orders. Just update/add.
+            await db.orders.bulkPut(orders);
+        });
+    },
+
+    // New: Get Tables
+    getTables: async () => {
+        return await db.posTables.toArray();
+    },
+
+    // New: Bulk save tables from server
+    saveTablesBulk: async (tables) => {
+        await db.transaction('rw', db.posTables, async () => {
+            await db.posTables.clear();
+            await db.posTables.bulkPut(tables);
         });
     }
 };

@@ -32,7 +32,21 @@ export default function AppPreferencesPage() {
             setCurrencyCode(prefs.currencyCode)
             setDateFormat(prefs.dateFormat)
         } catch (error) {
-            toast.error("Failed to load preferences")
+            // Offline fallback - try to load from local cache
+            console.warn("Preferences: Server fetch failed, using local settings", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localSettings = await posService.getSettings()
+                const getSetting = (key: string, defaultVal: string) =>
+                    localSettings.find(s => s.key === key)?.value ?? defaultVal
+
+                setTheme(getSetting('pref_theme', 'light'))
+                setCurrencyCode(getSetting('pref_currencyCode', 'INR'))
+                setDateFormat(getSetting('pref_dateFormat', 'DD/MM/YYYY'))
+            } catch (innerError) {
+                console.error("Failed to load local preferences", innerError)
+            }
         } finally {
             setLoading(false)
         }

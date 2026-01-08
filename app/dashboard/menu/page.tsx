@@ -171,12 +171,30 @@ export default function MenuManagementPage() {
 
     async function loadInitialData() {
         setLoading(true)
-        const data = await getMenuPageData()
-        if (data) {
-            setCategories(data.categories)
-            setProducts(data.products)
-            if (data.categories.length > 0) {
-                setSelectedCategory(data.categories[0])
+        try {
+            const data = await getMenuPageData()
+            if (data) {
+                setCategories(data.categories)
+                setProducts(data.products)
+                if (data.categories.length > 0) {
+                    setSelectedCategory(data.categories[0])
+                }
+            }
+        } catch (error) {
+            // Offline fallback - load from local IndexedDB
+            console.warn("Menu page: Server fetch failed, using local cache", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localCategories = await posService.getCategories()
+                const localProducts = await posService.getProducts()
+                setCategories(localCategories as any[])
+                setProducts(localProducts as any[])
+                if (localCategories.length > 0) {
+                    setSelectedCategory(localCategories[0])
+                }
+            } catch (innerError) {
+                console.error("Failed to load local menu data", innerError)
             }
         }
         setLoading(false)

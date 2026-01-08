@@ -19,9 +19,16 @@ export default function NotificationsPage() {
 
     async function loadData() {
         setLoading(true)
-        const notes = await getNotifications(filter)
-        setNotifications(notes)
-        setLoading(false)
+        try {
+            const notes = await getNotifications(filter)
+            setNotifications(notes)
+        } catch (error) {
+            // Offline - notifications not available
+            console.warn("Notifications: Server fetch failed (offline?)", error)
+            setNotifications([])
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleMarkAllRead = async () => {

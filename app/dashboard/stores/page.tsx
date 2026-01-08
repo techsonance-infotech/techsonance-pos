@@ -3,8 +3,14 @@ import { redirect } from "next/navigation"
 import StoreManagementClient from "./store-client-impl"
 
 export default async function StoresPage() {
-    const user = await getUserProfile()
-    if (!user) redirect("/")
+    let user: any = null
+    try {
+        user = await getUserProfile()
+        if (!user) redirect("/")
+    } catch (error) {
+        // Offline - show limited UI
+        console.warn("StoresPage: Failed to get user (offline?)", error)
+    }
 
     return (
         <div className="p-6">

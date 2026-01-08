@@ -12,14 +12,26 @@ export default async function DashboardPage() {
     const user = await getUserProfile()
     if (!user) redirect("/")
     if (!user.defaultStoreId) redirect("/dashboard/stores")
-    // Note: We might want to pass the store name to UI if needed, but not required yet.
 
-    // Fetch dashboard data in parallel
-    const [stats, recentOrders, { symbol }] = await Promise.all([
-        getDashboardStats(user.defaultStoreId),
-        getRecentOrders(user.defaultStoreId),
-        getCurrency()
-    ])
+    // Default values for offline scenario
+    let stats: any = { todaySales: 0, totalOrders: 0, activeOrders: 0, heldOrders: 0 }
+    let recentOrders: any[] = []
+    let symbol = '₹'
+
+    try {
+        // Fetch dashboard data in parallel
+        const [fetchedStats, fetchedOrders, currency] = await Promise.all([
+            getDashboardStats(user.defaultStoreId),
+            getRecentOrders(user.defaultStoreId),
+            getCurrency()
+        ])
+        stats = fetchedStats
+        recentOrders = fetchedOrders
+        symbol = currency.symbol
+    } catch (error) {
+        // Server actions failed - likely offline. Show cached UI with default values.
+        console.warn("DashboardPage: Failed to fetch data (offline?)", error)
+    }
 
     return (
         <div className="space-y-8">

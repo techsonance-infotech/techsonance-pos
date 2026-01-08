@@ -10,17 +10,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Apply to all routes
-        source: "/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            // Private (not CDN cached), must revalidate with server
-            value: "private, no-cache, no-store, must-revalidate",
-          },
-        ],
-      },
-      {
         // Static assets with hash in filename - cache aggressively
         source: "/_next/static/:path*",
         headers: [
@@ -53,13 +42,38 @@ const withPWA = require("next-pwa")({
   // Cache strategy for App Router
   runtimeCaching: [
     {
+      urlPattern: /\/_next\/image\?url/i,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'next-image',
+        expiration: {
+          maxEntries: 64,
+          maxAgeSeconds: 24 * 60 * 60, // 24 hours
+        },
+      },
+    },
+    {
+      urlPattern: /\?_rsc=/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'next-rsc',
+        expiration: {
+          maxEntries: 200,
+          maxAgeSeconds: 24 * 60 * 60, // 24 hours
+        },
+        networkTimeoutSeconds: 5, // Fast fallback if offline/slow
+      },
+    },
+    {
       urlPattern: /^https?.*/,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'offlineCache',
         expiration: {
           maxEntries: 200,
+          maxAgeSeconds: 24 * 60 * 60,
         },
+        networkTimeoutSeconds: 5,
       },
     }
   ],

@@ -86,7 +86,54 @@ export default function NewOrderPage() {
                     }
                 }
 
-                // 2. If Online & Local Empty, fetch from Server
+                // 3. Handle Resume Order
+                const resumeOrderId = searchParams.get('resumeOrderId')
+                if (resumeOrderId && loadedOrderRef.current !== resumeOrderId) {
+                    let order: any = null
+
+                    // Try Local First
+                    try {
+                        order = await posService.getOrder(resumeOrderId)
+                    } catch (e) { console.error("Local fetch failed", e) }
+
+                    // If not local and online, try Server
+                    if (!order && isOnline) {
+                        try {
+                            order = await getOrder(resumeOrderId)
+                        } catch (e) { console.error("Server fetch failed", e) }
+                    }
+
+                    if (order) {
+                        loadedOrderRef.current = resumeOrderId // Prevent re-loading
+                        setResumeId(order.id)
+                        setGuestName(order.customerName || '')
+                        setGuestMobile(order.customerMobile || '')
+                        if (order.tableId) {
+                            // URL params for table might override or match. 
+                            // If URL has table, arguably we keep it (moving order to new table?) 
+                            // or rely on order data. Let's rely on order data if present.
+                        }
+                        if (order.paymentMode) setPaymentMode(order.paymentMode)
+
+                        // Restore Cart
+                        if (Array.isArray(order.items)) {
+                            const restoredCart: CartItem[] = order.items.map((item: any) => ({
+                                cartId: Math.random().toString(36).substr(2, 9),
+                                id: item.id || item.productId, // Handle both structures if stored differently
+                                name: item.name,
+                                unitPrice: item.unitPrice || item.price,
+                                quantity: item.quantity,
+                                addons: item.addons || []
+                            }))
+                            setCart(restoredCart)
+                        }
+                        toast.success("Order Loaded")
+                    } else {
+                        toast.error("Order not found")
+                    }
+                }
+
+                // 2. If Online & Local Empty, fetch from Server (Products)
                 if (localProducts.length === 0 && isOnline) {
                     const data = await getPOSInitialData()
                     if (data) {
@@ -99,9 +146,11 @@ export default function NewOrderPage() {
                 }
             } catch (error) {
                 console.error("Failed to load POS data", error)
-                // Only show toast if it's a real error, not just empty
+                // Only show toast if it's a real error, not just empty OR network error
                 const msg = error instanceof Error ? error.message : String(error)
-                if (msg !== 'No products found') {
+                const isNetworkError = msg.includes('Failed to fetch') || msg.includes('Network request failed')
+
+                if (msg !== 'No products found' && !isNetworkError) {
                     toast.error(`Failed to load products: ${msg}`)
                 }
             } finally {
@@ -110,6 +159,55 @@ export default function NewOrderPage() {
         }
         loadInitialData()
     }, [isOnline])
+
+    // New Effect: Handle Resume Order (Runs on URL change or Network change)
+    useEffect(() => {
+        const resumeId = searchParams.get('resumeId') || searchParams.get('resumeOrderId')
+        if (!resumeId || loadedOrderRef.current === resumeId) return
+
+        const loadResumeOrder = async () => {
+            const posService = getPOSService()
+            let order: any = null
+
+            // Try Local First
+            try {
+                order = await posService.getOrder(resumeId)
+            } catch (e) { console.error("Local fetch failed", e) }
+
+            // If not local and online, try Server
+            if (!order && isOnline) {
+                try {
+                    order = await getOrder(resumeId)
+                } catch (e) { console.error("Server fetch failed", e) }
+            }
+
+            if (order) {
+                loadedOrderRef.current = resumeId // Prevent re-loading
+                setResumeId(order.id)
+                setGuestName(order.customerName || '')
+                setGuestMobile(order.customerMobile || '')
+                if (order.paymentMode) setPaymentMode(order.paymentMode)
+
+                // Restore Cart
+                if (Array.isArray(order.items)) {
+                    const restoredCart: CartItem[] = order.items.map((item: any) => ({
+                        cartId: Math.random().toString(36).substr(2, 9),
+                        id: item.id || item.productId, // Handle both structures if stored differently
+                        name: item.name,
+                        unitPrice: item.unitPrice || item.price,
+                        quantity: item.quantity,
+                        addons: item.addons || []
+                    }))
+                    setCart(restoredCart)
+                }
+                toast.success("Order Loaded")
+            } else {
+                toast.error("Order not found")
+            }
+        }
+
+        loadResumeOrder()
+    }, [searchParams, isOnline]) // Only depends on network status for initial data
 
     // --- Unified Order Processing ---
     async function processOrder(status: 'COMPLETED' | 'HELD', print: boolean = false) {
@@ -145,7 +243,8 @@ export default function NewOrderPage() {
                     ...orderData,
                     items: cart,
                     createdAt: Date.now(),
-                    status: 'PENDING_SYNC'
+                    status: 'PENDING_SYNC',
+                    originalStatus: status // Preserve the intended status (HELD or COMPLETED)
                 })
 
                 if (result.success) {

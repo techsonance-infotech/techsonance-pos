@@ -4,7 +4,13 @@ import { Building2, Home, ChevronRight } from "lucide-react"
 import Link from "next/link"
 
 export default async function BusinessSettingsPage() {
-    const settings = await getBusinessSettings()
+    let settings: any = {}
+    try {
+        settings = await getBusinessSettings()
+    } catch (error) {
+        // Server action failed - likely offline. Client form will handle with defaults.
+        console.warn("BusinessSettingsPage: Failed to fetch settings (offline?)", error)
+    }
 
     return (
         <div className="flex-1 space-y-6 p-8 pt-6">

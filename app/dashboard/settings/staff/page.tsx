@@ -29,9 +29,16 @@ export default function StaffSettingsPage() {
 
     const loadData = async () => {
         setLoading(true)
-        const data = await getStoreStaff()
-        setStaff(data)
-        setLoading(false)
+        try {
+            const data = await getStoreStaff()
+            setStaff(data)
+        } catch (error) {
+            // Offline - staff management not available offline, just show empty
+            console.warn("Staff page: Server fetch failed (offline?)", error)
+            setStaff([])
+        } finally {
+            setLoading(false)
+        }
     }
 
     // Handle Create

@@ -54,10 +54,17 @@ export default function SettingsPage() {
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        getUserProfile().then(user => {
-            if (user) setUserRole(user.role)
-            setIsLoading(false)
-        })
+        getUserProfile()
+            .then(user => {
+                if (user) setUserRole(user.role)
+            })
+            .catch(error => {
+                // Offline - show default settings without admin options
+                console.warn("Settings page: Failed to get user profile (offline?)", error)
+            })
+            .finally(() => {
+                setIsLoading(false)
+            })
     }, [])
 
     if (isLoading) {

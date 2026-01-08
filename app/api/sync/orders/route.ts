@@ -51,7 +51,7 @@ export async function POST(request: Request) {
                         customerMobile: order.customerMobile,
                         tableId: order.tableId,
                         tableName: order.tableName,
-                        status: 'COMPLETED', // Offline orders are usually completed sales
+                        status: order.originalStatus || 'COMPLETED', // Use original status, fallback to COMPLETED for legacy
                         paymentMode: order.paymentMode,
                         totalAmount: order.totalAmount,
                         discountAmount: 0, // Default
@@ -71,7 +71,15 @@ export async function POST(request: Request) {
             }
         }
 
-        return NextResponse.json({ success: true, results });
+        const syncedIds = results
+            .filter(r => r.status === 'SYNCED' || r.status === 'ALREADY_EXISTS')
+            .map(r => r.id)
+
+        const failedIds = results
+            .filter(r => r.status === 'FAILED')
+            .map(r => r.id)
+
+        return NextResponse.json({ success: true, results, syncedIds, failedIds });
 
     } catch (error) {
         console.error("Sync API Error", error);

@@ -13,7 +13,11 @@ export function useCurrency() {
                 const curr = await getCurrency()
                 setCurrency(curr)
             } catch (error) {
-                console.error('Failed to load currency:', error)
+                // Suppress network errors
+                const msg = error instanceof Error ? error.message : String(error)
+                if (!msg.includes('Failed to fetch') && !msg.includes('Network request failed')) {
+                    console.error('Failed to load currency:', error)
+                }
             } finally {
                 setLoading(false)
             }

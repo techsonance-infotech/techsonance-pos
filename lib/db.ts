@@ -14,6 +14,7 @@ export interface LocalOrder {
     tableName?: string;
     createdAt: number; // Timestamp
     status: 'PENDING_SYNC' | 'SYNCED' | 'FAILED';
+    originalStatus: 'HELD' | 'COMPLETED'; // The actual order status to use when syncing
     syncedAt?: number;
     error?: string; // For failed sync attempts
 }
@@ -42,21 +43,31 @@ export interface LocalSettings {
     value: any;
 }
 
+export interface LocalTable {
+    id: string;
+    name: string;
+    capacity?: number;
+    status: string; // 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'
+    orderId?: string;
+}
+
 export class POSDatabase extends Dexie {
     orders!: Table<LocalOrder>;
     products!: Table<LocalProduct>;
     categories!: Table<LocalCategory>;
     settings!: Table<LocalSettings>;
+    posTables!: Table<LocalTable>; // Renamed to avoid conflict with Dexie.tables
 
     constructor() {
         super('TechSonancePOS');
 
-        // Schema versioning - v2: Added sortOrder index to products
-        this.version(2).stores({
-            orders: 'id, status, createdAt, customerMobile', // Indexes
+        // Schema versioning - v3: Added tables
+        this.version(3).stores({
+            orders: 'id, status, originalStatus, createdAt, customerMobile', // Added originalStatus index
             products: 'id, categoryId, name, sortOrder',
             categories: 'id, sortOrder',
-            settings: 'key'
+            settings: 'key',
+            posTables: 'id, status' // Renamed table
         });
     }
 }

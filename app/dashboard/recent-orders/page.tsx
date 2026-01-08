@@ -61,13 +61,29 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const data = await getRecentOrdersPageData()
-        if (data) {
-            setOrders(data.orders)
-            setBusinessDetails(data.businessDetails)
-            setStoreDetails(data.storeDetails)
+        try {
+            // Try fetching from Server first
+            const data = await getRecentOrdersPageData()
+            if (data) {
+                setOrders(data.orders)
+                setBusinessDetails(data.businessDetails)
+                setStoreDetails(data.storeDetails)
+            }
+        } catch (error) {
+            // Fallback to Offline Data
+            console.log("Offline mode: Loading local orders")
+            try {
+                // Dynamically import to avoid server-side issues if any (though client comp is fine)
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localOrders = await posService.getRecentOrders()
+                setOrders(localOrders)
+            } catch (innerError) {
+                console.error("Failed to load local orders", innerError)
+            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     // Handle Edit Order (Convert to HELD)

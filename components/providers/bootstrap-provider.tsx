@@ -3,7 +3,9 @@
 import { useEffect, useState, createContext, useContext } from 'react'
 import { getPOSInitialData } from '@/app/actions/pos'
 import { getUserProfile } from '@/app/actions/user'
-import { db, LocalSettings, LocalCategory, LocalProduct } from '@/lib/db'
+import { getRecentOrders, getHeldOrders } from '@/app/actions/orders'
+import { getTables } from '@/app/actions/tables'
+import { db, LocalSettings, LocalCategory, LocalProduct, LocalOrder, LocalTable } from '@/lib/db'
 import { getPOSService } from '@/lib/pos-service'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import { toast } from 'sonner'
@@ -117,12 +119,88 @@ export function BootstrapProvider({ children }: { children: React.ReactNode }) {
             }
             await posService.saveProductsBulk(products)
 
+            // 5. Sync Tables
+            try {
+                const serverTables = await getTables()
+                if (serverTables && serverTables.length > 0) {
+                    const tables: LocalTable[] = serverTables.map((t: any) => ({
+                        id: t.id,
+                        name: t.name,
+                        capacity: t.capacity,
+                        status: t.status,
+                        orderId: t.orderId
+                    }))
+                    await posService.saveTablesBulk(tables)
+                    console.log(`Cached ${tables.length} tables`)
+                }
+            } catch (e) {
+                console.error("Tables sync failed:", e)
+            }
+
+            // 6. Sync Recent Orders (for offline viewing)
+            try {
+                const serverRecent = await getRecentOrders()
+                if (serverRecent && serverRecent.length > 0) {
+                    const orders: LocalOrder[] = serverRecent.map((o: any) => ({
+                        id: o.id,
+                        kotNo: o.kotNo,
+                        items: o.items,
+                        totalAmount: o.totalAmount,
+                        paymentMode: o.paymentMode || 'CASH',
+                        customerName: o.customerName,
+                        customerMobile: o.customerMobile,
+                        tableId: o.tableId,
+                        tableName: o.tableName,
+                        createdAt: new Date(o.createdAt).getTime(),
+                        status: 'SYNCED',
+                        originalStatus: 'COMPLETED'
+                    }))
+                    await posService.saveOrdersBulk(orders)
+                    console.log(`Cached ${orders.length} recent orders`)
+                }
+            } catch (e) {
+                console.error("Recent orders sync failed:", e)
+            }
+
+            // 7. Sync Held Orders (for offline KOT viewing)
+            try {
+                const serverHeld = await getHeldOrders()
+                if (serverHeld && serverHeld.length > 0) {
+                    const orders: LocalOrder[] = serverHeld.map((o: any) => ({
+                        id: o.id,
+                        kotNo: o.kotNo,
+                        items: o.items,
+                        totalAmount: o.totalAmount,
+                        paymentMode: o.paymentMode || 'CASH',
+                        customerName: o.customerName,
+                        customerMobile: o.customerMobile,
+                        tableId: o.tableId,
+                        tableName: o.tableName,
+                        createdAt: new Date(o.createdAt).getTime(),
+                        status: 'SYNCED',
+                        originalStatus: 'HELD'
+                    }))
+                    await posService.saveOrdersBulk(orders)
+                    console.log(`Cached ${orders.length} held orders`)
+                }
+            } catch (e) {
+                console.error("Held orders sync failed:", e)
+            }
+
             console.log("Bootstrap Sync Complete")
             setIsBootstrapped(true)
             toast.success("Offline Data Ready", { icon: "✅" })
         } catch (error) {
-            console.error("Bootstrap Sync Failed:", error)
-            toast.error("Failed to sync offline data")
+            // Check if it's a network error (offline)
+            const isNetworkError = error instanceof TypeError && error.message.includes('Failed to fetch')
+
+            if (isNetworkError) {
+                console.warn("Bootstrap Sync skipped: Network unavailable (Failed to fetch)")
+                // Do not show error toast for offline scenarios
+            } else {
+                console.error("Bootstrap Sync Failed:", error)
+                toast.error("Failed to sync offline data")
+            }
         } finally {
             setIsSyncing(false) // Reset syncing state
         }
@@ -132,8 +210,45 @@ export function BootstrapProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (isOnline) {
             syncData()
+
+            // Show toast only if we were previously offline (simple check via non-initial render? 
+            // Actually simpler to just show "Back Online" if it flips to true, but we need to track previous state.
+            // For now, let's just use the fact that this effect runs on change.)
+            // But we don't want to show it on initial mount if already online.
+            // We can leave "Back Online" to the sync success toast usually?
+            // User requested "You are Offline" toast removal of duplicates.
+            // Let's add the "You are Offline" toast here when isOnline becomes false.
         }
     }, [isOnline])
+
+    // Global Network Status Toasts
+    useEffect(() => {
+        const handleOffline = () => {
+            toast.warning("You are Offline", {
+                description: "Changes will be saved locally.",
+                icon: "🔴",
+                id: 'offline-toast' // Prevent duplicates even if called multiple times
+            })
+        }
+
+        const handleOnline = () => {
+            // Optional: Dismiss offline toast
+            toast.dismiss('offline-toast')
+            toast.success("Back Online", {
+                description: "Syncing data...",
+                icon: "🟢",
+                id: 'online-toast'
+            })
+        }
+
+        window.addEventListener('offline', handleOffline)
+        window.addEventListener('online', handleOnline)
+
+        return () => {
+            window.removeEventListener('offline', handleOffline)
+            window.removeEventListener('online', handleOnline)
+        }
+    }, [])
 
     return (
         <BootstrapContext.Provider value={{ isBootstrapped, isSyncing, forceSync: syncData }}>
