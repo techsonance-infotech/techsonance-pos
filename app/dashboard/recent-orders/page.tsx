@@ -61,13 +61,29 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const data = await getRecentOrdersPageData()
-        if (data) {
-            setOrders(data.orders)
-            setBusinessDetails(data.businessDetails)
-            setStoreDetails(data.storeDetails)
+        try {
+            // Try fetching from Server first
+            const data = await getRecentOrdersPageData()
+            if (data) {
+                setOrders(data.orders)
+                setBusinessDetails(data.businessDetails)
+                setStoreDetails(data.storeDetails)
+            }
+        } catch (error) {
+            // Fallback to Offline Data
+            console.log("Offline mode: Loading local orders")
+            try {
+                // Dynamically import to avoid server-side issues if any (though client comp is fine)
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localOrders = await posService.getRecentOrders()
+                setOrders(localOrders)
+            } catch (innerError) {
+                console.error("Failed to load local orders", innerError)
+            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     // Handle Edit Order (Convert to HELD)
@@ -115,7 +131,7 @@ export default function RecentOrdersPage() {
     }
 
     // Filter Logic
-    const filteredOrders = orders.filter(order => {
+    const filteredOrders = orders.filter((order: any) => {
         const matchesSearch =
             order.kotNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -192,7 +208,7 @@ export default function RecentOrdersPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredOrders.map((order) => (
+                                    {filteredOrders.map((order: any) => (
                                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="px-6 py-4 font-bold text-gray-900">{order.kotNo}</td>
                                             <td className="px-6 py-4 text-gray-600">

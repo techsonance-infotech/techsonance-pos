@@ -33,8 +33,8 @@ export async function getPrinterSettings() {
         })
 
         const settingsMap: any = {}
-        settings.forEach(setting => {
-            const key = setting.key.replace('printer_', '').replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+        settings.forEach((setting: any) => {
+            const key = setting.key.replace('printer_', '').replace(/_([a-z])/g, (_: any, letter: any) => letter.toUpperCase())
             let value: any = setting.value
 
             // Parse numeric values

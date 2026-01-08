@@ -78,11 +78,16 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
                 }
             }
 
+            // 4. Store Mode Check (Hide Tables in Counter Mode)
+            if (item.href.includes('tables') && !storeTableMode) {
+                return false
+            }
+
             // Otherwise, show the item
             return true
         })
         setItems(filteredItems)
-    }, [userRole, disabledModules])
+    }, [userRole, disabledModules, storeTableMode])
 
     // ... (existing logic)
 

@@ -64,7 +64,7 @@ export async function getSalesOverview() {
                 week: { sales: weekSales._sum.totalAmount || 0, orders: weekSales._count },
                 month: { sales: monthSales._sum.totalAmount || 0, orders: monthSales._count },
                 topCategory: 'N/A',
-                trend: last7Days.map(d => ({ date: format(new Date(d.date), 'MMM dd'), sales: Number(d.total) }))
+                trend: last7Days.map((d: { date: Date, total: number }) => ({ date: format(new Date(d.date), 'MMM dd'), sales: Number(d.total) }))
             }
         },
         [`sales-overview-${storeId}`],
@@ -117,12 +117,12 @@ export async function getDailySalesReport(date: Date) {
         totalSales: dailyStats._sum.totalAmount || 0,
         orderCount: dailyStats._count,
         averageOrderValue: dailyStats._avg.totalAmount || 0,
-        hourlyBreakdown: hourlyData.map(h => ({
+        hourlyBreakdown: hourlyData.map((h: { hour: number, total: number, count: number }) => ({
             hour: h.hour,
             sales: Number(h.total),
             orders: Number(h.count)
         })),
-        orders: orders.map(o => ({
+        orders: orders.map((o: any) => ({
             id: o.id,
             kotNo: o.kotNo,
             time: format(new Date(o.createdAt), 'HH:mm'),
@@ -151,7 +151,7 @@ export async function getCategoryWiseReport(startDate: Date, endDate: Date) {
     })
 
     // Since items are JSON and we don't have category info, return simplified data
-    const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const totalRevenue = orders.reduce((sum: number, order: any) => sum + order.totalAmount, 0)
 
     return {
         startDate: format(startDate, 'yyyy-MM-dd'),
@@ -160,7 +160,7 @@ export async function getCategoryWiseReport(startDate: Date, endDate: Date) {
             id: '1',
             name: 'All Items',
             revenue: totalRevenue,
-            quantity: orders.reduce((sum, o) => sum + (Array.isArray(o.items) ? o.items.length : 0), 0),
+            quantity: orders.reduce((sum: number, o: any) => sum + (Array.isArray(o.items) ? o.items.length : 0), 0),
             orders: orders.length,
             percentage: 100
         }],
@@ -211,12 +211,12 @@ export async function getDateRangeReport(startDate: Date, endDate: Date) {
         totalSales: stats._sum.totalAmount || 0,
         orderCount: stats._count,
         averageOrderValue: stats._avg.totalAmount || 0,
-        dailyBreakdown: dailyData.map(d => ({
+        dailyBreakdown: dailyData.map((d: { date: Date, total: number, count: number }) => ({
             date: format(new Date(d.date), 'MMM dd'),
             sales: Number(d.total),
             orders: Number(d.count)
         })),
-        transactions: transactions.map(t => ({
+        transactions: transactions.map((t: any) => ({
             id: t.id,
             date: format(new Date(t.createdAt), 'MMM dd, yyyy'),
             time: format(new Date(t.createdAt), 'HH:mm'),
@@ -243,8 +243,8 @@ export async function getMonthlySalesReport(year: number) {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
     // Fill in missing months with 0
-    const fullYearData = monthNames.map((name, index) => {
-        const monthData = monthlyData.find(m => m.month === index + 1)
+    const fullYearData = monthNames.map((name: string, index: number) => {
+        const monthData = monthlyData.find((m: { month: number }) => m.month === index + 1)
         return {
             month: name,
             sales: monthData ? Number(monthData.total) : 0,
@@ -252,8 +252,8 @@ export async function getMonthlySalesReport(year: number) {
         }
     })
 
-    const totalYearSales = fullYearData.reduce((sum, m) => sum + m.sales, 0)
-    const bestMonth = fullYearData.reduce((best, current) =>
+    const totalYearSales = fullYearData.reduce((sum: number, m: any) => sum + m.sales, 0)
+    const bestMonth = fullYearData.reduce((best: any, current: any) =>
         current.sales > best.sales ? current : best
     )
 
@@ -288,7 +288,7 @@ export async function getTopSellingItems(limit: number = 10, startDate?: Date, e
     // Parse items from JSON and aggregate
     const itemMap = new Map<string, { name: string, quantity: number, revenue: number, orders: Set<string> }>()
 
-    orders.forEach((order, orderIndex) => {
+    orders.forEach((order: any, orderIndex: number) => {
         if (Array.isArray(order.items)) {
             order.items.forEach((item: any) => {
                 const key = item.name || `Item ${orderIndex}`
@@ -303,7 +303,7 @@ export async function getTopSellingItems(limit: number = 10, startDate?: Date, e
 
     // Convert to array and sort by quantity
     const topItems = Array.from(itemMap.entries())
-        .map(([id, data]) => ({
+        .map(([id, data]: [string, any]) => ({
             id,
             name: data.name,
             category: 'General',
@@ -317,7 +317,7 @@ export async function getTopSellingItems(limit: number = 10, startDate?: Date, e
     return {
         startDate: format(start, 'yyyy-MM-dd'),
         endDate: format(end, 'yyyy-MM-dd'),
-        items: topItems.map((item, index) => ({
+        items: topItems.map((item: any, index: number) => ({
             rank: index + 1,
             ...item
         }))

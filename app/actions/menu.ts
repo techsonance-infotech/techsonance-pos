@@ -112,7 +112,7 @@ export async function deleteCategory(id: string) {
 export async function updateCategoryOrder(items: { id: string, sortOrder: number }[]) {
     try {
         await prisma.$transaction(
-            items.map(item =>
+            items.map((item: any) =>
                 prisma.category.update({
                     where: { id: item.id },
                     data: { sortOrder: item.sortOrder }
@@ -238,7 +238,7 @@ export async function saveProduct(data: any) {
 export async function updateProductOrder(items: { id: string, sortOrder: number }[]) {
     try {
         await prisma.$transaction(
-            items.map(item =>
+            items.map((item: any) =>
                 prisma.product.update({
                     where: { id: item.id },
                     data: { sortOrder: item.sortOrder }

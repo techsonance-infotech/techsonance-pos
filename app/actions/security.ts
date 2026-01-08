@@ -79,7 +79,7 @@ export async function updateUserStores(userId: string, storeIds: string[], defau
         where: { id: userId },
         data: {
             stores: {
-                set: storeIds.map(id => ({ id }))
+                set: storeIds.map((id: string) => ({ id }))
             },
             defaultStoreId: defaultStoreId
         }

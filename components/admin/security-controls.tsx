@@ -96,10 +96,10 @@ export function SecurityControls({ initialRules, maintenanceMode, lockedCount, c
                         <Button variant="destructive" size="sm" onClick={handleBlockIp} disabled={loading}>Block</Button>
                     </div>
                     <div className="space-y-2 h-[200px] overflow-y-auto">
-                        {initialRules.filter(r => r.type === 'IP').length === 0 && (
+                        {initialRules.filter((r: any) => r.type === 'IP').length === 0 && (
                             <div className="text-sm text-muted-foreground text-center py-4">No active rules</div>
                         )}
-                        {initialRules.filter(r => r.type === 'IP').map(rule => (
+                        {initialRules.filter((r: any) => r.type === 'IP').map((rule: any) => (
                             <div key={rule.id} className="flex items-center justify-between p-2 bg-muted rounded text-sm">
                                 <div className="font-mono">{rule.value}</div>
                                 <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => handleUnblock(rule.value)}>

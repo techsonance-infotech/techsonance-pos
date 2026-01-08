@@ -10,7 +10,7 @@ export async function switchStore(storeId: string) {
     if (!user) return { error: "Not authenticated" }
 
     // Verify user belongs to this store
-    const hasAccess = user.stores.some(s => s.id === storeId)
+    const hasAccess = user.stores.some((s: any) => s.id === storeId)
     if (!hasAccess && user.role !== 'SUPER_ADMIN') {
         return { error: "You do not have access to this store" }
     }
@@ -64,7 +64,7 @@ export async function updateStore(storeId: string, formData: FormData) {
         return { error: "Unauthorized" }
     }
 
-    const hasAccess = user.stores.some(s => s.id === storeId)
+    const hasAccess = user.stores.some((s: any) => s.id === storeId)
     if (!hasAccess && user.role !== 'SUPER_ADMIN') {
         return { error: "You do not have access to this store" }
     }
@@ -94,7 +94,7 @@ export async function deleteStore(storeId: string) {
         return { error: "Unauthorized" }
     }
 
-    const hasAccess = user.stores.some(s => s.id === storeId)
+    const hasAccess = user.stores.some((s: any) => s.id === storeId)
     if (!hasAccess && user.role !== 'SUPER_ADMIN') {
         return { error: "You do not have access to this store" }
     }

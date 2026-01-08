@@ -89,7 +89,7 @@ export async function getRecentOrders(storeId: string): Promise<RecentOrder[]> {
         }
     })
 
-    return orders.map(o => ({
+    return orders.map((o: any) => ({
         id: o.id,
         kotNo: o.kotNo,
         customerName: o.customerName || (o.tableName ? `Table: ${o.tableName}` : "Walk-in Customer"),

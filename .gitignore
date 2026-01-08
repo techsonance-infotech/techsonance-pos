@@ -54,3 +54,24 @@ secrets/secrets.prod.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# backups
+backups/
+
+# Electron build output
+dist/
+dist-electron/
+out/
+build/
+
+# Electron compiled files
+*.exe
+*.dmg
+*.app
+*.AppImage
+*.blockmap
+
+# Electron builder files
+builder-debug.yml
+builder-effective-config.yaml
+latest.yml

@@ -29,9 +29,16 @@ export default function StaffSettingsPage() {
 
     const loadData = async () => {
         setLoading(true)
-        const data = await getStoreStaff()
-        setStaff(data)
-        setLoading(false)
+        try {
+            const data = await getStoreStaff()
+            setStaff(data)
+        } catch (error) {
+            // Offline - staff management not available offline, just show empty
+            console.warn("Staff page: Server fetch failed (offline?)", error)
+            setStaff([])
+        } finally {
+            setLoading(false)
+        }
     }
 
     // Handle Create
@@ -65,11 +72,11 @@ export default function StaffSettingsPage() {
 
     // Calculate Stats
     const totalStaff = staff.length
-    const activeStaff = staff.filter(s => !s.isLocked).length
-    const inactiveStaff = staff.filter(s => s.isLocked).length
+    const activeStaff = staff.filter((s: any) => !s.isLocked).length
+    const inactiveStaff = staff.filter((s: any) => s.isLocked).length
 
     // Group by role
-    const rolesCount = staff.reduce((acc, curr) => {
+    const rolesCount = staff.reduce((acc: any, curr: any) => {
         const roleName = curr.role || 'USER'
         acc[roleName] = (acc[roleName] || 0) + 1
         return acc
@@ -140,7 +147,7 @@ export default function StaffSettingsPage() {
                                 </Button>
                             </div>
                         ) : (
-                            staff.map((member) => (
+                            staff.map((member: any) => (
                                 <div
                                     key={member.id}
                                     onClick={() => handleRowClick(member)}

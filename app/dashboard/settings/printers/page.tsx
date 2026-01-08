@@ -93,7 +93,21 @@ export default function PrinterSettingsPage() {
                 setFooterText(settings.footerText || "")
             }
         } catch (error) {
-            toast.error("Failed to load printer settings")
+            // Offline fallback - load from local cache
+            console.warn("Printer settings: Server fetch failed, using local cache", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localSettings = await posService.getSettings()
+                const getSetting = (key: string, defaultVal: string) =>
+                    localSettings.find(s => s.key === key)?.value ?? defaultVal
+
+                setPrinterName(getSetting('printer_name', ''))
+                setPrinterType(getSetting('printer_type', 'thermal_80mm'))
+                setAutoPrint(getSetting('printer_autoPrint', 'false') === 'true')
+            } catch (innerError) {
+                console.error("Failed to load local printer settings", innerError)
+            }
         } finally {
             setLoading(false)
         }
@@ -206,7 +220,7 @@ export default function PrinterSettingsPage() {
                                         <SelectValue placeholder="Select a printer" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {availablePrinters.map((printer) => (
+                                        {availablePrinters.map((printer: any) => (
                                             <SelectItem key={printer} value={printer}>
                                                 {printer}
                                             </SelectItem>

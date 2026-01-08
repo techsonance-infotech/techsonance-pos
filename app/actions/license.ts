@@ -155,9 +155,9 @@ export async function getLicenseStats() {
     })
 
     const total = licenses.length
-    const active = licenses.filter(l => l.status === 'ACTIVE').length
-    const expired = licenses.filter(l => l.status === 'REVOKED' || (l.validUntil && new Date(l.validUntil) < new Date())).length
-    const totalDevices = licenses.reduce((sum, l) => sum + (l.devices?.length || 0), 0)
+    const active = licenses.filter((l: any) => l.status === 'ACTIVE').length
+    const expired = licenses.filter((l: any) => l.status === 'REVOKED' || (l.validUntil && new Date(l.validUntil) < new Date())).length
+    const totalDevices = licenses.reduce((sum: number, l: any) => sum + (l.devices?.length || 0), 0)
 
     return { total, active, expired, totalDevices }
 }

@@ -7,6 +7,9 @@ import { getUserProfile } from "@/app/actions/user"
 import { getNotifications, markNotificationAsRead, markAllAsRead } from "@/app/actions/notifications"
 import { logout } from "@/app/actions/logout"
 import { cn } from "@/lib/utils"
+import { Wifi, WifiOff, RefreshCw } from "lucide-react"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { useSync } from "@/components/providers/sync-provider"
 
 type Notification = {
     id: string
@@ -21,6 +24,10 @@ export function Header({ initialUser }: { initialUser: any | null }) {
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [showNotifications, setShowNotifications] = useState(false)
     const [unreadOnly, setUnreadOnly] = useState(false)
+
+    // Offline/Sync State
+    const isOnline = useNetworkStatus()
+    const { isSyncing, pendingCount, syncNow } = useSync()
 
 
     // Sync with server prop (Revalidation fix)
@@ -131,6 +138,32 @@ export function Header({ initialUser }: { initialUser: any | null }) {
                     <MapPin className="h-4 w-4 text-orange-500" />
                     <span className="text-sm font-medium">{user?.defaultStore?.name || "Select Store"}</span>
                 </a>
+
+                {/* Network & Sync Status */}
+                {!isOnline ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-xs font-bold animate-pulse">
+                        <WifiOff className="h-3 w-3" />
+                        <span>Offline</span>
+                    </div>
+                ) : isSyncing ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        <span>Syncing...</span>
+                    </div>
+                ) : pendingCount > 0 ? (
+                    <button
+                        onClick={() => syncNow()}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold hover:bg-amber-200 transition-colors"
+                        title="Click to sync pending orders"
+                    >
+                        <RefreshCw className="h-3 w-3" />
+                        <span>{pendingCount} Pending</span>
+                    </button>
+                ) : (
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-xs font-bold opacity-50 hover:opacity-100 transition-opacity" title="System Online & Synced">
+                        <Wifi className="h-3 w-3" />
+                    </div>
+                )}
             </div>
 
             {/* Center: Search Bar (Big) */}

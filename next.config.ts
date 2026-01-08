@@ -10,17 +10,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Apply to all routes
-        source: "/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            // Private (not CDN cached), must revalidate with server
-            value: "private, no-cache, no-store, must-revalidate",
-          },
-        ],
-      },
-      {
         // Static assets with hash in filename - cache aggressively
         source: "/_next/static/:path*",
         headers: [
@@ -45,4 +34,53 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withPWA = require("next-pwa")({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+  // Cache strategy for App Router
+  runtimeCaching: [
+    {
+      urlPattern: /\/_next\/image\?url/i,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'next-image',
+        expiration: {
+          maxEntries: 64,
+          maxAgeSeconds: 24 * 60 * 60, // 24 hours
+        },
+      },
+    },
+    {
+      urlPattern: /\?_rsc=/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'next-rsc',
+        expiration: {
+          maxEntries: 200,
+          maxAgeSeconds: 24 * 60 * 60, // 24 hours
+        },
+        networkTimeoutSeconds: 5, // Fast fallback if offline/slow
+      },
+    },
+    {
+      urlPattern: /^https?.*/,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'offlineCache',
+        expiration: {
+          maxEntries: 200,
+          maxAgeSeconds: 24 * 60 * 60,
+        },
+        networkTimeoutSeconds: 5,
+      },
+    }
+  ],
+  fallbacks: {
+    // If you try to load a page that isn't cached (while offline), show /offline
+    document: '/offline',
+  }
+});
+
+export default withPWA(nextConfig);

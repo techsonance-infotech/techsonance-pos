@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/analytics/stat-card"
 import { DateRangePicker } from "@/components/analytics/date-range-picker"
 import { ExportButton } from "@/components/analytics/export-button"
+import { ExportToolbar } from "@/components/analytics/export-toolbar"
 import { BarChart, LineChart, PieChart } from "@/components/analytics/charts"
 import {
     getSalesOverview,
@@ -232,6 +233,172 @@ export default function AnalyticsPage() {
         if (activeTab === "payment") loadPaymentAnalysis()
     }, [startDate, endDate])
 
+    // Export Handlers
+    const handlePrintDaily = () => {
+        window.print()
+    }
+
+    const handleExportDaily = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!dailyReport) return
+
+        try {
+            const { exportDailyReport } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportDailyReport(dailyReport, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportCategory = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!categoryReport) return
+
+        try {
+            const { exportCategoryReport } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportCategoryReport(categoryReport, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportMonthly = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!monthlyReport) return
+
+        try {
+            const { exportMonthlyReport } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportMonthlyReport(monthlyReport, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportTopItems = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!topItems) return
+
+        try {
+            const { exportTopItemsReport } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportTopItemsReport(topItems, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportPayment = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!paymentAnalysis) return
+
+        try {
+            const { exportPaymentAnalysis } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportPaymentAnalysis(paymentAnalysis, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportDateRange = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!dateRangeData) return
+
+        try {
+            const { exportDailyReport } = await import('@/lib/export/analytics-exporters')
+            const user = await getUserProfile()
+
+            await exportDailyReport({
+                ...dateRangeData,
+                date: `${dateRangeData.startDate} to ${dateRangeData.endDate}`,
+                orders: dateRangeData.transactions || []
+            }, format, {
+                companyName: user?.company?.name || 'TechSonance POS',
+                storeName: user?.defaultStore?.name,
+                currency: currency.symbol
+            })
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
+    const handleExportProfitLoss = async (format: 'pdf' | 'excel' | 'csv') => {
+        if (!profitLoss) return
+
+        try {
+            const { generatePDF } = await import('@/lib/export/pdf-generator')
+            const { generateExcel } = await import('@/lib/export/excel-generator')
+            const { generateCSV } = await import('@/lib/export/csv-generator')
+            const user = await getUserProfile()
+
+            const plData = [
+                { Metric: 'Total Revenue', Value: formatCurrency(profitLoss.revenue, currency.symbol) },
+                { Metric: 'Total Expenses', Value: formatCurrency(profitLoss.expenses, currency.symbol) },
+                { Metric: 'Net Profit', Value: formatCurrency(profitLoss.profit, currency.symbol) },
+                { Metric: 'Profit Margin', Value: `${profitLoss.margin}%` }
+            ]
+
+            if (format === 'pdf') {
+                await generatePDF({
+                    title: 'Profit & Loss Report',
+                    dateRange: `${profitLoss.month}/${profitLoss.year}`,
+                    companyName: user?.company?.name || 'TechSonance POS',
+                    storeName: user?.defaultStore?.name,
+                    fileName: `profit-loss_${profitLoss.month}-${profitLoss.year}_${Date.now()}.pdf`,
+                    columns: [
+                        { header: 'Metric', dataKey: 'Metric', width: 60 },
+                        { header: 'Value', dataKey: 'Value', width: 50 }
+                    ],
+                    data: plData
+                })
+            } else if (format === 'excel') {
+                await generateExcel({
+                    fileName: `profit-loss_${profitLoss.month}-${profitLoss.year}_${Date.now()}.xlsx`,
+                    sheets: [{
+                        name: 'P&L Summary',
+                        data: plData
+                    }]
+                })
+            } else {
+                await generateCSV({
+                    fileName: `profit-loss_${profitLoss.month}-${profitLoss.year}_${Date.now()}.csv`,
+                    data: plData
+                })
+            }
+        } catch (error: any) {
+            console.error('Export failed:', error)
+            toast.error(error.message || 'Export failed')
+        }
+    }
+
     if (loading) return <AnalyticsLoading />
 
     return (
@@ -365,14 +532,24 @@ export default function AnalyticsPage() {
 
                 {/* Daily Sales Tab */}
                 <TabsContent value="daily" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <h2 className="text-2xl font-bold text-gray-900">Daily Sales Report</h2>
-                        <input
-                            type="date"
-                            className="px-4 py-2 border border-gray-200 rounded-lg"
-                            defaultValue={new Date().toISOString().split('T')[0]}
-                            onChange={(e) => loadDailyReport(new Date(e.target.value))}
-                        />
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="date"
+                                className="px-4 py-2 border border-gray-200 rounded-lg"
+                                defaultValue={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => loadDailyReport(new Date(e.target.value))}
+                            />
+                            {dailyReport && (
+                                <ExportToolbar
+                                    onPrint={() => handlePrintDaily()}
+                                    onExportPDF={() => handleExportDaily('pdf')}
+                                    onExportExcel={() => handleExportDaily('excel')}
+                                    onExportCSV={() => handleExportDaily('csv')}
+                                />
+                            )}
+                        </div>
                     </div>
 
                     {dailyReport && (
@@ -451,12 +628,14 @@ export default function AnalyticsPage() {
 
                 {/* Category-wise Tab - Will continue in next message due to length */}
                 <TabsContent value="category" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <h2 className="text-2xl font-bold text-gray-900">Category-wise Sales Report</h2>
                         {categoryReport && (
-                            <ExportButton
-                                data={categoryReport.categories}
-                                filename={`category-report-${categoryReport.startDate}-${categoryReport.endDate}`}
+                            <ExportToolbar
+                                onPrint={() => window.print()}
+                                onExportPDF={() => handleExportCategory('pdf')}
+                                onExportExcel={() => handleExportCategory('excel')}
+                                onExportCSV={() => handleExportCategory('csv')}
                             />
                         )}
                     </div>
@@ -540,12 +719,14 @@ export default function AnalyticsPage() {
 
                 {/* Date Range Report Tab */}
                 <TabsContent value="daterange" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <h2 className="text-2xl font-bold text-gray-900">Date Range Report</h2>
                         {dateRangeData && (
-                            <ExportButton
-                                data={dateRangeData.transactions}
-                                filename={`date-range-${dateRangeData.startDate}-${dateRangeData.endDate}`}
+                            <ExportToolbar
+                                onPrint={() => window.print()}
+                                onExportPDF={() => handleExportDateRange('pdf')}
+                                onExportExcel={() => handleExportDateRange('excel')}
+                                onExportCSV={() => handleExportDateRange('csv')}
                             />
                         )}
                     </div>
@@ -620,14 +801,15 @@ export default function AnalyticsPage() {
 
                 {/* Monthly Sales Report Tab */}
                 <TabsContent value="monthly" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <div className="flex items-center gap-4">
                             <h2 className="text-2xl font-bold text-gray-900">Monthly Sales Report</h2>
                             {monthlyReport && (
-                                <ExportButton
-                                    data={monthlyReport.months}
-                                    filename={`monthly-sales-${monthlyReport.year}`}
-                                    headers={['month', 'sales', 'orders']}
+                                <ExportToolbar
+                                    onPrint={() => window.print()}
+                                    onExportPDF={() => handleExportMonthly('pdf')}
+                                    onExportExcel={() => handleExportMonthly('excel')}
+                                    onExportCSV={() => handleExportMonthly('csv')}
                                 />
                             )}
                         </div>
@@ -709,12 +891,14 @@ export default function AnalyticsPage() {
 
                 {/* Top Selling Items Tab */}
                 <TabsContent value="topitems" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <h2 className="text-2xl font-bold text-gray-900">Top Selling Items</h2>
                         {topItems && (
-                            <ExportButton
-                                data={topItems.items}
-                                filename={`top-items-${topItems.startDate}-${topItems.endDate}`}
+                            <ExportToolbar
+                                onPrint={() => window.print()}
+                                onExportPDF={() => handleExportTopItems('pdf')}
+                                onExportExcel={() => handleExportTopItems('excel')}
+                                onExportCSV={() => handleExportTopItems('csv')}
                             />
                         )}
                     </div>
@@ -799,12 +983,14 @@ export default function AnalyticsPage() {
 
                 {/* Payment Method Analysis Tab */}
                 <TabsContent value="payment" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <h2 className="text-2xl font-bold text-gray-900">Payment Method Analysis</h2>
                         {paymentAnalysis && (
-                            <ExportButton
-                                data={paymentAnalysis.methods}
-                                filename={`payment-analysis-${paymentAnalysis.startDate}-${paymentAnalysis.endDate}`}
+                            <ExportToolbar
+                                onPrint={() => window.print()}
+                                onExportPDF={() => handleExportPayment('pdf')}
+                                onExportExcel={() => handleExportPayment('excel')}
+                                onExportCSV={() => handleExportPayment('csv')}
                             />
                         )}
                     </div>
@@ -890,20 +1076,15 @@ export default function AnalyticsPage() {
 
                 {/* Profit & Loss Tab */}
                 <TabsContent value="profitloss" className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                         <div className="flex items-center gap-4">
                             <h2 className="text-2xl font-bold text-gray-900">Profit & Loss Report</h2>
                             {profitLoss && (
-                                <ExportButton
-                                    data={[
-                                        { metric: 'Total Revenue', value: profitLoss.revenue },
-                                        { metric: 'Total Orders', value: profitLoss.orders },
-                                        { metric: 'Average Order Value', value: profitLoss.averageOrderValue },
-                                        { metric: 'Previous Month Revenue', value: profitLoss.previousMonthRevenue },
-                                        { metric: 'Growth', value: `${(profitLoss.growth || 0).toFixed(1)}%` }
-                                    ]}
-                                    filename={`profit-loss-${profitLoss.month}`}
-                                    headers={['metric', 'value']}
+                                <ExportToolbar
+                                    onPrint={() => window.print()}
+                                    onExportPDF={() => handleExportProfitLoss('pdf')}
+                                    onExportExcel={() => handleExportProfitLoss('excel')}
+                                    onExportCSV={() => handleExportProfitLoss('csv')}
                                 />
                             )}
                         </div>

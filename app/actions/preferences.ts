@@ -21,7 +21,7 @@ export async function getAppPreferences() {
             dateFormat: 'MM/DD/YYYY'
         }
 
-        settings.forEach(setting => {
+        settings.forEach((setting: any) => {
             switch (setting.key) {
                 case 'theme':
                     prefs.theme = setting.value || 'light'
@@ -95,7 +95,7 @@ export async function getCurrency() {
         let code = 'USD'
         let symbol = '$'
 
-        settings.forEach(setting => {
+        settings.forEach((setting: any) => {
             if (setting.key === 'currency_code') code = setting.value || 'USD'
             if (setting.key === 'currency_symbol') symbol = setting.value || '$'
         })

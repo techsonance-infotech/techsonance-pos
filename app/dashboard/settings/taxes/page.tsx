@@ -36,7 +36,23 @@ export default function TaxConfigurationPage() {
             setEnableDiscount(settings.enableDiscount === true)
             setDefaultDiscount(settings.defaultDiscount || "0")
         } catch (error) {
-            toast.error("Failed to load settings")
+            // Offline fallback - try to load from local settings
+            console.warn("Tax config: Server fetch failed, using local settings", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localSettings = await posService.getSettings()
+                const getSetting = (key: string, defaultVal: string) =>
+                    localSettings.find(s => s.key === key)?.value ?? defaultVal
+
+                setTaxRate(getSetting('setting_taxRate', '5'))
+                setTaxName(getSetting('setting_taxName', 'GST'))
+                setShowBreakdown(getSetting('setting_showTaxBreakdown', 'true') === 'true')
+                setEnableDiscount(getSetting('setting_enableDiscount', 'false') === 'true')
+                setDefaultDiscount(getSetting('setting_defaultDiscount', '0'))
+            } catch (innerError) {
+                console.error("Failed to load local tax settings", innerError)
+            }
         } finally {
             setLoading(false)
         }
