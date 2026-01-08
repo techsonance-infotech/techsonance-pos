@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
+import { getUserProfile } from "./user"
 
 const SETTINGS_KEYS = [
     'business_name',
@@ -58,8 +59,102 @@ export const getBusinessSettings = unstable_cache(
     }
 )
 
+/**
+ * Get company details for the current user
+ * Returns company info if assigned, null if Super Admin without company
+ */
+export async function getCompanyDetails() {
+    try {
+        const user = await getUserProfile()
+        if (!user) {
+            return null
+        }
+
+        // If user has a company, return company details
+        if (user.companyId && user.company) {
+            return {
+                id: user.company.id,
+                name: user.company.name,
+                slug: user.company.slug,
+                logo: user.company.logo || '',
+                address: '', // Need to fetch full company data
+                phone: '',
+                email: '',
+                hasCompany: true
+            }
+        }
+
+        // Super Admin without company - return null
+        return null
+    } catch (error) {
+        console.error("Error fetching company details:", error)
+        return null
+    }
+}
+
+/**
+ * Get full company details for business settings page
+ */
+export async function getCompanyBusinessSettings() {
+    try {
+        const user = await getUserProfile()
+        if (!user) {
+            return { hasCompany: false, settings: null }
+        }
+
+        // Fetch full company data if user has a company
+        if (user.companyId) {
+            const company = await prisma.company.findUnique({
+                where: { id: user.companyId }
+            })
+
+            if (company) {
+                return {
+                    hasCompany: true,
+                    settings: {
+                        companyId: company.id,
+                        businessName: company.name,
+                        logoUrl: company.logo || '',
+                        address: company.address || '',
+                        phone: company.phone || '',
+                        email: company.email || '',
+                        slug: company.slug
+                    }
+                }
+            }
+        }
+
+        // Super Admin or no company assigned - fall back to global settings
+        const globalSettings = await fetchBusinessSettings()
+        return {
+            hasCompany: false,
+            settings: {
+                companyId: null,
+                businessName: globalSettings.businessName,
+                logoUrl: globalSettings.logoUrl,
+                address: globalSettings.address,
+                phone: globalSettings.phone,
+                email: globalSettings.email,
+                gstNo: globalSettings.gstNo
+            }
+        }
+    } catch (error) {
+        console.error("Error fetching company business settings:", error)
+        return { hasCompany: false, settings: null }
+    }
+}
+
 export async function updateBusinessSettings(prevState: any, formData: FormData) {
     try {
+        const user = await getUserProfile()
+
+        // If user has a company, update company details instead
+        if (user?.companyId) {
+            const result = await updateCompanyBusinessSettings(formData)
+            return result
+        }
+
+        // Fallback to global settings for Super Admin without company
         const data = {
             business_name: formData.get('businessName') as string,
             business_address: formData.get('address') as string,
@@ -93,8 +188,41 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
     }
 }
 
+/**
+ * Update company-specific business settings
+ */
+async function updateCompanyBusinessSettings(formData: FormData) {
+    try {
+        const user = await getUserProfile()
+        if (!user?.companyId) {
+            return { success: false, message: "No company assigned" }
+        }
+
+        await prisma.company.update({
+            where: { id: user.companyId },
+            data: {
+                name: formData.get('businessName') as string || undefined,
+                address: formData.get('address') as string || null,
+                phone: formData.get('phone') as string || null,
+                email: formData.get('email') as string || null
+            }
+        })
+
+        revalidatePath('/dashboard/settings/business')
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/new-order')
+        revalidatePath('/dashboard/recent-orders')
+        revalidatePath('/')
+        return { success: true, message: "Company details updated successfully" }
+    } catch (error) {
+        console.error("Failed to update company settings:", error)
+        return { success: false, message: "Failed to update company settings" }
+    }
+}
+
 export async function uploadLogo(formData: FormData) {
     try {
+        const user = await getUserProfile()
         const file = formData.get('logo') as File
         if (!file) return { success: false, message: "No file provided" }
 
@@ -115,8 +243,23 @@ export async function uploadLogo(formData: FormData) {
 
         await writeFile(path, buffer)
 
-        // Save URL to DB
         const url = `/uploads/${filename}`
+
+        // If user has a company, update company logo
+        if (user?.companyId) {
+            await prisma.company.update({
+                where: { id: user.companyId },
+                data: { logo: url }
+            })
+            // Revalidate all pages that show the logo
+            revalidatePath('/dashboard/settings/business')
+            revalidatePath('/dashboard')
+            revalidatePath('/dashboard/new-order')
+            revalidatePath('/dashboard/recent-orders')
+            return { success: true, url }
+        }
+
+        // Fallback to global setting for Super Admin without company
         await prisma.systemConfig.upsert({
             where: { key: 'business_logo' },
             update: { value: url },
@@ -125,6 +268,7 @@ export async function uploadLogo(formData: FormData) {
 
             ; (revalidateTag as any)('business-settings')
         revalidatePath('/')
+        revalidatePath('/dashboard')
         return { success: true, url }
     } catch (error) {
         console.error("Logo upload failed:", error)

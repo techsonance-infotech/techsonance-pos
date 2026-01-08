@@ -3,7 +3,7 @@
 // Force HMR Update
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
@@ -115,6 +115,28 @@ export default function SettingsPage() {
                         colorClass="text-indigo-600"
                         iconBgClass="bg-indigo-50"
                         href="/dashboard/admin/users"
+                    />
+                )}
+
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={Building}
+                        title="Company Management"
+                        description="Manage companies and tenants"
+                        colorClass="text-teal-600"
+                        iconBgClass="bg-teal-50"
+                        href="/dashboard/admin/companies"
+                    />
+                )}
+
+                {(userRole === 'SUPER_ADMIN' || userRole === 'BUSINESS_OWNER') && (
+                    <SettingCard
+                        icon={Database}
+                        title="Database Backup"
+                        description="Backup and restore data"
+                        colorClass="text-emerald-600"
+                        iconBgClass="bg-emerald-50"
+                        href="/dashboard/settings/backup"
                     />
                 )}
 

@@ -88,7 +88,9 @@ body {
   .no-print,
   aside,
   header,
-  nav {
+  nav,
+  button,
+  .print-hide {
     display: none !important;
   }
 
@@ -101,10 +103,81 @@ body {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 100% !important;
     margin: 0;
     padding: 0;
     background: white;
     z-index: 9999;
+  }
+
+  /* Analytics Print Styles */
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+
+  body {
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  /* Prevent page breaks inside elements */
+  .print-keep-together,
+  table,
+  tr,
+  .stat-card {
+    page-break-inside: avoid !important;
+  }
+
+  /* Force page breaks */
+  .print-page-break {
+    page-break-before: always !important;
+  }
+
+  /* Tables */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin-bottom: 1rem !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #000 !important;
+    padding: 8px !important;
+    text-align: left !important;
+  }
+
+  th {
+    background-color: #f3f4f6 !important;
+    font-weight: bold !important;
+  }
+
+  /* Charts - hide or show simplified version */
+  canvas,
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Optimize colors for black & white printing */
+  .bg-gradient-to-br,
+  .bg-gradient-to-r {
+    background: #f9fafb !important;
+    color: #000 !important;
+  }
+
+  /* Remove shadows and rounded corners for print */
+  .shadow,
+  .shadow-sm,
+  .shadow-lg,
+  .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  .rounded,
+  .rounded-lg,
+  .rounded-xl {
+    border-radius: 0 !important;
   }
 }

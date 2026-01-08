@@ -3,7 +3,22 @@ import { PrismaClient, Role } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-    // 1. Create Super Admin
+    // 1. Create Default Company for multi-tenant support
+    const defaultCompany = await prisma.company.upsert({
+        where: { slug: 'default' },
+        update: {},
+        create: {
+            name: 'TechSonance Demo',
+            slug: 'default',
+            address: '123 Demo Street, Gujarat',
+            phone: '9876543210',
+            email: 'demo@techsonance.com',
+            isActive: true
+        }
+    })
+    console.log({ defaultCompany })
+
+    // 2. Create Super Admin (no companyId - global access)
     const superAdmin = await prisma.user.upsert({
         where: { email: 'superadmin@techsonance.com' },
         update: {},
@@ -14,23 +29,45 @@ async function main() {
             role: Role.SUPER_ADMIN,
             contactNo: '9876543210',
             isApproved: true,
+            // Super Admin has no companyId - global access to all companies
         },
     })
     console.log({ superAdmin })
 
-    // 2. Create Stores
-    const store1 = await prisma.store.create({
-        data: { name: 'Godadara, Surat', location: '123 Main Street' }
+    // 3. Create Stores linked to default company
+    const store1 = await prisma.store.upsert({
+        where: { id: 'store-godadara' },
+        update: { companyId: defaultCompany.id },
+        create: {
+            id: 'store-godadara',
+            name: 'Godadara, Surat',
+            location: '123 Main Street',
+            companyId: defaultCompany.id
+        }
     })
-    const store2 = await prisma.store.create({
-        data: { name: 'Vesu, Surat', location: '456 Downtown Ave' }
+    const store2 = await prisma.store.upsert({
+        where: { id: 'store-vesu' },
+        update: { companyId: defaultCompany.id },
+        create: {
+            id: 'store-vesu',
+            name: 'Vesu, Surat',
+            location: '456 Downtown Ave',
+            companyId: defaultCompany.id
+        }
     })
-    const store3 = await prisma.store.create({
-        data: { name: 'Vapi, Gujarat', location: '789 Shopping Mall' }
+    const store3 = await prisma.store.upsert({
+        where: { id: 'store-vapi' },
+        update: { companyId: defaultCompany.id },
+        create: {
+            id: 'store-vapi',
+            name: 'Vapi, Gujarat',
+            location: '789 Shopping Mall',
+            companyId: defaultCompany.id
+        }
     })
     console.log({ store1, store2, store3 })
 
-    // 2b. Link Super Admin to Stores
+    // 4. Link Super Admin to Stores (optional - Super Admin has global access anyway)
     await prisma.user.update({
         where: { id: superAdmin.id },
         data: {
@@ -41,10 +78,10 @@ async function main() {
         }
     })
 
-    // 3. Create Business Owner linked to All Stores
+    // 5. Create Business Owner linked to default company and all stores
     const businessOwner = await prisma.user.upsert({
         where: { email: 'owner@techsonance.com' },
-        update: {},
+        update: { companyId: defaultCompany.id },
         create: {
             username: 'business_owner',
             email: 'owner@techsonance.com',
@@ -52,18 +89,19 @@ async function main() {
             role: Role.BUSINESS_OWNER,
             contactNo: '9876543211',
             isApproved: true,
+            companyId: defaultCompany.id, // Belongs to default company
             stores: {
                 connect: [{ id: store1.id }, { id: store2.id }, { id: store3.id }]
             },
-            // defaultStoreId removed to force selection
+            defaultStoreId: store1.id
         },
     })
     console.log({ businessOwner })
 
-    // 4. Create Regular User (Staff) linked to Vesu only
+    // 6. Create Regular User (Staff) linked to default company and Vesu store
     const staffUser = await prisma.user.upsert({
         where: { email: 'staff@techsonance.com' },
-        update: {},
+        update: { companyId: defaultCompany.id },
         create: {
             username: 'staff_user',
             email: 'staff@techsonance.com',
@@ -71,6 +109,7 @@ async function main() {
             role: Role.USER,
             contactNo: '9876543212',
             isApproved: true,
+            companyId: defaultCompany.id, // Belongs to default company
             stores: {
                 connect: [{ id: store2.id }]
             },
@@ -78,6 +117,20 @@ async function main() {
         },
     })
     console.log({ staffUser })
+
+    // 7. Create default backup schedule (disabled by default)
+    await prisma.backupSchedule.upsert({
+        where: { id: 'default-schedule' },
+        update: {},
+        create: {
+            id: 'default-schedule',
+            frequency: 'daily',
+            time: '02:00',
+            retentionDays: 30,
+            isEnabled: false
+        }
+    })
+    console.log('Default backup schedule created')
 }
 
 main()

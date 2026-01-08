@@ -75,9 +75,13 @@ export default async function DashboardLayout({
         redirect('/license/expired')
     }
 
-    // Fetch Business Settings for Sidebar
-    const { getBusinessSettings } = await import("@/app/actions/settings")
-    const businessSettings = await getBusinessSettings()
+    // Fetch Business Settings for Sidebar (company-aware)
+    const { getCompanyBusinessSettings } = await import("@/app/actions/settings")
+    const companySettings = await getCompanyBusinessSettings()
+
+    // Use company settings if available, fallback to defaults
+    const businessName = companySettings.settings?.businessName || 'CafePOS'
+    const logoUrl = companySettings.settings?.logoUrl || ''
 
     return (
         <SessionGuard>
@@ -87,8 +91,9 @@ export default async function DashboardLayout({
                         <Sidebar
                             userRole={user?.role}
                             disabledModules={user?.disabledModules}
-                            businessName={businessSettings.businessName}
-                            logoUrl={businessSettings.logoUrl}
+                            businessName={businessName}
+                            logoUrl={logoUrl}
+                            storeTableMode={user?.defaultStore?.tableMode}
                         />
                         <div className="flex flex-1 flex-col h-full min-w-0">
                             <Header initialUser={user} />

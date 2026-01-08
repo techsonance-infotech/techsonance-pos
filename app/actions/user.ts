@@ -14,6 +14,16 @@ async function fetchUser(userId: string) {
             id: true,
             username: true,
             role: true,
+            // Multi-tenant context
+            companyId: true,
+            company: {
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    logo: true
+                }
+            },
             defaultStoreId: true,
             defaultStore: true,
             // Security fields
@@ -23,7 +33,8 @@ async function fetchUser(userId: string) {
                     id: true,
                     name: true,
                     location: true,
-                    tableMode: true
+                    tableMode: true,
+                    companyId: true
                 }
             }
         }
