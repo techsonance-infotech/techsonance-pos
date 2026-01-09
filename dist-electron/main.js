@@ -84,9 +84,8 @@ else {
         };
         // In both dev and prod, we load from localhost now (since we run a local server)
         loadURL();
-        if (isDev) {
-            // mainWindow.webContents.openDevTools();
-        }
+        // Enable DevTools to see errors (remove this after debugging)
+        mainWindow.webContents.openDevTools();
         mainWindow.on('closed', () => {
             mainWindow = null;
         });
