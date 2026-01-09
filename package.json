@@ -2,12 +2,14 @@
   "name": "techsonance-pos",
   "version": "0.1.0",
   "description": "TechSonance Point of Sale System - A modern POS solution for restaurants and retail",
-  "author": "TechSonance InfoTech LLP <contact@techsonance.com>",
+  "author": "TechSonance InfoTech LLP <info@techsonanceinfotech.com>",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "dev:secure": "node scripts/launch.js next dev",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "build": "next build --webpack && node scripts/prepare-standalone.js",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
@@ -15,6 +17,8 @@
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
+    "electron:secure": "concurrently -k \"npm run dev:secure\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
+    "electron:preview": "set FORCE_PROD=true && npm run build && npm run electron:rebuild && npm run electron:compile && electron .",
     "electron:build": "npm run build && npm run electron:compile && electron-builder"
   },
   "build": {
@@ -23,12 +27,18 @@
     "icon": "public/icon-512.png",
     "files": [
       "dist-electron/**/*",
-      ".next/**/*",
-      "public/**/*",
       "package.json",
       "prisma/**/*",
-      "node_modules/**/*",
-      "next.config.ts"
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "directories": {
       "output": "dist",
@@ -76,11 +86,12 @@
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-hook-form": "^7.68.0",
+    "react-to-print": "^3.2.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "xlsx": "^0.18.5",
-    "zod": "^4.2.1"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",

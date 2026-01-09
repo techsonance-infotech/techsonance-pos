@@ -19,16 +19,27 @@ const BACKUP_DIR = process.env.BACKUP_DIR || path.join(process.cwd(), 'backups')
  * Checks environment variable first, then common installation paths
  */
 function getPgDumpPath(): string {
-    // 1. Check environment variable (dynamically to catch runtime changes if possible)
+    // 1. Check environment variable
     let envPath = process.env.PG_DUMP_PATH
 
     if (envPath) {
-        // Strip quotes if user added them
         envPath = envPath.replace(/^["']|["']$/g, '')
 
-        // Only return if it actually exists or looks like a command (no path separators)
-        // If it's a full path that doesn't exist, we should probably fall through to auto-detection
-        if (!envPath.includes(path.sep) || fs.existsSync(envPath)) {
+        if (fs.existsSync(envPath)) {
+            const stat = fs.statSync(envPath)
+            if (stat.isDirectory()) {
+                const candidate = path.join(envPath, 'pg_dump.exe')
+                if (fs.existsSync(candidate)) return candidate
+
+                const candidateNoExt = path.join(envPath, 'pg_dump')
+                if (fs.existsSync(candidateNoExt)) return candidateNoExt
+            } else {
+                return envPath
+            }
+        }
+
+        // If it doesn't look like a path separators, assume it's in PATH
+        if (!envPath.includes(path.sep)) {
             return envPath
         }
     }
@@ -55,6 +66,58 @@ function getPgDumpPath(): string {
     }
 
     return 'pg_dump'
+}
+
+/**
+ * Get the psql executable path
+ */
+function getPsqlPath(): string {
+    // 1. Check environment variable
+    let envPath = process.env.PSQL_PATH
+
+    if (envPath) {
+        envPath = envPath.replace(/^["']|["']$/g, '')
+
+        if (fs.existsSync(envPath)) {
+            const stat = fs.statSync(envPath)
+            if (stat.isDirectory()) {
+                const candidate = path.join(envPath, 'psql.exe')
+                if (fs.existsSync(candidate)) return candidate
+
+                const candidateNoExt = path.join(envPath, 'psql')
+                if (fs.existsSync(candidateNoExt)) return candidateNoExt
+            } else {
+                return envPath
+            }
+        }
+
+        if (!envPath.includes(path.sep)) {
+            return envPath
+        }
+    }
+
+    // 2. Common PostgreSQL installation paths on Windows (same as pg_dump)
+    const commonPaths = [
+        'C:\\Program Files\\PostgreSQL\\19\\bin\\psql.exe',
+        'C:\\Program Files\\PostgreSQL\\18\\bin\\psql.exe',
+        'C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe',
+        'C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe',
+        'C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe',
+        'C:\\Program Files\\PostgreSQL\\14\\bin\\psql.exe',
+        'C:\\Program Files (x86)\\PostgreSQL\\16\\bin\\psql.exe',
+        'C:\\Program Files (x86)\\PostgreSQL\\15\\bin\\psql.exe',
+        '/usr/bin/psql', // Linux/Mac
+        '/usr/local/bin/psql',
+        'psql' // Fallback to PATH
+    ]
+
+    for (const psqlPath of commonPaths) {
+        if (fs.existsSync(psqlPath)) {
+            return psqlPath
+        }
+    }
+
+    return 'psql'
 }
 
 /**
@@ -220,6 +283,66 @@ export async function triggerManualBackup(scope: 'FULL' | 'COMPANY' = 'FULL') {
     } catch (error) {
         console.error("Error triggering backup:", error)
         return { error: "Failed to initiate backup" }
+    }
+}
+
+/**
+ * Sync local database to online cloud database
+ */
+export async function syncToCloud(targetUrl?: string) {
+    const user = await getUserProfile()
+    if (!user || user.role !== 'SUPER_ADMIN') {
+        return { error: "Unauthorized: Only Super Admin can perform cloud sync" }
+    }
+
+    const finalUrl = targetUrl || process.env.ONLINE_DATABASE_URL
+    if (!finalUrl) {
+        return { error: "Target database URL is not configured (ONLINE_DATABASE_URL)" }
+    }
+
+    try {
+        const localUrl = process.env.DATABASE_URL
+        if (!localUrl) {
+            return { error: "Local DATABASE_URL not configured" }
+        }
+
+        // Locate executables
+        const pgDumpPath = getPgDumpPath()
+        const psqlPath = getPsqlPath()
+
+        console.log("Syncing from local to cloud...")
+        console.log("pg_dump:", pgDumpPath)
+        console.log("psql:", psqlPath)
+
+        // Quote paths if necessary
+        const pgDumpCmd = pgDumpPath.includes(' ') && !pgDumpPath.startsWith('"') && !pgDumpPath.startsWith("'")
+            ? `"${pgDumpPath}"`
+            : pgDumpPath
+
+        const psqlCmd = psqlPath.includes(' ') && !psqlPath.startsWith('"') && !psqlPath.startsWith("'")
+            ? `"${psqlPath}"`
+            : psqlPath
+
+        // COMMAND: pg_dump [LOCAL] | psql [REMOTE]
+        // We use --no-owner --no-acl to avoid permission issues on the target
+        // --clean --if-exists drops objects before creating them (Careful!)
+        const command = `${pgDumpCmd} "${localUrl}" --no-owner --no-acl --clean --if-exists | ${psqlCmd} "${finalUrl}"`
+
+        // Execute via shell
+        // Note: passing passwords via URL usually works for pg_dump/psql, 
+        // but explicit PGPASSWORD env var might be needed if it fails.
+        // Prisma URL contains password, so tools should parse it.
+        await execAsync(command, {
+            timeout: 600000,
+            maxBuffer: 1024 * 1024 * 100 // 100MB buffer for stderr
+        })
+
+        return { success: true, message: "Cloud sync completed successfully!" }
+
+    } catch (error: any) {
+        console.error("Cloud Sync Error:", error)
+        const msg = error.stderr || error.message || "Unknown error during sync"
+        return { error: `Sync failed: ${msg}` }
     }
 }
 

@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useReactToPrint } from "react-to-print"
+import { renderToStaticMarkup } from 'react-dom/server'
 import { Search, Plus, Minus, Trash2, ShoppingCart, Save, Printer, Clock, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -50,11 +52,44 @@ export default function NewOrderPage() {
     const [printOrder, setPrintOrder] = useState<any | null>(null)
     const [businessDetails, setBusinessDetails] = useState<any>(null)
     const loadedOrderRef = useRef<string | null>(null) // Track loaded order to prevent duplicate toasts
+    const printRef = useRef<HTMLDivElement>(null) // Ref for print component
     const [saving, setSaving] = useState(false)
     const [holding, setHolding] = useState(false)
     const [printing, setPrinting] = useState(false)
     const [paymentMode, setPaymentMode] = useState<string>('CASH')
     const [storeDetails, setStoreDetails] = useState<any>(null)
+
+    // Print handler using react-to-print (Web)
+    const handleWebPrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
+        onAfterPrint: () => {
+            setTimeout(() => setPrintOrder(null), 500)
+        }
+    })
+
+    // Unified Print Handler
+    const handlePrint = async () => {
+        // Check if running in Electron
+        if ((window as any).electron && (window as any).electron.isDesktop) {
+            try {
+                const html = renderToStaticMarkup(
+                    <ReceiptTemplate
+                        order={printOrder}
+                        businessDetails={businessDetails}
+                        storeDetails={storeDetails}
+                    />
+                )
+                await (window as any).electron.printReceipt(html)
+                setPrintOrder(null)
+            } catch (e) {
+                console.error("Silent print failed", e)
+                handleWebPrint() // Fallback
+            }
+        } else {
+            handleWebPrint()
+        }
+    }
 
     // URL Params
     const tableId = searchParams.get('tableId')
@@ -78,8 +113,9 @@ export default function NewOrderPage() {
 
                     const business = localSettings.find(s => s.key === 'businessDetails')?.value
                     const store = localSettings.find(s => s.key === 'storeDetails')?.value
-                    setBusinessDetails(business)
-                    setStoreDetails(store)
+                    // Parse JSON if stored as string
+                    setBusinessDetails(typeof business === 'string' ? JSON.parse(business) : business)
+                    setStoreDetails(typeof store === 'string' ? JSON.parse(store) : store)
 
                     if (localCategories.length > 0 && selectedCategory === 'all') {
                         setSelectedCategory(localCategories[0].id)
@@ -142,6 +178,37 @@ export default function NewOrderPage() {
                         setBusinessDetails(data.businessDetails)
                         setStoreDetails(data.storeDetails)
                         if (data.categories.length > 0) setSelectedCategory(data.categories[0].id)
+
+                        // Sync to local storage for offline use
+                        await posService.saveProductsBulk(data.products)
+                        await posService.saveCategoriesBulk(data.categories)
+
+                        // Save settings to local storage
+                        const settingsToSave = [
+                            { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
+                            { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
+                        ]
+                        await posService.saveSettingsBulk(settingsToSave as any)
+                    }
+                } else if (isOnline && localProducts.length > 0) {
+                    // If we have local data but we're online, still fetch latest settings
+                    // to ensure tax/discount configs are up-to-date
+                    try {
+                        const data = await getPOSInitialData()
+                        if (data?.businessDetails) {
+                            setBusinessDetails(data.businessDetails)
+                            setStoreDetails(data.storeDetails)
+
+                            // Update settings in local storage
+                            const settingsToSave = [
+                                { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
+                                { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
+                            ]
+                            await posService.saveSettingsBulk(settingsToSave as any)
+                        }
+                    } catch (e) {
+                        console.error("Failed to update settings from server", e)
+                        // Continue with local settings if server fetch fails
                     }
                 }
             } catch (error) {
@@ -209,6 +276,35 @@ export default function NewOrderPage() {
         loadResumeOrder()
     }, [searchParams, isOnline]) // Only depends on network status for initial data
 
+    // --- Calculations ---
+    const subtotal = cart.reduce((sum, item) => {
+        const totalAddonsCost = item.addons?.reduce((as, a) => as + (a.addon.price * a.quantity), 0) || 0
+        return sum + (item.unitPrice * item.quantity) + totalAddonsCost
+    }, 0)
+
+    const taxRate = parseFloat(businessDetails?.taxRate || '0')
+    const taxName = businessDetails?.taxName || 'Tax'
+    const isTaxEnabled = businessDetails?.showTaxBreakdown === true
+
+    const isDiscountEnabled = businessDetails?.enableDiscount === true
+    const discountType = businessDetails?.discountType || 'FIXED'
+    const defaultDiscountVal = parseFloat(businessDetails?.defaultDiscount || '0')
+
+    let discountAmount = 0
+    if (isDiscountEnabled) {
+        if (discountType === 'PERCENTAGE') {
+            discountAmount = subtotal * (defaultDiscountVal / 100)
+        } else {
+            discountAmount = Math.min(defaultDiscountVal, subtotal)
+        }
+    }
+
+    const taxableAmount = Math.max(0, subtotal - discountAmount)
+    // Tax on Gross Subtotal per user request
+    const tax = isTaxEnabled ? (subtotal * (taxRate / 100)) : 0
+    const total = taxableAmount + tax
+
+    // --- Unified Order Processing ---
     // --- Unified Order Processing ---
     async function processOrder(status: 'COMPLETED' | 'HELD', print: boolean = false) {
         if (cart.length === 0) return
@@ -226,6 +322,10 @@ export default function NewOrderPage() {
                 id: resumeId || crypto.randomUUID(), // Generate UUID if new
                 status,
                 totalAmount: total,
+                discountAmount: discountAmount, // Save calculated discount amount
+                taxAmount: tax, // Save calculated tax amount
+                discount: discountType === 'PERCENTAGE' ? `${businessDetails?.defaultDiscount}%` : businessDetails?.defaultDiscount, // Save raw input (rate/amount) for receipt
+
                 items: cart,
                 customerName: guestName,
                 customerMobile: guestMobile,
@@ -254,7 +354,7 @@ export default function NewOrderPage() {
 
                     if (print) {
                         setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
-                        setTimeout(() => window.print(), 100)
+                        setTimeout(() => handlePrint(), 100)
                     }
 
                     finishOrder(print)
@@ -275,7 +375,7 @@ export default function NewOrderPage() {
 
                     if (print) {
                         setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
-                        setTimeout(() => window.print(), 100)
+                        setTimeout(() => handlePrint(), 100)
                     }
                     finishOrder(print)
                 } else {
@@ -346,27 +446,6 @@ export default function NewOrderPage() {
     }
 
     // --- Calculations ---
-    const subtotal = cart.reduce((sum, item) => {
-        const unitAddonsCost = item.addons?.reduce((as, a) => as + (a.addon.price * a.quantity), 0) || 0
-        return sum + ((item.unitPrice * item.quantity) + (unitAddonsCost))
-    }, 0)
-
-    const taxRate = parseFloat(businessDetails?.taxRate || '5')
-    const taxName = businessDetails?.taxName || 'Tax'
-    // Only calculate tax if tax breakdown is enabled (treating it as enabled/disabled)
-    const isTaxEnabled = businessDetails?.showTaxBreakdown !== false
-    const tax = isTaxEnabled ? (subtotal * (taxRate / 100)) : 0
-
-    // Calculate discount based on settings
-    const discountAmount = (businessDetails?.enableDiscount && businessDetails?.defaultDiscount)
-        ? parseFloat(businessDetails.defaultDiscount)
-        : 0
-
-    // Ensure discount doesn't exceed total (subtotal + tax)
-    const appliedDiscount = Math.min(discountAmount, subtotal + tax)
-    const total = subtotal + tax - appliedDiscount
-
-
     if (loading) return <NewOrderLoading />
 
     return (
@@ -528,7 +607,10 @@ export default function NewOrderPage() {
                                             </button>
                                         </div>
                                         <div className="w-16 text-right font-bold text-sm">
-                                            {formatCurrency((item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0) * 1, currency.symbol)}
+                                            {formatCurrency(
+                                                (item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0),
+                                                currency.symbol
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -542,16 +624,16 @@ export default function NewOrderPage() {
                             <span>Subtotal</span>
                             <span className="font-medium">{formatCurrency(subtotal, currency.symbol)}</span>
                         </div>
-                        {businessDetails?.showTaxBreakdown && (
+                        {isDiscountEnabled && discountAmount > 0 && (
+                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                <span>Discount</span>
+                                <span className="font-medium text-green-600">- {formatCurrency(discountAmount, currency.symbol)}</span>
+                            </div>
+                        )}
+                        {isTaxEnabled && (
                             <div className="flex justify-between text-sm text-gray-600">
                                 <span>{taxName} ({taxRate}%)</span>
                                 <span className="font-medium">{formatCurrency(tax, currency.symbol)}</span>
-                            </div>
-                        )}
-                        {businessDetails?.enableDiscount && (
-                            <div className="flex items-center justify-between text-sm text-gray-600">
-                                <span>Discount</span>
-                                <span className="font-medium text-orange-600">- {formatCurrency(appliedDiscount, currency.symbol)}</span>
                             </div>
                         )}
 
@@ -634,12 +716,14 @@ export default function NewOrderPage() {
             {/* Hidden Print Template */}
             {
                 printOrder && (
-                    <div className="hidden print:block print-only fixed inset-0 z-[9999] bg-white">
-                        <ReceiptTemplate
-                            order={printOrder}
-                            businessDetails={businessDetails}
-                            storeDetails={storeDetails}
-                        />
+                    <div style={{ display: 'none' }}>
+                        <div ref={printRef}>
+                            <ReceiptTemplate
+                                order={printOrder}
+                                businessDetails={businessDetails}
+                                storeDetails={storeDetails}
+                            />
+                        </div>
                     </div>
                 )
             }

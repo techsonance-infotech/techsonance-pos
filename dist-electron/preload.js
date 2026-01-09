@@ -1,3 +1,5 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electron', {
     // POS Data API
@@ -14,5 +16,6 @@ contextBridge.exposeInMainWorld('electron', {
     markOrdersSynced: (ids) => ipcRenderer.invoke('db-mark-synced', ids),
     // System API
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
+    printReceipt: (html) => ipcRenderer.invoke('print-receipt', html),
     isDesktop: true
 });

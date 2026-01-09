@@ -227,6 +227,7 @@ model Order {
   status         OrderStatus @default(HELD)
   
   totalAmount    Float
+  taxAmount      Float       @default(0)
   discountAmount Float       @default(0)
   items          Json
   paymentMode    PaymentMode?

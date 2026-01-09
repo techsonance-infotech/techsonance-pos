@@ -18,5 +18,17 @@ contextBridge.exposeInMainWorld('electron', {
 
     // System API
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
+    printReceipt: (html: string) => ipcRenderer.invoke('print-receipt', html),
     isDesktop: true
 });
+
+declare global {
+    interface Window {
+        electron?: {
+            isDesktop: boolean;
+            printReceipt: (html: string) => Promise<boolean>;
+        }
+    }
+}
+
+export { };

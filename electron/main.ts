@@ -1,196 +1,245 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { initDB, dbAsync } = require('./db');
-const { spawn } = require('child_process');
+const { fork } = require('child_process');
 
 // Determine env
-const isDev = !app.isPackaged;
+const forceProd = (process.env.FORCE_PROD || '').trim() === 'true';
+const isDev = !app.isPackaged && !forceProd;
 const PORT = 3000;
+
+console.log('Environment Debug:', {
+    FORCE_PROD: process.env.FORCE_PROD,
+    forceProdParsed: forceProd,
+    isPackaged: app.isPackaged,
+    isDev
+});
 
 let mainWindow: any = null;
 let nextServerProcess: any = null;
 
-function startNextServer(): Promise<void> {
-    return new Promise((resolve, reject) => {
+// Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
+    });
+
+    function startNextServer(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (isDev) {
+                resolve();
+                return;
+            }
+
+            console.log('Starting Next.js standalone server...');
+
+            // Path to the standalone server.js
+            const serverPath = app.isPackaged
+                ? path.join((process as any).resourcesPath, 'standalone', 'server.js')
+                : path.join(__dirname, '../.next/standalone/server.js');
+            console.log('Server path:', serverPath);
+
+            const nodePath = process.execPath; // Use electron's node or system node? 
+            // Electron's node might not work well for full server. 
+            // Best practice is bundling a node executable or using 'fork' if compatible.
+            // For simplicity, let's try 'fork' which uses Electron's Node capability.
+            // Or if we assume user has Node (bad assumption).
+            // A better approach for standalone: simply fork the process.
+
+            // Use fork instead of spawn. 
+            // fork() uses the V8 instance of the parent process (Electron's Node) 
+            // which effectively behaves like running 'node server.js'
+            nextServerProcess = fork(serverPath, [], {
+                env: { ...process.env, PORT: PORT.toString(), HOSTNAME: 'localhost' },
+                stdio: 'pipe'
+            });
+
+            nextServerProcess.stdout.on('data', (data: any) => {
+                console.log('[Next.js]', data.toString());
+                if (data.toString().includes('Listening') || data.toString().includes('Ready')) {
+                    resolve();
+                }
+            });
+
+            nextServerProcess.stderr.on('data', (data: any) => {
+                console.error('[Next.js Error]', data.toString());
+            });
+
+            // Resolve after timeout just in case "Listening" isn't caught
+            setTimeout(resolve, 5000);
+        });
+    }
+
+    function createWindow() {
+        mainWindow = new BrowserWindow({
+            width: 1280,
+            height: 800,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                nodeIntegration: false,
+                contextIsolation: true,
+            },
+            autoHideMenuBar: true,
+        });
+
+        const loadURL = () => {
+            mainWindow.loadURL(`http://localhost:${PORT}`).catch((err: any) => {
+                console.log(`Server not ready, retrying... (${err.code})`);
+                setTimeout(loadURL, 1000);
+            });
+        };
+
+        // In both dev and prod, we load from localhost now (since we run a local server)
+        loadURL();
+
         if (isDev) {
-            // In dev mode, assume Next.js is already running
-            resolve();
-            return;
+            // mainWindow.webContents.openDevTools();
         }
 
-        console.log('Starting Next.js production server...');
-
-        // Get the path to the Next.js app
-        const appPath = path.join(__dirname, '..');
-
-        // Start Next.js using npx
-        nextServerProcess = spawn('npx', ['next', 'start', '-p', PORT.toString()], {
-            cwd: appPath,
-            shell: true,
-            stdio: 'pipe'
+        mainWindow.on('closed', () => {
+            mainWindow = null;
         });
+    }
 
-        nextServerProcess.stdout.on('data', (data: Buffer) => {
-            const output = data.toString();
-            console.log('[Next.js]', output);
-            if (output.includes('Ready') || output.includes('started')) {
-                resolve();
-            }
+    app.whenReady().then(async () => {
+        // Initialize DB
+        initDB();
+        console.log("Electron App Ready");
+
+        try {
+            await startNextServer();
+        } catch (e) {
+            console.error("Failed to start server", e);
+        }
+
+        createWindow();
+
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) createWindow();
         });
-
-        nextServerProcess.stderr.on('data', (data: Buffer) => {
-            console.error('[Next.js Error]', data.toString());
-        });
-
-        nextServerProcess.on('error', (err: Error) => {
-            console.error('Failed to start Next.js server:', err);
-            reject(err);
-        });
-
-        // Timeout fallback - resolve after 10 seconds even if no "Ready" message
-        setTimeout(() => {
-            console.log('Next.js server startup timeout, proceeding anyway...');
-            resolve();
-        }, 10000);
-    });
-}
-
-function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 800,
-        webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            // security
-            nodeIntegration: false,
-            contextIsolation: true,
-        },
-        autoHideMenuBar: true,
     });
 
-    // Always load from localhost - Next.js server handles both dev and prod
-    mainWindow.loadURL(`http://localhost:${PORT}`);
-
-    // Open DevTools in dev mode
-    if (isDev) {
-        // mainWindow.webContents.openDevTools();
-    }
-
-    mainWindow.on('closed', () => {
-        mainWindow = null;
+    app.on('window-all-closed', () => {
+        if (nextServerProcess) nextServerProcess.kill();
+        if (process.platform !== 'darwin') app.quit();
     });
-}
 
-app.whenReady().then(async () => {
-    // Initialize DB
-    initDB();
-    console.log("Electron App Ready & DB Initialized");
-
-    // Start Next.js server (only in production)
-    try {
-        await startNextServer();
-    } catch (err) {
-        console.error('Failed to start Next.js server:', err);
-    }
-
-    // Wait a bit for server to be fully ready
-    if (!isDev) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    createWindow();
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on('before-quit', () => {
+        if (nextServerProcess) nextServerProcess.kill();
     });
-});
 
-app.on('window-all-closed', () => {
-    // Kill Next.js server on quit
-    if (nextServerProcess) {
-        nextServerProcess.kill();
-    }
-    if (process.platform !== 'darwin') app.quit();
-});
+    // --- IPC Handlers ---
 
-app.on('before-quit', () => {
-    // Kill Next.js server
-    if (nextServerProcess) {
-        nextServerProcess.kill();
-    }
-});
+    ipcMain.handle('db-get-products', async () => {
+        try {
+            return dbAsync.getProducts();
+        } catch (e) {
+            console.error("IPC Error: db-get-products", e);
+            return [];
+        }
+    });
 
-// --- IPC Handlers ---
+    ipcMain.handle('db-get-categories', async () => {
+        try {
+            return dbAsync.getCategories();
+        } catch (e) {
+            console.error("IPC Error: db-get-categories", e);
+            return [];
+        }
+    });
 
-ipcMain.handle('db-get-products', async () => {
-    try {
-        return dbAsync.getProducts();
-    } catch (e) {
-        console.error("IPC Error: db-get-products", e);
-        return [];
-    }
-});
+    ipcMain.handle('db-save-order', async (event: any, order: any) => {
+        try {
+            const result = dbAsync.saveOrder(order);
+            return { id: order.id, ...result };
+        } catch (e) {
+            console.error("IPC Error: db-save-order", e);
+            return { success: false, error: String(e) };
+        }
+    });
 
-ipcMain.handle('db-get-categories', async () => {
-    try {
-        return dbAsync.getCategories();
-    } catch (e) {
-        console.error("IPC Error: db-get-categories", e);
-        return [];
-    }
-});
+    ipcMain.handle('sync-orders', async () => {
+        try {
+            const pending = dbAsync.getPendingOrders();
+            return { pending };
+        } catch (e) {
+            console.error("IPC Error: sync-orders", e);
+            return { pending: [] };
+        }
+    });
 
-ipcMain.handle('db-save-order', async (event: any, order: any) => {
-    try {
-        const result = dbAsync.saveOrder(order);
-        return { id: order.id, ...result };
-    } catch (e) {
-        console.error("IPC Error: db-save-order", e);
-        return { success: false, error: String(e) };
-    }
-});
+    ipcMain.handle('db-mark-synced', async (evt: any, ids: string[]) => {
+        for (const id of ids) {
+            dbAsync.markOrderSynced(id);
+        }
+        return true;
+    });
 
-ipcMain.handle('sync-orders', async () => {
-    try {
-        const pending = dbAsync.getPendingOrders();
-        return { pending };
-    } catch (e) {
-        console.error("IPC Error: sync-orders", e);
-        return { pending: [] };
-    }
-});
+    ipcMain.handle('db-save-products-bulk', async (evt: any, products: any[]) => {
+        dbAsync.saveProductsBulk(products);
+        return true;
+    });
 
-ipcMain.handle('db-mark-synced', async (evt: any, ids: string[]) => {
-    for (const id of ids) {
-        dbAsync.markOrderSynced(id);
-    }
-    return true;
-});
+    ipcMain.handle('db-save-categories-bulk', async (evt: any, categories: any[]) => {
+        dbAsync.saveCategoriesBulk(categories);
+        return true;
+    });
 
-ipcMain.handle('db-save-products-bulk', async (evt: any, products: any[]) => {
-    dbAsync.saveProductsBulk(products);
-    return true;
-});
+    ipcMain.handle('db-save-settings-bulk', async (evt: any, settings: any[]) => {
+        dbAsync.saveSettingsBulk(settings);
+        return true;
+    });
 
-ipcMain.handle('db-save-categories-bulk', async (evt: any, categories: any[]) => {
-    dbAsync.saveCategoriesBulk(categories);
-    return true;
-});
+    ipcMain.handle('db-get-settings', async () => {
+        try {
+            return dbAsync.getSettings();
+        } catch (e) {
+            console.error("IPC Error: db-get-settings", e);
+            return [];
+        }
+    });
 
-ipcMain.handle('db-save-settings-bulk', async (evt: any, settings: any[]) => {
-    dbAsync.saveSettingsBulk(settings);
-    return true;
-});
+    // Silent Printing Handler
+    ipcMain.handle('print-receipt', async (event, htmlContent) => {
+        try {
+            const printWindow = new BrowserWindow({
+                show: false,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true
+                }
+            });
 
-ipcMain.handle('db-get-settings', async () => {
-    try {
-        return dbAsync.getSettings();
-    } catch (e) {
-        console.error("IPC Error: db-get-settings", e);
-        return [];
-    }
-});
+            await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
 
-ipcMain.handle('get-machine-id', () => {
-    return 'DESKTOP-POS-01';
-});
+            // Wait for content to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Print silently
+            printWindow.webContents.print({
+                silent: true,
+                printBackground: false,
+                deviceName: '' // Uses default printer
+            }, (success, errorType) => {
+                if (!success) console.error("Print failed:", errorType);
+                printWindow.close();
+            });
+
+            return { success: true };
+        } catch (e) {
+            console.error("Print Error:", e);
+            return { success: false, error: String(e) };
+        }
+    });
+
+    ipcMain.handle('get-machine-id', () => {
+        return 'DESKTOP-POS-01';
+    });
+} // End Single Instance Lock
