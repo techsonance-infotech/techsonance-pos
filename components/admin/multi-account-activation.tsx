@@ -32,7 +32,7 @@ export function MultiAccountActivation({ stores }: { stores: Store[] }) {
 
     const [state, action, isPending] = useActionState(async (prev: any, formData: FormData) => {
         // Add selected stores to formData
-        selectedStores.forEach(id => formData.append("storeIds", id))
+        selectedStores.forEach((id: any) => formData.append("storeIds", id))
 
         const result = await createBulkLicenses(formData)
         if (result.error) {
@@ -40,8 +40,8 @@ export function MultiAccountActivation({ stores }: { stores: Store[] }) {
             return { error: result.error }
         }
         if (result.success && result.results) {
-            const successCount = result.results.filter(r => r.success).length
-            const failCount = result.results.filter(r => !r.success).length
+            const successCount = result.results.filter((r: any) => r.success).length
+            const failCount = result.results.filter((r: any) => !r.success).length
 
             if (failCount === 0) {
                 toast.success(`Successfully generated ${successCount} licenses!`)

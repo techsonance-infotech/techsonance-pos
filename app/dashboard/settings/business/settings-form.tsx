@@ -16,10 +16,12 @@ type Settings = {
     address: string
     phone: string
     email: string
-    gstNo: string
+    gstNo?: string
+    companyId?: string | null
+    slug?: string
 }
 
-export function SettingsForm({ initialSettings }: { initialSettings: Settings }) {
+export function SettingsForm({ initialSettings, hasCompany = false }: { initialSettings: Settings; hasCompany?: boolean }) {
     const [loading, setLoading] = useState(false)
     const [logoLoading, setLogoLoading] = useState(false)
     const [logoPreview, setLogoPreview] = useState(initialSettings.logoUrl)

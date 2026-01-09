@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
+import { getUserProfile } from "./user"
 
 const SETTINGS_KEYS = [
     'business_name',
@@ -16,7 +17,8 @@ const SETTINGS_KEYS = [
     'tax_name',
     'show_tax_breakdown',
     'enable_discount',
-    'default_discount'
+    'default_discount',
+    'discount_type'
 ] as const
 
 // Internal DB Fetcher
@@ -28,7 +30,7 @@ async function fetchBusinessSettings() {
     })
 
     // Convert array to object
-    const settingsMap = settings.reduce((acc, curr) => {
+    const settingsMap = settings.reduce((acc: any, curr: any) => {
         acc[curr.key] = curr.value
         return acc
     }, {} as Record<string, string>)
@@ -44,38 +46,152 @@ async function fetchBusinessSettings() {
         taxName: settingsMap.tax_name || 'GST',
         showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
         enableDiscount: settingsMap.enable_discount === 'true',
-        defaultDiscount: settingsMap.default_discount || '0'
+        defaultDiscount: settingsMap.default_discount || '0',
+        discountType: settingsMap.discount_type || 'FIXED' // 'FIXED' | 'PERCENTAGE'
     }
 }
 
-// Cached Export
-export const getBusinessSettings = unstable_cache(
-    async () => fetchBusinessSettings(),
-    ['business-settings-data'], // Key parts
-    {
-        tags: ['business-settings'],
-        revalidate: 30 // Reduced from 3600 for better responsiveness
+// Export without cache for now - cache was causing stale data issues
+export async function getBusinessSettings() {
+    return fetchBusinessSettings()
+}
+
+/**
+ * Get company details for the current user
+ * Returns company info if assigned, null if Super Admin without company
+ */
+export async function getCompanyDetails() {
+    try {
+        const user = await getUserProfile()
+        if (!user) {
+            return null
+        }
+
+        // If user has a company, return company details
+        if (user.companyId && user.company) {
+            return {
+                id: user.company.id,
+                name: user.company.name,
+                slug: user.company.slug,
+                logo: user.company.logo || '',
+                address: '', // Need to fetch full company data
+                phone: '',
+                email: '',
+                hasCompany: true
+            }
+        }
+
+        // Super Admin without company - return null
+        return null
+    } catch (error) {
+        console.error("Error fetching company details:", error)
+        return null
     }
-)
+}
+
+/**
+ * Get full company details for business settings page
+ */
+export async function getCompanyBusinessSettings() {
+    try {
+        const user = await getUserProfile()
+        if (!user) {
+            return { hasCompany: false, settings: null }
+        }
+
+        // Fetch global settings first as they are used in both paths
+        const globalSettings = await fetchBusinessSettings()
+
+        // Fetch full company data if user has a company
+        if (user.companyId) {
+            const company = await prisma.company.findUnique({
+                where: { id: user.companyId }
+            })
+
+            if (company) {
+                return {
+                    hasCompany: true,
+                    settings: {
+                        companyId: company.id,
+                        businessName: company.name,
+                        logoUrl: company.logo || '',
+                        address: company.address || '',
+                        phone: company.phone || '',
+                        email: company.email || '',
+                        slug: company.slug,
+                        // Include global tax & discount settings
+                        gstNo: globalSettings.gstNo,
+                        taxRate: globalSettings.taxRate,
+                        taxName: globalSettings.taxName,
+                        showTaxBreakdown: globalSettings.showTaxBreakdown,
+                        enableDiscount: globalSettings.enableDiscount,
+                        defaultDiscount: globalSettings.defaultDiscount,
+                        discountType: globalSettings.discountType
+                    }
+                }
+            }
+        }
+
+        // Super Admin or no company assigned / company not found - use global settings
+        let settings = {
+            companyId: null as string | null,
+            businessName: globalSettings.businessName,
+            logoUrl: globalSettings.logoUrl,
+            address: globalSettings.address,
+            phone: globalSettings.phone,
+            email: globalSettings.email,
+            gstNo: globalSettings.gstNo,
+            // Tax & Discount
+            taxRate: globalSettings.taxRate,
+            taxName: globalSettings.taxName,
+            showTaxBreakdown: globalSettings.showTaxBreakdown,
+            enableDiscount: globalSettings.enableDiscount,
+            defaultDiscount: globalSettings.defaultDiscount,
+            discountType: globalSettings.discountType
+        }
+
+        // Fetch full company data if user has a company (Redundant check? Logic above returns early if company exists... 
+        // Wait, line 103 logic handles company. If company NOT found (unlikely if companyId set), falls here?
+        // Actually the logic above returns if company found.
+        // So below logic is for: User has companyId but company not found? OR User has no companyId.
+
+        return {
+            hasCompany: !!user.companyId,
+            settings
+        }
+    } catch (error) {
+        console.error("Error fetching company business settings:", error)
+        return { hasCompany: false, settings: null }
+    }
+}
 
 export async function updateBusinessSettings(prevState: any, formData: FormData) {
     try {
-        const data = {
-            business_name: formData.get('businessName') as string,
-            business_address: formData.get('address') as string,
-            business_phone: formData.get('phone') as string,
-            business_email: formData.get('email') as string,
-            business_gst: formData.get('gstNo') as string,
+        const user = await getUserProfile()
+        const isCompanyAdmin = !!user?.companyId
+
+        // 1. Prepare Global Settings (Tax, Discount) - Always update these
+        const globalUpdates = {
             tax_rate: formData.get('taxRate') as string,
             tax_name: formData.get('taxName') as string,
             show_tax_breakdown: formData.get('showTaxBreakdown') as string,
             enable_discount: formData.get('enableDiscount') as string,
             default_discount: formData.get('defaultDiscount') as string,
+            discount_type: formData.get('discountType') as string,
         }
 
-        // Parallel updates
+        // 2. Prepare Business Details
+        const businessUpdates = {
+            business_name: formData.get('businessName') as string,
+            business_address: formData.get('address') as string,
+            business_phone: formData.get('phone') as string,
+            business_email: formData.get('email') as string,
+            business_gst: formData.get('gstNo') as string,
+        }
+
+        // 3. Update Global Settings
         await Promise.all(
-            Object.entries(data).map(([key, value]) =>
+            Object.entries(globalUpdates).map(([key, value]) =>
                 prisma.systemConfig.upsert({
                     where: { key },
                     update: { value: value || '' },
@@ -84,8 +200,37 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             )
         )
 
-            ; (revalidateTag as any)('business-settings')
+        // 4. Update Business Details (Company vs Global)
+        if (isCompanyAdmin) {
+            // Update Company Record
+            await prisma.company.update({
+                where: { id: user!.companyId! },
+                data: {
+                    name: businessUpdates.business_name || undefined,
+                    address: businessUpdates.business_address || null,
+                    phone: businessUpdates.business_phone || null,
+                    email: businessUpdates.business_email || null
+                }
+            })
+        } else {
+            // Update SystemConfig for Business Details
+            await Promise.all(
+                Object.entries(businessUpdates).map(([key, value]) =>
+                    prisma.systemConfig.upsert({
+                        where: { key },
+                        update: { value: value || '' },
+                        create: { key, value: value || '' }
+                    })
+                )
+            )
+        }
+
+        (revalidateTag as any)('business-settings')
         revalidatePath('/')
+        revalidatePath('/dashboard/settings/business')
+        revalidatePath('/dashboard/settings/taxes')
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/new-order')
         return { success: true, message: "Settings updated successfully" }
     } catch (error) {
         console.error("Failed to update settings:", error)
@@ -95,6 +240,7 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
 
 export async function uploadLogo(formData: FormData) {
     try {
+        const user = await getUserProfile()
         const file = formData.get('logo') as File
         if (!file) return { success: false, message: "No file provided" }
 
@@ -115,8 +261,23 @@ export async function uploadLogo(formData: FormData) {
 
         await writeFile(path, buffer)
 
-        // Save URL to DB
         const url = `/uploads/${filename}`
+
+        // If user has a company, update company logo
+        if (user?.companyId) {
+            await prisma.company.update({
+                where: { id: user.companyId },
+                data: { logo: url }
+            })
+            // Revalidate all pages that show the logo
+            revalidatePath('/dashboard/settings/business')
+            revalidatePath('/dashboard')
+            revalidatePath('/dashboard/new-order')
+            revalidatePath('/dashboard/recent-orders')
+            return { success: true, url }
+        }
+
+        // Fallback to global setting for Super Admin without company
         await prisma.systemConfig.upsert({
             where: { key: 'business_logo' },
             update: { value: url },
@@ -125,6 +286,7 @@ export async function uploadLogo(formData: FormData) {
 
             ; (revalidateTag as any)('business-settings')
         revalidatePath('/')
+        revalidatePath('/dashboard')
         return { success: true, url }
     } catch (error) {
         console.error("Logo upload failed:", error)

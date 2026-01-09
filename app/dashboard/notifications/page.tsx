@@ -19,20 +19,27 @@ export default function NotificationsPage() {
 
     async function loadData() {
         setLoading(true)
-        const notes = await getNotifications(filter)
-        setNotifications(notes)
-        setLoading(false)
+        try {
+            const notes = await getNotifications(filter)
+            setNotifications(notes)
+        } catch (error) {
+            // Offline - notifications not available
+            console.warn("Notifications: Server fetch failed (offline?)", error)
+            setNotifications([])
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleMarkAllRead = async () => {
         await markAllAsRead()
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+        setNotifications(prev => prev.map((n: any) => ({ ...n, isRead: true })))
         toast.success("All notifications marked as read")
     }
 
     const handleMarkRead = async (id: string) => {
         await markNotificationAsRead(id)
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+        setNotifications(prev => prev.map((n: any) => n.id === id ? { ...n, isRead: true } : n))
     }
 
     if (loading) {
@@ -88,7 +95,7 @@ export default function NotificationsPage() {
                             </div>
                         ) : (
                             <div className="divide-y divide-gray-50">
-                                {notifications.map(note => (
+                                {notifications.map((note: any) => (
                                     <div
                                         key={note.id}
                                         className={cn(

@@ -35,7 +35,7 @@ export async function broadcastNotification(prevState: any, formData: FormData) 
 
         // Bulk create notifications
         await prisma.notification.createMany({
-            data: usersToNotify.map(user => ({
+            data: usersToNotify.map((user: { id: string }) => ({
                 userId: user.id,
                 title,
                 message,

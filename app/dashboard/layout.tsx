@@ -2,6 +2,8 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { SessionGuard } from "@/components/auth/session-guard"
 import { getUserProfile } from "@/app/actions/user"
+import { BootstrapProvider } from "@/components/providers/bootstrap-provider"
+import { SyncProvider } from "@/components/providers/sync-provider"
 
 export const dynamic = 'force-dynamic'
 
@@ -73,26 +75,35 @@ export default async function DashboardLayout({
         redirect('/license/expired')
     }
 
-    // Fetch Business Settings for Sidebar
-    const { getBusinessSettings } = await import("@/app/actions/settings")
-    const businessSettings = await getBusinessSettings()
+    // Fetch Business Settings for Sidebar (company-aware)
+    const { getCompanyBusinessSettings } = await import("@/app/actions/settings")
+    const companySettings = await getCompanyBusinessSettings()
+
+    // Use company settings if available, fallback to defaults
+    const businessName = companySettings.settings?.businessName || 'CafePOS'
+    const logoUrl = companySettings.settings?.logoUrl || ''
 
     return (
         <SessionGuard>
-            <div className="flex h-screen w-full overflow-hidden bg-white">
-                <Sidebar
-                    userRole={user?.role}
-                    disabledModules={user?.disabledModules}
-                    businessName={businessSettings.businessName}
-                    logoUrl={businessSettings.logoUrl}
-                />
-                <div className="flex flex-1 flex-col h-full min-w-0">
-                    <Header initialUser={user} />
-                    <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-                        {children}
-                    </main>
-                </div>
-            </div>
+            <BootstrapProvider>
+                <SyncProvider>
+                    <div className="flex h-screen w-full overflow-hidden bg-white">
+                        <Sidebar
+                            userRole={user?.role}
+                            disabledModules={user?.disabledModules}
+                            businessName={businessName}
+                            logoUrl={logoUrl}
+                            storeTableMode={user?.defaultStore?.tableMode}
+                        />
+                        <div className="flex flex-1 flex-col h-full min-w-0">
+                            <Header initialUser={user} />
+                            <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+                                {children}
+                            </main>
+                        </div>
+                    </div>
+                </SyncProvider>
+            </BootstrapProvider>
         </SessionGuard>
     )
 }

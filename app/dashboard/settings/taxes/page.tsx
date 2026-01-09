@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import TaxesLoading from "./loading"
 
 export default function TaxConfigurationPage() {
@@ -20,6 +21,7 @@ export default function TaxConfigurationPage() {
     const [showBreakdown, setShowBreakdown] = useState(true)
     const [enableDiscount, setEnableDiscount] = useState(false)
     const [defaultDiscount, setDefaultDiscount] = useState("0")
+    const [discountType, setDiscountType] = useState("FIXED")
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(true)
 
@@ -35,8 +37,26 @@ export default function TaxConfigurationPage() {
             setShowBreakdown(settings.showTaxBreakdown !== false) // Default to true if undefined
             setEnableDiscount(settings.enableDiscount === true)
             setDefaultDiscount(settings.defaultDiscount || "0")
+            setDiscountType(settings.discountType || "FIXED")
         } catch (error) {
-            toast.error("Failed to load settings")
+            // Offline fallback - try to load from local settings
+            console.warn("Tax config: Server fetch failed, using local settings", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localSettings = await posService.getSettings()
+                const getSetting = (key: string, defaultVal: string) =>
+                    localSettings.find(s => s.key === key)?.value ?? defaultVal
+
+                setTaxRate(getSetting('setting_taxRate', '5'))
+                setTaxName(getSetting('setting_taxName', 'GST'))
+                setShowBreakdown(getSetting('setting_showTaxBreakdown', 'true') === 'true')
+                setEnableDiscount(getSetting('setting_enableDiscount', 'false') === 'true')
+                setDefaultDiscount(getSetting('setting_defaultDiscount', '0'))
+                setDiscountType(getSetting('setting_discountType', 'FIXED'))
+            } catch (innerError) {
+                console.error("Failed to load local tax settings", innerError)
+            }
         } finally {
             setLoading(false)
         }
@@ -50,6 +70,7 @@ export default function TaxConfigurationPage() {
         formData.append('showTaxBreakdown', String(showBreakdown))
         formData.append('enableDiscount', String(enableDiscount))
         formData.append('defaultDiscount', defaultDiscount)
+        formData.append('discountType', discountType)
 
         // Preserve other settings not being edited here
         // Ideally updateBusinessSettings should perform partial updates, but currently it upserts.
@@ -82,6 +103,7 @@ export default function TaxConfigurationPage() {
             fullFormData.append('showTaxBreakdown', String(showBreakdown))
             fullFormData.append('enableDiscount', String(enableDiscount))
             fullFormData.append('defaultDiscount', defaultDiscount)
+            fullFormData.append('discountType', discountType)
 
             const result = await updateBusinessSettings(null, fullFormData)
             if (result.success) {
@@ -174,17 +196,35 @@ export default function TaxConfigurationPage() {
                                 />
                             </div>
                             {enableDiscount && (
-                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                                    <Label className="text-gray-700 font-medium">Default Discount Amount (₹)</Label>
-                                    <Input
-                                        type="number"
-                                        value={defaultDiscount}
-                                        onChange={(e) => setDefaultDiscount(e.target.value)}
-                                        className="h-12 text-lg"
-                                        placeholder="0.00"
-                                    />
-                                    <p className="text-xs text-gray-500">This amount will be automatically deducted from the total bill.</p>
-                                </div>
+                                <>
+                                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                        <Label className="text-gray-700 font-medium">Default Discount Amount (₹)</Label>
+                                        <Input
+                                            type="number"
+                                            value={defaultDiscount}
+                                            onChange={(e) => setDefaultDiscount(e.target.value)}
+                                            className="h-12 text-lg"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div className="space-y-3 pt-2">
+                                        <Label className="text-gray-700 font-medium">Discount Type</Label>
+                                        <Select value={discountType} onValueChange={setDiscountType}>
+                                            <SelectTrigger className="h-12 text-lg">
+                                                <SelectValue placeholder="Select type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="FIXED">Fixed Amount (₹)</SelectItem>
+                                                <SelectItem value="PERCENTAGE">Percentage (%)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-gray-500">
+                                            {discountType === 'FIXED'
+                                                ? "A fixed amount will be deducted from the subtotal."
+                                                : "A percentage of the subtotal will be deducted."}
+                                        </p>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>

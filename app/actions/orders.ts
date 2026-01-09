@@ -14,6 +14,7 @@ export async function saveOrder(orderData: any) {
     }
 
     try {
+        console.log("Saving Order:", JSON.stringify(orderData, null, 2))
         const orderStatus = orderData.status || 'HELD'
         const tableId = orderData.tableId
 
@@ -51,6 +52,7 @@ export async function saveOrder(orderData: any) {
                     tableName: orderData.tableName || null,
                     paymentMode: orderData.paymentMode || 'CASH',
                     discountAmount: orderData.discountAmount || 0,
+                    taxAmount: orderData.taxAmount || 0
                 }
             })
         } else {
@@ -66,7 +68,9 @@ export async function saveOrder(orderData: any) {
                     tableId: tableId || null,
                     tableName: orderData.tableName || null,
                     userId: user.id,
-                    storeId: user.defaultStoreId
+                    storeId: user.defaultStoreId,
+                    discountAmount: orderData.discountAmount || 0,
+                    taxAmount: orderData.taxAmount || 0
                 }
             })
         }
@@ -133,7 +137,9 @@ const fetchHeldOrders = async (storeId: string) => {
                 customerMobile: true,
                 tableName: true,
                 createdAt: true,
-                items: true
+                items: true,
+                taxAmount: true,
+                discountAmount: true
             }
         })
         return orders
@@ -170,7 +176,9 @@ const fetchRecentOrders = async (storeId: string) => {
                 tableName: true,
                 createdAt: true,
                 updatedAt: true,
-                items: true
+                items: true,
+                taxAmount: true,
+                discountAmount: true
             }
         })
         return orders

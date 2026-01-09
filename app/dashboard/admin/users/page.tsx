@@ -32,9 +32,9 @@ export default async function UsersPage() {
 
     // Calculate stats
     const totalUsers = users.length + pendingUsers.length
-    const activeUsers = users.filter(u => !u.isLocked).length
-    const lockedUsers = users.filter(u => u.isLocked).length
-    const adminUsers = users.filter(u => u.role === 'SUPER_ADMIN').length
+    const activeUsers = users.filter((u: any) => !u.isLocked).length
+    const lockedUsers = users.filter((u: any) => u.isLocked).length
+    const adminUsers = users.filter((u: any) => u.role === 'SUPER_ADMIN').length
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">

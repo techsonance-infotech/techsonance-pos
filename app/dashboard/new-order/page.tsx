@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useReactToPrint } from "react-to-print"
+import { renderToStaticMarkup } from 'react-dom/server'
 import { Search, Plus, Minus, Trash2, ShoppingCart, Save, Printer, Clock, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,6 +16,9 @@ import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import NewOrderLoading from "./loading"
+import { db } from "@/lib/db"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { getPOSService } from "@/lib/pos-service"
 
 type CartItem = {
     cartId?: string
@@ -28,6 +33,7 @@ export default function NewOrderPage() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const { currency } = useCurrency()
+    const isOnline = useNetworkStatus()
 
     // Data State
     const [categories, setCategories] = useState<any[]>([])
@@ -46,11 +52,44 @@ export default function NewOrderPage() {
     const [printOrder, setPrintOrder] = useState<any | null>(null)
     const [businessDetails, setBusinessDetails] = useState<any>(null)
     const loadedOrderRef = useRef<string | null>(null) // Track loaded order to prevent duplicate toasts
+    const printRef = useRef<HTMLDivElement>(null) // Ref for print component
     const [saving, setSaving] = useState(false)
     const [holding, setHolding] = useState(false)
     const [printing, setPrinting] = useState(false)
     const [paymentMode, setPaymentMode] = useState<string>('CASH')
     const [storeDetails, setStoreDetails] = useState<any>(null)
+
+    // Print handler using react-to-print (Web)
+    const handleWebPrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
+        onAfterPrint: () => {
+            setTimeout(() => setPrintOrder(null), 500)
+        }
+    })
+
+    // Unified Print Handler
+    const handlePrint = async () => {
+        // Check if running in Electron
+        if ((window as any).electron && (window as any).electron.isDesktop) {
+            try {
+                const html = renderToStaticMarkup(
+                    <ReceiptTemplate
+                        order={printOrder}
+                        businessDetails={businessDetails}
+                        storeDetails={storeDetails}
+                    />
+                )
+                await (window as any).electron.printReceipt(html)
+                setPrintOrder(null)
+            } catch (e) {
+                console.error("Silent print failed", e)
+                handleWebPrint() // Fallback
+            }
+        } else {
+            handleWebPrint()
+        }
+    }
 
     // URL Params
     const tableId = searchParams.get('tableId')
@@ -58,51 +97,315 @@ export default function NewOrderPage() {
 
     // Initial Load
     useEffect(() => {
-        loadInitialData()
-    }, [])
+        const loadInitialData = async () => {
+            setLoading(true)
+            try {
+                const posService = getPOSService()
 
-    async function loadInitialData() {
-        setLoading(true)
-        try {
-            const data = await getPOSInitialData()
-            if (data) {
-                setCategories(data.categories)
-                setProducts(data.products)
-                setBusinessDetails(data.businessDetails)
-                setStoreDetails(data.storeDetails)
-                // Set default category
-                if (data.categories.length > 0) setSelectedCategory(data.categories[0].id)
+                // 1. Load Local First (Cache-First)
+                const localProducts = await posService.getProducts()
+                const localCategories = await posService.getCategories()
+                const localSettings = await posService.getSettings()
+
+                if (localProducts.length > 0 && localCategories.length > 0) {
+                    setProducts(localProducts as any)
+                    setCategories(localCategories as any)
+
+                    const business = localSettings.find(s => s.key === 'businessDetails')?.value
+                    const store = localSettings.find(s => s.key === 'storeDetails')?.value
+                    // Parse JSON if stored as string
+                    setBusinessDetails(typeof business === 'string' ? JSON.parse(business) : business)
+                    setStoreDetails(typeof store === 'string' ? JSON.parse(store) : store)
+
+                    if (localCategories.length > 0 && selectedCategory === 'all') {
+                        setSelectedCategory(localCategories[0].id)
+                    }
+                }
+
+                // 3. Handle Resume Order
+                const resumeOrderId = searchParams.get('resumeOrderId')
+                if (resumeOrderId && loadedOrderRef.current !== resumeOrderId) {
+                    let order: any = null
+
+                    // Try Local First
+                    try {
+                        order = await posService.getOrder(resumeOrderId)
+                    } catch (e) { console.error("Local fetch failed", e) }
+
+                    // If not local and online, try Server
+                    if (!order && isOnline) {
+                        try {
+                            order = await getOrder(resumeOrderId)
+                        } catch (e) { console.error("Server fetch failed", e) }
+                    }
+
+                    if (order) {
+                        loadedOrderRef.current = resumeOrderId // Prevent re-loading
+                        setResumeId(order.id)
+                        setGuestName(order.customerName || '')
+                        setGuestMobile(order.customerMobile || '')
+                        if (order.tableId) {
+                            // URL params for table might override or match. 
+                            // If URL has table, arguably we keep it (moving order to new table?) 
+                            // or rely on order data. Let's rely on order data if present.
+                        }
+                        if (order.paymentMode) setPaymentMode(order.paymentMode)
+
+                        // Restore Cart
+                        if (Array.isArray(order.items)) {
+                            const restoredCart: CartItem[] = order.items.map((item: any) => ({
+                                cartId: Math.random().toString(36).substr(2, 9),
+                                id: item.id || item.productId, // Handle both structures if stored differently
+                                name: item.name,
+                                unitPrice: item.unitPrice || item.price,
+                                quantity: item.quantity,
+                                addons: item.addons || []
+                            }))
+                            setCart(restoredCart)
+                        }
+                        toast.success("Order Loaded")
+                    } else {
+                        toast.error("Order not found")
+                    }
+                }
+
+                // 2. If Online & Local Empty, fetch from Server (Products)
+                if (localProducts.length === 0 && isOnline) {
+                    const data = await getPOSInitialData()
+                    if (data) {
+                        setCategories(data.categories)
+                        setProducts(data.products)
+                        setBusinessDetails(data.businessDetails)
+                        setStoreDetails(data.storeDetails)
+                        if (data.categories.length > 0) setSelectedCategory(data.categories[0].id)
+
+                        // Sync to local storage for offline use
+                        await posService.saveProductsBulk(data.products)
+                        await posService.saveCategoriesBulk(data.categories)
+
+                        // Save settings to local storage
+                        const settingsToSave = [
+                            { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
+                            { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
+                        ]
+                        await posService.saveSettingsBulk(settingsToSave as any)
+                    }
+                } else if (isOnline && localProducts.length > 0) {
+                    // If we have local data but we're online, still fetch latest settings
+                    // to ensure tax/discount configs are up-to-date
+                    try {
+                        const data = await getPOSInitialData()
+                        if (data?.businessDetails) {
+                            setBusinessDetails(data.businessDetails)
+                            setStoreDetails(data.storeDetails)
+
+                            // Update settings in local storage
+                            const settingsToSave = [
+                                { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
+                                { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
+                            ]
+                            await posService.saveSettingsBulk(settingsToSave as any)
+                        }
+                    } catch (e) {
+                        console.error("Failed to update settings from server", e)
+                        // Continue with local settings if server fetch fails
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to load POS data", error)
+                // Only show toast if it's a real error, not just empty OR network error
+                const msg = error instanceof Error ? error.message : String(error)
+                const isNetworkError = msg.includes('Failed to fetch') || msg.includes('Network request failed')
+
+                if (msg !== 'No products found' && !isNetworkError) {
+                    toast.error(`Failed to load products: ${msg}`)
+                }
+            } finally {
+                setLoading(false)
             }
-        } catch (error) {
-            console.error("Failed to load menu data", error)
-        } finally {
-            setLoading(false)
+        }
+        loadInitialData()
+    }, [isOnline])
+
+    // New Effect: Handle Resume Order (Runs on URL change or Network change)
+    useEffect(() => {
+        const resumeId = searchParams.get('resumeId') || searchParams.get('resumeOrderId')
+        if (!resumeId || loadedOrderRef.current === resumeId) return
+
+        const loadResumeOrder = async () => {
+            const posService = getPOSService()
+            let order: any = null
+
+            // Try Local First
+            try {
+                order = await posService.getOrder(resumeId)
+            } catch (e) { console.error("Local fetch failed", e) }
+
+            // If not local and online, try Server
+            if (!order && isOnline) {
+                try {
+                    order = await getOrder(resumeId)
+                } catch (e) { console.error("Server fetch failed", e) }
+            }
+
+            if (order) {
+                loadedOrderRef.current = resumeId // Prevent re-loading
+                setResumeId(order.id)
+                setGuestName(order.customerName || '')
+                setGuestMobile(order.customerMobile || '')
+                if (order.paymentMode) setPaymentMode(order.paymentMode)
+
+                // Restore Cart
+                if (Array.isArray(order.items)) {
+                    const restoredCart: CartItem[] = order.items.map((item: any) => ({
+                        cartId: Math.random().toString(36).substr(2, 9),
+                        id: item.id || item.productId, // Handle both structures if stored differently
+                        name: item.name,
+                        unitPrice: item.unitPrice || item.price,
+                        quantity: item.quantity,
+                        addons: item.addons || []
+                    }))
+                    setCart(restoredCart)
+                }
+                toast.success("Order Loaded")
+            } else {
+                toast.error("Order not found")
+            }
+        }
+
+        loadResumeOrder()
+    }, [searchParams, isOnline]) // Only depends on network status for initial data
+
+    // --- Calculations ---
+    const subtotal = cart.reduce((sum, item) => {
+        const totalAddonsCost = item.addons?.reduce((as, a) => as + (a.addon.price * a.quantity), 0) || 0
+        return sum + (item.unitPrice * item.quantity) + totalAddonsCost
+    }, 0)
+
+    const taxRate = parseFloat(businessDetails?.taxRate || '0')
+    const taxName = businessDetails?.taxName || 'Tax'
+    const isTaxEnabled = businessDetails?.showTaxBreakdown === true
+
+    const isDiscountEnabled = businessDetails?.enableDiscount === true
+    const discountType = businessDetails?.discountType || 'FIXED'
+    const defaultDiscountVal = parseFloat(businessDetails?.defaultDiscount || '0')
+
+    let discountAmount = 0
+    if (isDiscountEnabled) {
+        if (discountType === 'PERCENTAGE') {
+            discountAmount = subtotal * (defaultDiscountVal / 100)
+        } else {
+            discountAmount = Math.min(defaultDiscountVal, subtotal)
         }
     }
 
-    // Resume Logic - Handle both held orders and completed orders
-    useEffect(() => {
-        const rId = searchParams.get('resumeId') || searchParams.get('resumeOrderId')
-        if (rId) {
-            loadResumeOrder(rId)
-        }
-    }, [searchParams])
+    const taxableAmount = Math.max(0, subtotal - discountAmount)
+    // Tax on Gross Subtotal per user request
+    const tax = isTaxEnabled ? (subtotal * (taxRate / 100)) : 0
+    const total = taxableAmount + tax
 
-    async function loadResumeOrder(id: string) {
-        // Prevent loading the same order multiple times
-        if (loadedOrderRef.current === id) return
+    // --- Unified Order Processing ---
+    // --- Unified Order Processing ---
+    async function processOrder(status: 'COMPLETED' | 'HELD', print: boolean = false) {
+        if (cart.length === 0) return
 
-        const order = await getOrder(id)
-        if (order && (order.status === 'HELD' || order.status === 'COMPLETED')) {
-            setResumeId(id)
-            setCart(order.items as any)
-            setGuestName(order.customerName || '')
-            setGuestMobile(order.customerMobile || '')
-            loadedOrderRef.current = id // Mark as loaded
-            toast.success(`Order #${order.kotNo} loaded successfully`)
-        } else {
-            toast.error('Order not found or invalid status')
+        if (guestMobile && guestMobile.length !== 10) {
+            toast.error("Mobile number must be exactly 10 digits")
+            return
         }
+
+        const actionSet = status === 'HELD' ? setHolding : (print ? setPrinting : setSaving)
+        actionSet(true)
+
+        try {
+            const orderData = {
+                id: resumeId || crypto.randomUUID(), // Generate UUID if new
+                status,
+                totalAmount: total,
+                discountAmount: discountAmount, // Save calculated discount amount
+                taxAmount: tax, // Save calculated tax amount
+                discount: discountType === 'PERCENTAGE' ? `${businessDetails?.defaultDiscount}%` : businessDetails?.defaultDiscount, // Save raw input (rate/amount) for receipt
+
+                items: cart,
+                customerName: guestName,
+                customerMobile: guestMobile,
+                tableId: tableId || null,
+                tableName: tableName || null,
+                paymentMode,
+                kotNo: `KOT${Date.now().toString().slice(-6)}`, // Temporary KOT
+                createdAt: new Date().toISOString() // For local storage
+            }
+
+            if (!isOnline) {
+                // --- OFFLINE SAVE ---
+                const posService = getPOSService()
+                const result = await posService.saveOrder({
+                    ...orderData,
+                    items: cart,
+                    createdAt: Date.now(),
+                    status: 'PENDING_SYNC',
+                    originalStatus: status // Preserve the intended status (HELD or COMPLETED)
+                })
+
+                if (result.success) {
+                    toast.success(status === 'HELD' ? "Order Held Offline" : "Order Saved Offline (Pending Sync)", {
+                        icon: "💾"
+                    })
+
+                    if (print) {
+                        setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
+                        setTimeout(() => handlePrint(), 100)
+                    }
+
+                    finishOrder(print)
+                } else {
+                    toast.error("Failed to save offline: " + result.error)
+                }
+
+            } else {
+                // --- ONLINE SAVE ---
+                const result = await saveOrder({
+                    ...orderData,
+                    id: resumeId, // allow null
+                    status // pass status explicitly
+                })
+
+                if (result?.success) {
+                    toast.success(status === 'HELD' ? "Order Held Successfully" : "Order Saved Successfully")
+
+                    if (print) {
+                        setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
+                        setTimeout(() => handlePrint(), 100)
+                    }
+                    finishOrder(print)
+                } else {
+                    toast.error(result?.error || "Failed to save order")
+                }
+            }
+        } catch (err) {
+            console.error(err)
+            toast.error("An error occurred while saving")
+        } finally {
+            actionSet(false)
+        }
+    }
+
+    function finishOrder(wasPrint: boolean) {
+        // If printing, wait a bit before clearing to allow print dialog
+        const delay = wasPrint ? 500 : 0
+        setTimeout(() => {
+            setCart([])
+            setGuestName('')
+            setGuestMobile('')
+            setResumeId(null)
+            setPaymentMode('CASH')
+            if (wasPrint) setPrintOrder(null)
+
+            // If held, dispatch event
+            // window.dispatchEvent(new Event('holdOrderUpdated')) // Optional if we want to update header count offline?
+
+            router.push('/dashboard/new-order')
+        }, delay)
     }
 
     // Filter products
@@ -143,71 +446,6 @@ export default function NewOrderPage() {
     }
 
     // --- Calculations ---
-    const subtotal = cart.reduce((sum, item) => {
-        const unitAddonsCost = item.addons?.reduce((as, a) => as + (a.addon.price * a.quantity), 0) || 0
-        return sum + ((item.unitPrice * item.quantity) + (unitAddonsCost))
-    }, 0)
-
-    const taxRate = parseFloat(businessDetails?.taxRate || '5')
-    const taxName = businessDetails?.taxName || 'Tax'
-    // Only calculate tax if tax breakdown is enabled (treating it as enabled/disabled)
-    const isTaxEnabled = businessDetails?.showTaxBreakdown !== false
-    const tax = isTaxEnabled ? (subtotal * (taxRate / 100)) : 0
-
-    // Calculate discount based on settings
-    const discountAmount = (businessDetails?.enableDiscount && businessDetails?.defaultDiscount)
-        ? parseFloat(businessDetails.defaultDiscount)
-        : 0
-
-    // Ensure discount doesn't exceed total (subtotal + tax)
-    const appliedDiscount = Math.min(discountAmount, subtotal + tax)
-    const total = subtotal + tax - appliedDiscount
-
-    const handleHoldOrder = async () => {
-        if (cart.length === 0) return
-
-        if (guestMobile && guestMobile.length !== 10) {
-            toast.error("Mobile number must be exactly 10 digits")
-            return
-        }
-
-        setHolding(true)
-        try {
-            const orderData = {
-                id: resumeId, // Update existing if resuming
-                totalAmount: total, // Use calculated total
-                items: cart,
-                customerName: guestName,
-                customerMobile: guestMobile,
-                tableId: tableId || null,
-                tableName: tableName || null,
-                paymentMode: paymentMode,
-            }
-
-            const result = await saveOrder(orderData)
-            if (result?.success) {
-                // Success feedback (using alert for now)
-                toast.success("Order Held Successfully! Check 'Hold Orders' in header.")
-                setCart([])
-                setGuestName('')
-                setGuestMobile('')
-                setResumeId(null)
-                setPaymentMode('CASH')
-
-                // Dispatch event to update header counter
-                window.dispatchEvent(new Event('holdOrderUpdated'))
-
-                // Clear URL parameters to prevent reloading
-                router.push('/dashboard/new-order')
-                // No redirect, just clear
-            } else {
-                toast.error("Failed to hold order")
-            }
-        } finally {
-            setHolding(false)
-        }
-    }
-
     if (loading) return <NewOrderLoading />
 
     return (
@@ -303,6 +541,11 @@ export default function NewOrderPage() {
                                 Table: {tableName}
                             </span>
                         )}
+                        {!isOnline && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                                Offline
+                            </span>
+                        )}
                     </div>
 
                     <div className="p-3 grid grid-cols-2 gap-2 border-b border-gray-100 bg-gray-50/50">
@@ -364,7 +607,10 @@ export default function NewOrderPage() {
                                             </button>
                                         </div>
                                         <div className="w-16 text-right font-bold text-sm">
-                                            {formatCurrency((item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0) * 1, currency.symbol)}
+                                            {formatCurrency(
+                                                (item.unitPrice * item.quantity) + (item.addons?.reduce((sum, a) => sum + (a.addon.price * a.quantity), 0) || 0),
+                                                currency.symbol
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -378,16 +624,16 @@ export default function NewOrderPage() {
                             <span>Subtotal</span>
                             <span className="font-medium">{formatCurrency(subtotal, currency.symbol)}</span>
                         </div>
-                        {businessDetails?.showTaxBreakdown && (
+                        {isDiscountEnabled && discountAmount > 0 && (
+                            <div className="flex items-center justify-between text-sm text-gray-600">
+                                <span>Discount</span>
+                                <span className="font-medium text-green-600">- {formatCurrency(discountAmount, currency.symbol)}</span>
+                            </div>
+                        )}
+                        {isTaxEnabled && (
                             <div className="flex justify-between text-sm text-gray-600">
                                 <span>{taxName} ({taxRate}%)</span>
                                 <span className="font-medium">{formatCurrency(tax, currency.symbol)}</span>
-                            </div>
-                        )}
-                        {businessDetails?.enableDiscount && (
-                            <div className="flex items-center justify-between text-sm text-gray-600">
-                                <span>Discount</span>
-                                <span className="font-medium text-orange-600">- {formatCurrency(appliedDiscount, currency.symbol)}</span>
                             </div>
                         )}
 
@@ -416,47 +662,7 @@ export default function NewOrderPage() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <button
-                                    onClick={async () => {
-                                        if (cart.length === 0) return
-
-                                        if (guestMobile && guestMobile.length !== 10) {
-                                            toast.error("Mobile number must be exactly 10 digits")
-                                            return
-                                        }
-
-                                        setSaving(true)
-                                        try {
-                                            const orderData = {
-                                                id: resumeId,
-                                                status: 'COMPLETED',
-                                                totalAmount: total,
-                                                items: cart,
-                                                customerName: guestName,
-                                                customerMobile: guestMobile,
-                                                tableId: tableId || null,
-                                                tableName: tableName || null,
-                                                paymentMode,
-                                            }
-
-                                            const result = await saveOrder(orderData)
-                                            if (result?.success) {
-                                                toast.success("Order Saved Successfully!")
-                                                // Clear form using the same logic as "Clear Order"
-                                                setCart([])
-                                                setGuestName('')
-                                                setGuestMobile('')
-                                                setResumeId(null)
-                                                setPaymentMode('CASH')
-
-                                                // Clear URL parameters to prevent reloading
-                                                router.push('/dashboard/new-order')
-                                            } else {
-                                                toast.error("Failed to save order")
-                                            }
-                                        } finally {
-                                            setSaving(false)
-                                        }
-                                    }}
+                                    onClick={() => processOrder('COMPLETED')}
                                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={saving || holding || printing}
                                 >
@@ -464,7 +670,7 @@ export default function NewOrderPage() {
                                     {saving ? 'Saving...' : 'Save'}
                                 </button>
                                 <button
-                                    onClick={handleHoldOrder}
+                                    onClick={() => processOrder('HELD')}
                                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={saving || holding || printing}
                                 >
@@ -472,64 +678,7 @@ export default function NewOrderPage() {
                                     {holding ? 'Holding...' : 'KOT (Hold)'}
                                 </button>
                                 <button
-                                    onClick={async () => {
-                                        if (cart.length === 0) return
-
-                                        if (guestMobile && guestMobile.length !== 10) {
-                                            toast.error("Mobile number must be exactly 10 digits")
-                                            return
-                                        }
-
-                                        setPrinting(true)
-                                        try {
-                                            // 1. Prepare Data
-                                            const orderData = {
-                                                id: resumeId,
-                                                status: 'COMPLETED',
-                                                totalAmount: total,
-                                                items: cart,
-                                                customerName: guestName,
-                                                customerMobile: guestMobile,
-                                                tableId: tableId || null,
-                                                tableName: tableName || null,
-                                                paymentMode,
-                                                kotNo: `KOT${Date.now().toString().slice(-6)}` // Generate here to pass to print
-                                            }
-
-                                            // 2. Save
-                                            const result = await saveOrder(orderData)
-
-                                            if (result?.success) {
-
-                                                // 3. Print (Set state -> Render -> Print)
-                                                setPrintOrder({ ...orderData, createdAt: new Date(), subtotal, taxAmount: tax })
-
-                                                // Wait for state to update and render the receipt
-                                                setTimeout(() => {
-                                                    window.print()
-
-                                                    // 4. Cleanup after print dialog usage (approximate)
-                                                    // In a real app we might listen to window.onafterprint but timeout is often sufficient
-                                                    setTimeout(() => {
-                                                        setPrintOrder(null)
-                                                        setCart([])
-                                                        setGuestName('')
-                                                        setGuestMobile('')
-                                                        setResumeId(null)
-                                                        setPaymentMode('CASH')
-                                                        toast.success("Order Saved & Printed!")
-
-                                                        // Clear URL parameters to prevent reloading
-                                                        router.push('/dashboard/new-order')
-                                                    }, 500)
-                                                }, 100)
-                                            } else {
-                                                toast.error("Failed to save order")
-                                            }
-                                        } finally {
-                                            setPrinting(false)
-                                        }
-                                    }}
+                                    onClick={() => processOrder('COMPLETED', true)}
                                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled={saving || holding || printing}
                                 >
@@ -567,12 +716,14 @@ export default function NewOrderPage() {
             {/* Hidden Print Template */}
             {
                 printOrder && (
-                    <div className="hidden print:block print-only fixed inset-0 z-[9999] bg-white">
-                        <ReceiptTemplate
-                            order={printOrder}
-                            businessDetails={businessDetails}
-                            storeDetails={storeDetails}
-                        />
+                    <div style={{ display: 'none' }}>
+                        <div ref={printRef}>
+                            <ReceiptTemplate
+                                order={printOrder}
+                                businessDetails={businessDetails}
+                                storeDetails={storeDetails}
+                            />
+                        </div>
                     </div>
                 )
             }

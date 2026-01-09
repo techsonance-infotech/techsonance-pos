@@ -13,12 +13,12 @@ export function BarChart({ data, height = 300, color = '#3B82F6', valuePrefix = 
     }
 
     // Filter out invalid values and ensure all values are numbers
-    const validData = data.map(item => ({
+    const validData = data.map((item: any) => ({
         ...item,
         value: typeof item.value === 'number' && !isNaN(item.value) ? item.value : 0
     }))
 
-    const maxValue = Math.max(...validData.map(d => d.value), 1) // Ensure at least 1 to avoid division by zero
+    const maxValue = Math.max(...validData.map((d: any) => d.value), 1) // Ensure at least 1 to avoid division by zero
     const barWidth = 100 / validData.length
 
     return (
@@ -26,7 +26,7 @@ export function BarChart({ data, height = 300, color = '#3B82F6', valuePrefix = 
             <div className="relative" style={{ height: `${height}px` }}>
                 <svg width="100%" height="100%" className="overflow-visible">
                     {/* Grid lines */}
-                    {[0, 0.25, 0.5, 0.75, 1].map((percent, i) => (
+                    {[0, 0.25, 0.5, 0.75, 1].map((percent: number, i: number) => (
                         <g key={i}>
                             <line
                                 x1="0"
@@ -49,7 +49,7 @@ export function BarChart({ data, height = 300, color = '#3B82F6', valuePrefix = 
                     ))}
 
                     {/* Bars */}
-                    {validData.map((item, index) => {
+                    {validData.map((item: any, index: number) => {
                         const barHeight = (item.value / maxValue) * (height - 40)
                         const x = `${index * barWidth}%`
                         const y = height - barHeight - 30
@@ -99,16 +99,16 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
     }
 
     // Filter out invalid values and ensure all values are numbers
-    const validData = data.map(item => ({
+    const validData = data.map((item: any) => ({
         ...item,
         value: typeof item.value === 'number' && !isNaN(item.value) ? item.value : 0
     }))
 
-    const maxValue = Math.max(...validData.map(d => d.value))
-    const minValue = Math.min(...validData.map(d => d.value))
+    const maxValue = Math.max(...validData.map((d: any) => d.value))
+    const minValue = Math.min(...validData.map((d: any) => d.value))
     const range = maxValue - minValue || 1
 
-    const points = validData.map((item, index) => {
+    const points = validData.map((item: any, index: number) => {
         const x = (index / (validData.length - 1)) * 100
         const y = 100 - ((item.value - minValue) / range) * 80
         return `${x},${y}`
@@ -119,7 +119,7 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
             <div className="relative" style={{ height: `${height}px` }}>
                 <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
                     {/* Grid */}
-                    {[0, 25, 50, 75, 100].map((y, i) => (
+                    {[0, 25, 50, 75, 100].map((y: number, i: number) => (
                         <line
                             key={i}
                             x1="0"
@@ -151,7 +151,7 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
                     />
 
                     {/* Points */}
-                    {validData.map((item, index) => {
+                    {validData.map((item: any, index: number) => {
                         const x = (index / (validData.length - 1)) * 100
                         const y = 100 - ((item.value - minValue) / range) * 80
 
@@ -173,7 +173,7 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
             </div>
             {/* Labels */}
             <div className="flex justify-between mt-2 px-2">
-                {validData.map((item, index) => (
+                {validData.map((item: any, index: number) => (
                     <span key={index} className="text-xs text-gray-500">
                         {item.label}
                     </span>
@@ -194,12 +194,12 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
     }
 
     // Filter and Validate
-    const validData = data.map(item => ({
+    const validData = data.map((item: any) => ({
         ...item,
         value: typeof item.value === 'number' && !isNaN(item.value) ? Math.max(0, item.value) : 0
     }))
 
-    const total = validData.reduce((sum, item) => sum + item.value, 0)
+    const total = validData.reduce((sum: number, item: any) => sum + item.value, 0)
 
     if (total === 0) {
         return (
@@ -217,7 +217,7 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
     return (
         <div className="flex items-center gap-8">
             <svg width={size} height={size} viewBox="0 0 100 100" className="overflow-visible">
-                {validData.map((item, index) => {
+                {validData.map((item: any, index: number) => {
                     const percentage = (item.value / total) * 100
                     const angle = (percentage / 100) * 360
 
@@ -272,7 +272,7 @@ export function PieChart({ data, size = 200 }: PieChartProps) {
 
             {/* Legend */}
             <div className="space-y-2">
-                {validData.map((item, index) => {
+                {validData.map((item: any, index: number) => {
                     const percentage = (item.value / total) * 100
                     return (
                         <div key={index} className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 'use server'
 
 import { getCategories, getProducts } from "./menu"
-import { getBusinessSettings } from "./settings"
+import { getCompanyBusinessSettings } from "./settings"
 import { getUserStoreDetails } from "./user"
 import { getUserProfile } from "./user"
 import { getRecentOrders } from "./orders"
@@ -19,12 +19,30 @@ export async function getPOSInitialData() {
     // We could optimize them to accept storeId, but let's stick to public API for now.
 
     try {
-        const [categories, products, settings, store] = await Promise.all([
+        const [categories, products, companySettings, store] = await Promise.all([
             getCategories(),
             getProducts('all'),
-            getBusinessSettings(),
+            getCompanyBusinessSettings(),
             getUserStoreDetails()
         ])
+
+        // Build business details from company settings
+        // Now getCompanyBusinessSettings returns merged global tax/discount settings!
+        const settings = companySettings.settings ? {
+            businessName: companySettings.settings.businessName || 'CafePOS',
+            address: companySettings.settings.address || '',
+            phone: companySettings.settings.phone || '',
+            email: companySettings.settings.email || '',
+            logoUrl: companySettings.settings.logoUrl || '',
+
+            // Tax & Discount Settings (mapped)
+            gstNo: (companySettings.settings as any).gstNo || '',
+            taxRate: (companySettings.settings as any).taxRate || '0',
+            taxName: (companySettings.settings as any).taxName || 'Tax',
+            showTaxBreakdown: (companySettings.settings as any).showTaxBreakdown === true,
+            enableDiscount: (companySettings.settings as any).enableDiscount === true,
+            defaultDiscount: (companySettings.settings as any).defaultDiscount || '0'
+        } : {}
 
         return {
             categories,
@@ -49,11 +67,23 @@ export async function getRecentOrdersPageData() {
     }
 
     try {
-        const [orders, settings, store] = await Promise.all([
+        const [orders, companySettings, store] = await Promise.all([
             getRecentOrders(),
-            getBusinessSettings(),
+            getCompanyBusinessSettings(),
             getUserStoreDetails()
         ])
+
+        // Build business details from company settings
+        const settings = companySettings.settings ? {
+            businessName: companySettings.settings.businessName || 'CafePOS',
+            address: companySettings.settings.address || '',
+            phone: companySettings.settings.phone || '',
+            email: companySettings.settings.email || '',
+            logoUrl: companySettings.settings.logoUrl || '',
+            taxRate: '5',
+            taxName: 'GST',
+            showTaxBreakdown: true
+        } : {}
 
         return { orders, businessDetails: settings, storeDetails: store }
     } catch (error) {

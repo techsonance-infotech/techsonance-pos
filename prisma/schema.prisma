@@ -14,6 +14,44 @@ enum Role {
   USER
 }
 
+// ========== MULTI-TENANT: Company (Tenant) ==========
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique  // URL-friendly identifier
+  logo        String?
+  address     String?
+  phone       String?
+  email       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stores      Store[]
+  users       User[]
+
+  @@index([isActive])
+  @@index([slug])
+}
+
+// ========== BACKUP ENUMS ==========
+enum BackupType {
+  MANUAL
+  SCHEDULED
+}
+
+enum BackupScope {
+  FULL
+  COMPANY
+}
+
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
 model Store {
   id        String   @id @default(uuid())
   name      String
@@ -21,6 +59,10 @@ model Store {
   tableMode Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Multi-tenant: Store belongs to Company
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   users     User[]   @relation("UserStores")
   
@@ -31,6 +73,8 @@ model Store {
   defaultForUsers User[] @relation("DefaultStore")
 
   license   License?
+
+  @@index([companyId])
 }
 
 model License {
@@ -126,6 +170,10 @@ model User {
   disabledModules String[] @default([]) // Array of module IDs e.g. ["orders", "reports"]
   lastIp          String?  // Track last login IP
 
+  // Multi-tenant: User belongs to Company (null for SUPER_ADMIN = global access)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+
   // Store Relations
   stores         Store[]   @relation("UserStores")
   defaultStoreId String?
@@ -135,6 +183,9 @@ model User {
   updatedAt    DateTime       @updatedAt
   notifications Notification[]
   orders       Order[]
+  backupLogs   BackupLog[]    // Backups triggered by this user
+
+  @@index([companyId])
 }
 
 model Table {
@@ -176,6 +227,7 @@ model Order {
   status         OrderStatus @default(HELD)
   
   totalAmount    Float
+  taxAmount      Float       @default(0)
   discountAmount Float       @default(0)
   items          Json
   paymentMode    PaymentMode?
@@ -257,4 +309,43 @@ model Addon {
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ========== BACKUP MODELS ==========
+model BackupLog {
+  id            String       @id @default(uuid())
+  type          BackupType   // MANUAL, SCHEDULED
+  scope         BackupScope  // FULL, COMPANY
+  companyId     String?      // null for FULL backups
+  status        BackupStatus @default(PENDING)
+  filePath      String?
+  fileName      String?
+  fileSize      Int?         // bytes
+  encryptionKey String?      // for encrypted backups (optional)
+  errorMessage  String?
+  
+  // Triggered by user (for manual backups)
+  triggeredById String?
+  triggeredBy   User?        @relation(fields: [triggeredById], references: [id])
+  
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  
+  @@index([status])
+  @@index([companyId])
+  @@index([startedAt])
+}
+
+model BackupSchedule {
+  id            String   @id @default(uuid())
+  frequency     String   // daily, weekly, monthly
+  time          String   // HH:mm format (e.g., "02:00")
+  dayOfWeek     Int?     // 0-6 for weekly (0 = Sunday)
+  dayOfMonth    Int?     // 1-31 for monthly
+  retentionDays Int      @default(30)
+  isEnabled     Boolean  @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

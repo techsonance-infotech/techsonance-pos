@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { useReactToPrint } from "react-to-print"
+import { renderToStaticMarkup } from 'react-dom/server'
 import { Search, Calendar, ClipboardList, Eye, Printer, Edit, Trash2, Play, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
@@ -36,6 +38,44 @@ export default function RecentOrdersPage() {
     const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<any | null>(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
+    const printRef = useRef<HTMLDivElement>(null) // Ref for print component
+
+    // Print handler using react-to-print (Web Fallback)
+    const handleWebPrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
+        onAfterPrint: () => {
+            setTimeout(() => setPrintOrder(null), 500)
+        }
+    })
+
+    // Unified Print Handler
+    const handlePrint = async (orderToPrint?: any) => {
+        // Use provided order or state
+        const order = orderToPrint || printOrder
+
+        // Check if running in Electron
+        if ((window as any).electron && (window as any).electron.isDesktop) {
+            if (!order) return
+
+            try {
+                const html = renderToStaticMarkup(
+                    <ReceiptTemplate
+                        order={order}
+                        businessDetails={businessDetails}
+                        storeDetails={storeDetails}
+                    />
+                )
+                await (window as any).electron.printReceipt(html)
+                setPrintOrder(null)
+            } catch (e) {
+                console.error("Silent print failed", e)
+                handleWebPrint() // Fallback
+            }
+        } else {
+            handleWebPrint()
+        }
+    }
 
     // Use getOrder from server actions instead of require
 
@@ -61,13 +101,29 @@ export default function RecentOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const data = await getRecentOrdersPageData()
-        if (data) {
-            setOrders(data.orders)
-            setBusinessDetails(data.businessDetails)
-            setStoreDetails(data.storeDetails)
+        try {
+            // Try fetching from Server first
+            const data = await getRecentOrdersPageData()
+            if (data) {
+                setOrders(data.orders)
+                setBusinessDetails(data.businessDetails)
+                setStoreDetails(data.storeDetails)
+            }
+        } catch (error) {
+            // Fallback to Offline Data
+            console.log("Offline mode: Loading local orders")
+            try {
+                // Dynamically import to avoid server-side issues if any (though client comp is fine)
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localOrders = await posService.getRecentOrders()
+                setOrders(localOrders)
+            } catch (innerError) {
+                console.error("Failed to load local orders", innerError)
+            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     // Handle Edit Order (Convert to HELD)
@@ -115,7 +171,7 @@ export default function RecentOrdersPage() {
     }
 
     // Filter Logic
-    const filteredOrders = orders.filter(order => {
+    const filteredOrders = orders.filter((order: any) => {
         const matchesSearch =
             order.kotNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -186,13 +242,15 @@ export default function RecentOrdersPage() {
                                         <th className="px-6 py-4">Date & Time</th>
                                         <th className="px-6 py-4">Customer</th>
                                         <th className="px-6 py-4">Items</th>
+                                        <th className="px-6 py-4 text-right">GST</th>
+                                        <th className="px-6 py-4 text-right">Discount</th>
                                         <th className="px-6 py-4 text-right">Amount</th>
                                         <th className="px-6 py-4 text-center">Reference</th>
                                         <th className="px-6 py-4 text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredOrders.map((order) => (
+                                    {filteredOrders.map((order: any) => (
                                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="px-6 py-4 font-bold text-gray-900">{order.kotNo}</td>
                                             <td className="px-6 py-4 text-gray-600">
@@ -212,6 +270,12 @@ export default function RecentOrdersPage() {
                                                 <div className="max-w-[200px] truncate text-gray-600" title={Array.isArray(order.items) ? order.items.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') : ''}>
                                                     {Array.isArray(order.items) ? `${order.items.length} items` : '0 items'}
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-600">
+                                                ₹{order.taxAmount ? Number(order.taxAmount).toFixed(2) : '0.00'}
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-green-600">
+                                                {order.discountAmount ? `-₹${Number(order.discountAmount).toFixed(2)}` : '-'}
                                             </td>
                                             <td className="px-6 py-4 text-right font-bold text-gray-900">
                                                 ₹{order.totalAmount.toFixed(2)}
@@ -274,7 +338,7 @@ export default function RecentOrdersPage() {
 
                 {/* Order Details Modal */}
                 <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-                    <DialogContent className="max-w-3xl p-0 overflow-hidden gap-0">
+                    <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden gap-0">
                         {/* Header with Gradient */}
                         <DialogHeader className="p-6 bg-gradient-to-r from-orange-400 to-orange-600 text-white">
                             <div className="flex justify-between items-start">
@@ -294,8 +358,9 @@ export default function RecentOrdersPage() {
                         </DialogHeader>
 
                         {selectedOrder && (
-                            <div className="flex flex-col h-full">
-                                <div className="p-6 space-y-8">
+                            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                                {/* Fixed Info Section */}
+                                <div className="p-4 space-y-4 shrink-0 border-b border-gray-100 bg-gray-50/50">
                                     {/* Info Grid */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         {/* Customer Details */}
@@ -341,6 +406,11 @@ export default function RecentOrdersPage() {
                                         </div>
                                     </div>
 
+                                </div>
+
+
+                                {/* Scrollable Items Section (Start) */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                     {/* Items Table */}
                                     <div className="space-y-4">
                                         <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -385,8 +455,32 @@ export default function RecentOrdersPage() {
                                                 <tfoot className="bg-gray-50/80 border-t border-gray-200">
                                                     <tr>
                                                         <td colSpan={3} className="px-6 py-4 text-right font-semibold text-gray-600">Subtotal</td>
-                                                        <td className="px-6 py-4 text-right font-bold text-gray-900">₹{selectedOrder.totalAmount.toFixed(2)}</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-gray-900">
+                                                            {(() => {
+                                                                const subtotal = selectedOrder.items?.reduce((sum: number, item: any) => {
+                                                                    const itemTotal = (item.unitPrice * item.quantity) + (item.addons?.reduce((s: number, a: any) => s + (a.addon.price * a.quantity), 0) || 0)
+                                                                    return sum + itemTotal
+                                                                }, 0) || 0
+                                                                return `₹${subtotal.toFixed(2)}`
+                                                            })()}
+                                                        </td>
                                                     </tr>
+                                                    {selectedOrder.taxAmount > 0 && (
+                                                        <tr>
+                                                            <td colSpan={3} className="px-6 py-4 text-right font-semibold text-gray-600">GST</td>
+                                                            <td className="px-6 py-4 text-right font-semibold text-gray-900">
+                                                                +₹{Number(selectedOrder.taxAmount).toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                    {selectedOrder.discountAmount > 0 && (
+                                                        <tr>
+                                                            <td colSpan={3} className="px-6 py-4 text-right font-semibold text-green-600">Discount</td>
+                                                            <td className="px-6 py-4 text-right font-semibold text-green-600">
+                                                                -₹{Number(selectedOrder.discountAmount).toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                    )}
                                                     <tr className="bg-orange-50/50">
                                                         <td colSpan={3} className="px-6 py-4 text-right font-bold text-orange-800 text-base">Grand Total</td>
                                                         <td className="px-6 py-4 text-right font-bold text-orange-600 text-xl">₹{selectedOrder.totalAmount.toFixed(2)}</td>
@@ -397,16 +491,15 @@ export default function RecentOrdersPage() {
                                     </div>
                                 </div>
 
+
+                                {/* Fixed Info Close Added */}
+
+
+
                                 {/* Footer Actions */}
-                                <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 rounded-b-lg">
+                                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
                                     <button
-                                        onClick={() => {
-                                            setPrintOrder(selectedOrder)
-                                            setTimeout(() => {
-                                                window.print()
-                                                setTimeout(() => setPrintOrder(null), 500)
-                                            }, 100)
-                                        }}
+                                        onClick={() => handlePrint(selectedOrder)}
                                         className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-gray-300 font-bold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 shadow-sm transition-all"
                                     >
                                         <Printer className="h-4 w-4" /> Print Bill/Receipt
@@ -420,8 +513,8 @@ export default function RecentOrdersPage() {
                                 </div>
                             </div>
                         )}
-                    </DialogContent>
-                </Dialog>
+                    </DialogContent >
+                </Dialog >
 
                 {/* Delete Confirmation Dialog */}
                 <Dialog open={!!deleteConfirmOrder} onOpenChange={(open) => !open && setDeleteConfirmOrder(null)}>
@@ -453,18 +546,20 @@ export default function RecentOrdersPage() {
                             </button>
                         </div>
                     </DialogContent>
-                </Dialog>
-            </div>
+                </Dialog >
+            </div >
 
             {/* Hidden Print Template */}
             {
                 printOrder && (
-                    <div className="hidden print:block print-only fixed inset-0 z-[9999] bg-white">
-                        <ReceiptTemplate
-                            order={printOrder}
-                            businessDetails={businessDetails}
-                            storeDetails={storeDetails}
-                        />
+                    <div style={{ display: 'none' }}>
+                        <div ref={printRef}>
+                            <ReceiptTemplate
+                                order={printOrder}
+                                businessDetails={businessDetails}
+                                storeDetails={storeDetails}
+                            />
+                        </div>
                     </div>
                 )
             }

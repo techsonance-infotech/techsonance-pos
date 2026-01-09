@@ -32,7 +32,21 @@ export default function AppPreferencesPage() {
             setCurrencyCode(prefs.currencyCode)
             setDateFormat(prefs.dateFormat)
         } catch (error) {
-            toast.error("Failed to load preferences")
+            // Offline fallback - try to load from local cache
+            console.warn("Preferences: Server fetch failed, using local settings", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localSettings = await posService.getSettings()
+                const getSetting = (key: string, defaultVal: string) =>
+                    localSettings.find(s => s.key === key)?.value ?? defaultVal
+
+                setTheme(getSetting('pref_theme', 'light'))
+                setCurrencyCode(getSetting('pref_currencyCode', 'INR'))
+                setDateFormat(getSetting('pref_dateFormat', 'DD/MM/YYYY'))
+            } catch (innerError) {
+                console.error("Failed to load local preferences", innerError)
+            }
         } finally {
             setLoading(false)
         }
@@ -61,8 +75,8 @@ export default function AppPreferencesPage() {
         }
     }
 
-    const selectedCurrency = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0]
-    const selectedDateFormat = DATE_FORMATS.find(f => f.value === dateFormat) || DATE_FORMATS[0]
+    const selectedCurrency = CURRENCIES.find((c: any) => c.code === currencyCode) || CURRENCIES[0]
+    const selectedDateFormat = DATE_FORMATS.find((f: any) => f.value === dateFormat) || DATE_FORMATS[0]
 
     if (loading) return <PreferencesLoading />
 
@@ -154,7 +168,7 @@ export default function AppPreferencesPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="max-h-[300px]">
-                                        {CURRENCIES.map((currency) => (
+                                        {CURRENCIES.map((currency: any) => (
                                             <SelectItem key={currency.code} value={currency.code}>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-mono font-bold">{currency.symbol}</span>
@@ -196,7 +210,7 @@ export default function AppPreferencesPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {DATE_FORMATS.map((format) => (
+                                        {DATE_FORMATS.map((format: any) => (
                                             <SelectItem key={format.value} value={format.value}>
                                                 {format.label}
                                             </SelectItem>

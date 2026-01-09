@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Local Secrets (Secure)
+config/secrets.local.json
+
 # dependencies
 /node_modules
 /.pnp
@@ -54,3 +57,24 @@ secrets/secrets.prod.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# backups
+backups/
+
+# Electron build output
+dist/
+dist-electron/
+out/
+build/
+
+# Electron compiled files
+*.exe
+*.dmg
+*.app
+*.AppImage
+*.blockmap
+
+# Electron builder files
+builder-debug.yml
+builder-effective-config.yaml
+latest.yml

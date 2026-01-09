@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Users, Trash2, RotateCcw, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { addTable, deleteTable, updateTableStatus } from "@/app/actions/tables"
 import { useRouter } from "next/navigation"
+import { getPOSService } from "@/lib/pos-service"
 
 type Table = {
     id: string
@@ -29,6 +30,20 @@ interface TablesClientProps {
 
 export default function TablesClient({ initialTables }: TablesClientProps) {
     const [tables, setTables] = useState<Table[]>(initialTables)
+
+    // Fallback to local cache if server data is empty (offline scenario)
+    useEffect(() => {
+        if (initialTables.length === 0) {
+            const loadLocal = async () => {
+                const posService = getPOSService()
+                const local = await posService.getTables()
+                if (local && local.length > 0) {
+                    setTables(local as Table[])
+                }
+            }
+            loadLocal()
+        }
+    }, [initialTables])
     // user prop is available if needed, though previously it was only used to set state.
 
     const [isAddOpen, setIsAddOpen] = useState(false)

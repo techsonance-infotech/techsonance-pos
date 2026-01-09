@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Check Device
-        const existingDevice = license.devices.find(d => d.fingerprint === fingerprint)
+        const existingDevice = license.devices.find((d: any) => d.fingerprint === fingerprint)
 
         if (existingDevice) {
             // Update last seen

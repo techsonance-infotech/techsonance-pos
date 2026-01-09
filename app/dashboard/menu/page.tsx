@@ -171,12 +171,30 @@ export default function MenuManagementPage() {
 
     async function loadInitialData() {
         setLoading(true)
-        const data = await getMenuPageData()
-        if (data) {
-            setCategories(data.categories)
-            setProducts(data.products)
-            if (data.categories.length > 0) {
-                setSelectedCategory(data.categories[0])
+        try {
+            const data = await getMenuPageData()
+            if (data) {
+                setCategories(data.categories)
+                setProducts(data.products)
+                if (data.categories.length > 0) {
+                    setSelectedCategory(data.categories[0])
+                }
+            }
+        } catch (error) {
+            // Offline fallback - load from local IndexedDB
+            console.warn("Menu page: Server fetch failed, using local cache", error)
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localCategories = await posService.getCategories()
+                const localProducts = await posService.getProducts()
+                setCategories(localCategories as any[])
+                setProducts(localProducts as any[])
+                if (localCategories.length > 0) {
+                    setSelectedCategory(localCategories[0])
+                }
+            } catch (innerError) {
+                console.error("Failed to load local menu data", innerError)
             }
         }
         setLoading(false)
@@ -231,7 +249,7 @@ export default function MenuManagementPage() {
 
         // Update backend with new sortOrders
         // We assign sortOrder based on index + 1
-        const updates = newCats.map((c, i) => ({ id: c.id, sortOrder: i + 1 }))
+        const updates = newCats.map((c: any, i: number) => ({ id: c.id, sortOrder: i + 1 }))
         await updateCategoryOrder(updates)
     }
 
@@ -278,7 +296,7 @@ export default function MenuManagementPage() {
         // 2. Save Pending Add-ons (for new products)
         const productId = res.product?.id
         if (productId) {
-            const pendingAddons = addons.filter(a => a.id.toString().startsWith('temp-'))
+            const pendingAddons = addons.filter((a: any) => a.id.toString().startsWith('temp-'))
             for (const addon of pendingAddons) {
                 await saveAddon({
                     productId: productId,
@@ -328,7 +346,7 @@ export default function MenuManagementPage() {
 
     const handleDeleteAddon = async (id: string) => {
         if (id.toString().startsWith('temp-')) {
-            setAddons(addons.filter(a => a.id !== id))
+            setAddons(addons.filter((a: any) => a.id !== id))
         } else {
             await deleteAddon(id)
             // Refresh
@@ -342,7 +360,7 @@ export default function MenuManagementPage() {
         const newStatus = !addon.isAvailable
 
         // Optimistic Update
-        const updatedAddons = addons.map(a => a.id === addon.id ? { ...a, isAvailable: newStatus } : a)
+        const updatedAddons = addons.map((a: any) => a.id === addon.id ? { ...a, isAvailable: newStatus } : a)
         setAddons(updatedAddons)
 
         // If it's a temp addon, we are done
@@ -378,7 +396,7 @@ export default function MenuManagementPage() {
             if (newCatIndex !== -1) {
                 const newCats = arrayMove(categories, oldCatIndex, newCatIndex)
                 setCategories(newCats) // Optimistic
-                const updates = newCats.map((c, i) => ({ id: c.id, sortOrder: i + 1 }))
+                const updates = newCats.map((c: any, i: number) => ({ id: c.id, sortOrder: i + 1 }))
                 await updateCategoryOrder(updates)
             }
             return
@@ -391,7 +409,7 @@ export default function MenuManagementPage() {
             if (newProdIndex !== -1) {
                 const newProds = arrayMove(products, oldProdIndex, newProdIndex)
                 setProducts(newProds)
-                const updates = newProds.map((p, i) => ({ id: p.id, sortOrder: i + 1 }))
+                const updates = newProds.map((p: any, i: number) => ({ id: p.id, sortOrder: i + 1 }))
                 await updateProductOrder(updates)
             }
         }
@@ -418,7 +436,7 @@ export default function MenuManagementPage() {
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-2">
                         <SortableContext items={categories} strategy={verticalListSortingStrategy}>
-                            {categories.map(cat => (
+                            {categories.map((cat: any) => (
                                 <SortableCategoryItem
                                     key={cat.id}
                                     category={cat}
@@ -480,7 +498,7 @@ export default function MenuManagementPage() {
                                 ) : (
                                     <div className="space-y-3">
                                         <SortableContext items={products} strategy={verticalListSortingStrategy}>
-                                            {products.map(product => (
+                                            {products.map((product: any) => (
                                                 <SortableProductItem
                                                     key={product.id}
                                                     product={product}
@@ -648,7 +666,7 @@ export default function MenuManagementPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    {addons.length === 0 ? <p className="text-sm text-gray-500">No add-ons yet.</p> : addons.map(addon => (
+                                    {addons.length === 0 ? <p className="text-sm text-gray-500">No add-ons yet.</p> : addons.map((addon: any) => (
                                         <div key={addon.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
                                             <div className={cn("flex-1", !addon.isAvailable && "opacity-50 line-through decoration-gray-400")}>
                                                 <p className="font-semibold text-sm">{addon.name}</p>

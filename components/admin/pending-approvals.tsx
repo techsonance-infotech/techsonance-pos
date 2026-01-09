@@ -62,7 +62,7 @@ export function PendingApprovals({ pendingUsers }: { pendingUsers: any[] }) {
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pendingUsers.map((user) => (
+                {pendingUsers.map((user: any) => (
                     <div
                         key={user.id}
                         className="rounded-2xl bg-gradient-to-br from-orange-50/50 to-white shadow-md p-6 hover:shadow-xl transition-all duration-300"

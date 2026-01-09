@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import HoldOrdersLoading from "./loading"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { getPOSService } from "@/lib/pos-service"
 
 export default function HoldOrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
@@ -16,6 +18,7 @@ export default function HoldOrdersPage() {
     const { currency } = useCurrency()
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
+    const isOnline = useNetworkStatus()
 
     useEffect(() => {
         loadData()
@@ -23,9 +26,19 @@ export default function HoldOrdersPage() {
 
     async function loadData() {
         setLoading(true)
-        const data = await getHeldOrders()
-        setOrders(data)
-        setLoading(false)
+        try {
+            // Try server first
+            const data = await getHeldOrders()
+            setOrders(data)
+        } catch (error) {
+            // Fallback to local cache if offline
+            console.warn("Server fetch failed, using local cache:", error)
+            const posService = getPOSService()
+            const localOrders = await posService.getHeldOrders()
+            setOrders(localOrders)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleDelete = async (id: string) => {
