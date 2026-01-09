@@ -1,16 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Database, Download, Trash2, Clock, Calendar, Play, Home, Settings2, RefreshCw, CheckCircle, XCircle, Loader2 } from "lucide-react"
+import { Home, Download, Trash2, Calendar, Loader2, Database, Cloud, Lock, HardDrive, RefreshCw, CheckCircle, XCircle, Clock, Settings2, Play } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
     getBackupHistory,
     triggerManualBackup,
     deleteBackup,
+    cleanupOldBackups,
     getBackupSchedule,
     updateBackupSchedule,
-    cleanupOldBackups
+    syncToCloud
 } from "@/app/actions/backup"
+import { syncLocalToRemote } from "@/app/actions/merge-sync"
 import { toast } from "sonner"
 
 type BackupLog = {
@@ -43,6 +46,7 @@ export default function BackupManagementPage() {
     const [schedule, setSchedule] = useState<BackupSchedule | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isBackingUp, setIsBackingUp] = useState(false)
+    const [isSyncing, setIsSyncing] = useState(false)
     const [showScheduleForm, setShowScheduleForm] = useState(false)
 
     const [scheduleForm, setScheduleForm] = useState({
@@ -136,6 +140,67 @@ export default function BackupManagementPage() {
         }
     }
 
+    // Cloud Sync (Postgres -> Postgres)
+    async function handleCloudSync() {
+        if (!confirm("⚠️ WARNING: This will OVERWRITE the data on the online database with your local data. Are you sure?")) return
+
+        setIsSyncing(true)
+        toast.info("Starting Cloud Sync... This may take a while.")
+
+        // Target URL is now handled via ONLINE_DATABASE_URL env var on server
+        const result = await syncToCloud()
+
+        if (result.success) {
+            toast.success("Cloud Sync completed successfully!")
+        } else {
+            toast.error(result.error || "Cloud Sync failed")
+        }
+        setIsSyncing(false)
+    }
+
+    // Offline Sync (SQLite -> Postgres)
+    async function handleOfflineSync() {
+        setIsSyncing(true)
+        toast.info("Syncing Offline Data (SQLite)...")
+
+        try {
+            // Dynamic import to avoid build errors if not needed locally? No, direct import is fine if handled on server.
+            // But we need to invoke the server action.
+            const { syncOfflineData } = await import("@/app/actions/sync")
+            const result = await syncOfflineData()
+
+            if (result.success) {
+                toast.success(result.message)
+            } else {
+                toast.error(result.error)
+            }
+        } catch (e) {
+            toast.error("Failed to invoke sync action")
+        }
+
+        setIsSyncing(false)
+    }
+
+    // Merge Sync (Postgres -> Postgres, Safe)
+    async function handleMergeSync() {
+        if (!confirm("This will merge your local database with the online database. Existing remote data will be preserved. Continue?")) return
+
+        setIsSyncing(true)
+        toast.info("Starting Smart Merge Sync... This may take a while.")
+
+        const result = await syncLocalToRemote()
+
+        if (result.success) {
+            toast.success(result.message)
+            if (result.warnings) {
+                toast.warning(result.warnings)
+            }
+        } else {
+            toast.error(result.error || "Merge Sync failed")
+        }
+        setIsSyncing(false)
+    }
+
     function formatFileSize(bytes: number | null): string {
         if (!bytes) return '-'
         if (bytes < 1024) return `${bytes} B`
@@ -208,6 +273,77 @@ export default function BackupManagementPage() {
                             </>
                         )}
                     </Button>
+                </div>
+            </div>
+
+            {/* Cloud Sync Card */}
+            <div className="bg-white rounded-2xl border border-blue-100 p-6 bg-gradient-to-r from-blue-50 to-white">
+                <div className="flex flex-col gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600">
+                            <Cloud className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-900">Cloud Sync</h3>
+                            <p className="text-sm text-gray-500">Sync local data to online database</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Option 1: Smart Merge Sync (RECOMMENDED) */}
+                        <div className="p-4 border-2 rounded-lg bg-green-50/50 border-green-200">
+                            <div className="flex items-center gap-2 mb-1">
+                                <RefreshCw className="h-4 w-4 text-green-600" />
+                                <h4 className="font-semibold text-green-900">Smart Merge Sync</h4>
+                            </div>
+                            <p className="text-xs text-green-700/80 mb-4 h-10">
+                                Safely merges local data with remote database.
+                                <span className="font-bold block text-green-600">✓ Preserves existing data</span>
+                            </p>
+                            <Button
+                                onClick={handleMergeSync}
+                                disabled={isSyncing}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                size="sm"
+                            >
+                                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Merge to Cloud"}
+                            </Button>
+                        </div>
+
+                        {/* Option 2: Full PG Dump Sync (DESTRUCTIVE) */}
+                        <div className="p-4 border rounded-lg bg-orange-50/50 border-orange-100 opacity-75">
+                            <h4 className="font-semibold text-orange-900 mb-1">Full DB Overwrite</h4>
+                            <p className="text-xs text-orange-700/80 mb-4 h-10">
+                                Overwrites online DB with local Postgres data.
+                                <span className="font-bold block text-red-600">⚠️ Destructive Action</span>
+                            </p>
+                            <Button
+                                onClick={handleCloudSync}
+                                disabled={isSyncing}
+                                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                                size="sm"
+                            >
+                                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sync (PG Dump)"}
+                            </Button>
+                        </div>
+
+                        {/* Option 3: Offline SQLite Sync */}
+                        <div className="p-4 border rounded-lg bg-blue-50/50 border-blue-100">
+                            <h4 className="font-semibold text-blue-900 mb-1">Offline Data Sync</h4>
+                            <p className="text-xs text-blue-700/80 mb-4 h-10">
+                                Merges SQLite products & categories to Cloud.
+                                <span className="font-bold block text-blue-600">✨ Safe Merge</span>
+                            </p>
+                            <Button
+                                onClick={handleOfflineSync}
+                                disabled={isSyncing}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                size="sm"
+                            >
+                                {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sync (SQLite)"}
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+  // distDir: 'out', // Standard build goes to .next
+
   // Generate unique build IDs to bust cache on new deployments
   generateBuildId: async () => {
     return `build-${Date.now()}`

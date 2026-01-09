@@ -27,18 +27,21 @@ export async function getPOSInitialData() {
         ])
 
         // Build business details from company settings
+        // Now getCompanyBusinessSettings returns merged global tax/discount settings!
         const settings = companySettings.settings ? {
             businessName: companySettings.settings.businessName || 'CafePOS',
             address: companySettings.settings.address || '',
             phone: companySettings.settings.phone || '',
             email: companySettings.settings.email || '',
             logoUrl: companySettings.settings.logoUrl || '',
-            // Include other settings from store or defaults
-            taxRate: '5',
-            taxName: 'GST',
-            showTaxBreakdown: true,
-            enableDiscount: false,
-            defaultDiscount: '0'
+
+            // Tax & Discount Settings (mapped)
+            gstNo: (companySettings.settings as any).gstNo || '',
+            taxRate: (companySettings.settings as any).taxRate || '0',
+            taxName: (companySettings.settings as any).taxName || 'Tax',
+            showTaxBreakdown: (companySettings.settings as any).showTaxBreakdown === true,
+            enableDiscount: (companySettings.settings as any).enableDiscount === true,
+            defaultDiscount: (companySettings.settings as any).defaultDiscount || '0'
         } : {}
 
         return {
