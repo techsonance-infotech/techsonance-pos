@@ -34,35 +34,92 @@ else {
                 return;
             }
             console.log('Starting Next.js standalone server...');
-            // Path to the standalone server.js
+            // Correctly resolve paths for packaged vs development
+            const resourcesPath = process.resourcesPath;
             const serverPath = app.isPackaged
-                ? path.join(process.resourcesPath, 'standalone', 'server.js')
+                ? path.join(resourcesPath, 'standalone', 'server.js')
                 : path.join(__dirname, '../.next/standalone/server.js');
+            const serverCwd = app.isPackaged
+                ? path.join(resourcesPath, 'standalone')
+                : path.join(__dirname, '../.next/standalone');
             console.log('Server path:', serverPath);
-            const nodePath = process.execPath; // Use electron's node or system node? 
-            // Electron's node might not work well for full server. 
-            // Best practice is bundling a node executable or using 'fork' if compatible.
-            // For simplicity, let's try 'fork' which uses Electron's Node capability.
-            // Or if we assume user has Node (bad assumption).
-            // A better approach for standalone: simply fork the process.
-            // Use fork instead of spawn. 
-            // fork() uses the V8 instance of the parent process (Electron's Node) 
-            // which effectively behaves like running 'node server.js'
+            console.log('Server CWD:', serverCwd);
+            // Verify server.js exists
+            const fs = require('fs');
+            if (!fs.existsSync(serverPath)) {
+                console.error('Server file not found:', serverPath);
+                reject(new Error(`Server not found at ${serverPath}`));
+                return;
+            }
+            // Load .env file from standalone folder
+            const envPath = path.join(serverCwd, '.env');
+            let envVars = {};
+            if (fs.existsSync(envPath)) {
+                console.log('Loading .env from:', envPath);
+                const envContent = fs.readFileSync(envPath, 'utf8');
+                envContent.split('\n').forEach((line) => {
+                    const trimmed = line.trim();
+                    // Skip comments and empty lines
+                    if (!trimmed || trimmed.startsWith('#'))
+                        return;
+                    const [key, ...valueParts] = trimmed.split('=');
+                    if (key && valueParts.length > 0) {
+                        let value = valueParts.join('=');
+                        // Remove quotes if present
+                        if ((value.startsWith('"') && value.endsWith('"')) ||
+                            (value.startsWith("'") && value.endsWith("'"))) {
+                            value = value.slice(1, -1);
+                        }
+                        envVars[key.trim()] = value;
+                    }
+                });
+                console.log('Loaded env vars:', Object.keys(envVars));
+            }
+            else {
+                console.warn('.env file not found at:', envPath);
+            }
+            const { spawn } = require('child_process');
+            // Use spawn with node executable for better cross-platform support
+            // In packaged Electron, process.execPath points to the Electron binary
+            // We need to use the bundled Node or fork approach
             nextServerProcess = fork(serverPath, [], {
-                env: { ...process.env, PORT: PORT.toString(), HOSTNAME: 'localhost' },
+                cwd: serverCwd,
+                env: { ...process.env, ...envVars, PORT: PORT.toString(), HOSTNAME: 'localhost' },
                 stdio: 'pipe'
             });
+            let serverStarted = false;
             nextServerProcess.stdout.on('data', (data) => {
-                console.log('[Next.js]', data.toString());
-                if (data.toString().includes('Listening') || data.toString().includes('Ready')) {
+                const output = data.toString();
+                console.log('[Next.js]', output);
+                if (!serverStarted && (output.includes('Listening') || output.includes('Ready') || output.includes('started server') || output.includes('localhost:3000'))) {
+                    serverStarted = true;
+                    console.log('Next.js server detected as ready');
                     resolve();
                 }
             });
             nextServerProcess.stderr.on('data', (data) => {
                 console.error('[Next.js Error]', data.toString());
             });
-            // Resolve after timeout just in case "Listening" isn't caught
-            setTimeout(resolve, 5000);
+            nextServerProcess.on('error', (err) => {
+                console.error('Failed to start Next.js server:', err);
+                if (!serverStarted) {
+                    reject(err);
+                }
+            });
+            nextServerProcess.on('exit', (code) => {
+                console.log('Next.js server exited with code:', code);
+                if (!serverStarted && code !== 0) {
+                    reject(new Error(`Server exited with code ${code}`));
+                }
+            });
+            // Fallback: resolve after timeout if server starts but detection fails
+            setTimeout(() => {
+                if (!serverStarted) {
+                    console.warn('Server ready detection timed out, continuing anyway...');
+                    serverStarted = true;
+                    resolve();
+                }
+            }, 8000);
         });
     }
     function createWindow() {
@@ -76,10 +133,20 @@ else {
             },
             autoHideMenuBar: true,
         });
+        let retries = 0;
+        const maxRetries = 30; // 30 seconds max wait
         const loadURL = () => {
             mainWindow.loadURL(`http://localhost:${PORT}`).catch((err) => {
-                console.log(`Server not ready, retrying... (${err.code})`);
-                setTimeout(loadURL, 1000);
+                retries++;
+                if (retries < maxRetries) {
+                    console.log(`Server not ready (attempt ${retries}/${maxRetries}), retrying... (${err.code})`);
+                    setTimeout(loadURL, 1000);
+                }
+                else {
+                    console.error('Failed to connect to server after max retries');
+                    // Show error page instead of hanging
+                    mainWindow.loadURL(`data:text/html,<html><body style="font-family: sans-serif; padding: 40px; text-align: center;"><h1>Failed to start application server</h1><p>Please restart the application.</p><button onclick="location.reload()">Retry</button></body></html>`);
+                }
             });
         };
         // In both dev and prod, we load from localhost now (since we run a local server)
