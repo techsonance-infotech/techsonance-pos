@@ -21,7 +21,7 @@ export async function switchStore(storeId: string) {
             data: { defaultStoreId: storeId },
             include: { defaultStore: true }
         })
-            ; (revalidateTag as any)(`user-profile-${user.id}`)
+            ; (revalidateTag as any)(`user-profile-${user.id}`, 'max')
         revalidatePath("/dashboard")
         return { success: true, tableMode: updatedUser.defaultStore?.tableMode }
     } catch (error) {

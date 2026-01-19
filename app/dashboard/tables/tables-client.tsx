@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Users, Trash2, RotateCcw, Loader2 } from "lucide-react"
+import { Plus, Users, Trash2, RotateCcw, Loader2, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,12 +16,27 @@ import {
 import { addTable, deleteTable, updateTableStatus } from "@/app/actions/tables"
 import { useRouter } from "next/navigation"
 import { getPOSService } from "@/lib/pos-service"
+import { useElapsedTimer } from "@/hooks/use-elapsed-timer"
+
+// Timer component for individual table
+function TableTimer({ startTime }: { startTime: string | null }) {
+    const elapsed = useElapsedTimer(startTime)
+    if (!elapsed) return null
+    return (
+        <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white text-xs font-bold rounded-full shadow-sm">
+            <Clock className="h-3 w-3" />
+            <span>{elapsed}</span>
+        </div>
+    )
+}
 
 type Table = {
     id: string
     name: string
     capacity: number
     status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'
+    heldOrderCreatedAt?: string | null
+    heldOrderId?: string | null
 }
 
 interface TablesClientProps {
@@ -31,9 +46,12 @@ interface TablesClientProps {
 export default function TablesClient({ initialTables }: TablesClientProps) {
     const [tables, setTables] = useState<Table[]>(initialTables)
 
-    // Fallback to local cache if server data is empty (offline scenario)
+    // Sync with server data when initialTables changes (navigation back to page)
     useEffect(() => {
-        if (initialTables.length === 0) {
+        if (initialTables.length > 0) {
+            setTables(initialTables)
+        } else {
+            // Fallback to local cache if server data is empty (offline scenario)
             const loadLocal = async () => {
                 const posService = getPOSService()
                 const local = await posService.getTables()
@@ -93,14 +111,25 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
         setVacatingId(id)
         try {
             const updatedTable = await updateTableStatus(id, 'AVAILABLE')
-            setTables(prev => prev.map(t => t.id === id ? updatedTable : t))
+            // Clear held order info when marking as vacant
+            setTables(prev => prev.map(t => t.id === id ? {
+                ...t,
+                ...updatedTable,
+                heldOrderCreatedAt: null,
+                heldOrderId: null
+            } : t))
         } finally {
             setVacatingId(null)
         }
     }
 
     const handleTableClick = (table: Table) => {
-        router.push(`/dashboard/new-order?tableId=${table.id}&tableName=${encodeURIComponent(table.name)}`)
+        // If table has a held order, resume it instead of starting new
+        if (table.heldOrderId) {
+            router.push(`/dashboard/new-order?resumeOrderId=${table.heldOrderId}&tableId=${table.id}&tableName=${encodeURIComponent(table.name)}`)
+        } else {
+            router.push(`/dashboard/new-order?tableId=${table.id}&tableName=${encodeURIComponent(table.name)}`)
+        }
     }
 
     return (
@@ -178,56 +207,64 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {tables.map(table => (
-                    <div
-                        key={table.id}
-                        onClick={() => handleTableClick(table)}
-                        className={cn(
-                            "relative min-h-[140px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all hover:shadow-md group active:scale-95",
-                            table.status === 'OCCUPIED'
-                                ? "bg-yellow-50 border-yellow-200"
-                                : table.status === 'RESERVED'
-                                    ? "bg-blue-50 border-blue-200"
-                                    : "bg-white border-gray-100 hover:border-orange-200"
-                        )}
-                    >
-                        {/* Status Badge */}
-                        <div className={cn(
-                            "absolute top-3 right-3 h-3 w-3 rounded-full shadow-sm",
-                            table.status === 'OCCUPIED' ? "bg-yellow-500" : table.status === 'RESERVED' ? "bg-blue-500" : "bg-green-500"
-                        )} />
+                {tables.map(table => {
+                    const hasHeldOrder = !!table.heldOrderCreatedAt
+                    return (
+                        <div
+                            key={table.id}
+                            onClick={() => handleTableClick(table)}
+                            className={cn(
+                                "relative min-h-[140px] p-4 rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all hover:shadow-md group active:scale-95",
+                                hasHeldOrder
+                                    ? "bg-amber-50 border-amber-300"
+                                    : table.status === 'OCCUPIED'
+                                        ? "bg-yellow-50 border-yellow-200"
+                                        : table.status === 'RESERVED'
+                                            ? "bg-blue-50 border-blue-200"
+                                            : "bg-white border-gray-100 hover:border-orange-200"
+                            )}
+                        >
+                            {/* Timer for held orders */}
+                            {hasHeldOrder && <TableTimer startTime={table.heldOrderCreatedAt!} />}
 
-                        <h3 className="text-lg font-bold text-gray-800 mb-1 text-center leading-tight break-words w-full px-2">{table.name}</h3>
-                        <div className="flex items-center gap-1 text-gray-500 text-sm mt-1">
-                            <Users className="h-4 w-4" />
-                            <span>{table.capacity} Pax</span>
-                        </div>
+                            {/* Status Badge */}
+                            <div className={cn(
+                                "absolute top-3 right-3 h-3 w-3 rounded-full shadow-sm",
+                                hasHeldOrder ? "bg-amber-500" : table.status === 'OCCUPIED' ? "bg-yellow-500" : table.status === 'RESERVED' ? "bg-blue-500" : "bg-green-500"
+                            )} />
 
-                        {/* Hover Actions */}
-                        <div className="absolute bottom-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {table.status === 'OCCUPIED' && (
+                            <h3 className="text-lg font-bold text-gray-800 mb-1 text-center leading-tight break-words w-full px-2">{table.name}</h3>
+                            <div className="flex items-center gap-1 text-gray-500 text-sm mt-1">
+                                <Users className="h-4 w-4" />
+                                <span>{table.capacity} Pax</span>
+                            </div>
+
+                            {/* Hover Actions */}
+                            <div className="absolute bottom-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {(table.status === 'OCCUPIED' || hasHeldOrder) && (
+                                    <Button
+                                        size="icon"
+                                        variant="secondary"
+                                        className="h-8 w-8 bg-white hover:bg-yellow-100 text-yellow-600 shadow-sm"
+                                        onClick={(e) => handleVacant(e, table.id)}
+                                        title="Mark as Vacant"
+                                    >
+                                        <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                )}
                                 <Button
                                     size="icon"
-                                    variant="secondary"
-                                    className="h-8 w-8 bg-white hover:bg-yellow-100 text-yellow-600 shadow-sm"
-                                    onClick={(e) => handleVacant(e, table.id)}
-                                    title="Mark as Vacant"
+                                    variant="destructive"
+                                    className="h-8 w-8 shadow-sm"
+                                    onClick={(e) => handleDelete(e, table.id)}
                                 >
-                                    <RotateCcw className="h-4 w-4" />
+                                    <Trash2 className="h-4 w-4" />
                                 </Button>
-                            )}
-                            <Button
-                                size="icon"
-                                variant="destructive"
-                                className="h-8 w-8 shadow-sm"
-                                onClick={(e) => handleDelete(e, table.id)}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
-        </div>
+        </div >
     )
 }

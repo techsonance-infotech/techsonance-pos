@@ -82,7 +82,7 @@ export async function saveCategory(data: any) {
         }
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
 
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
@@ -98,7 +98,7 @@ export async function deleteCategory(id: string) {
         await prisma.category.delete({ where: { id } })
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
 
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
@@ -123,7 +123,7 @@ export async function updateCategoryOrder(items: { id: string, sortOrder: number
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
 
         return { success: true }
     } catch (error) {
@@ -139,7 +139,7 @@ export async function toggleCategoryStatus(id: string, isActive: boolean) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to update category status:", error)
@@ -227,7 +227,7 @@ export async function saveProduct(data: any) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true, product }
     } catch (error) {
         console.error("Failed to save product:", error)
@@ -249,7 +249,7 @@ export async function updateProductOrder(items: { id: string, sortOrder: number 
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to reorder products:", error)
@@ -265,7 +265,7 @@ export async function toggleProductStatus(id: string, isAvailable: boolean) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to update product status:", error)
@@ -280,7 +280,7 @@ export async function deleteProduct(id: string) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to delete product:", error)
@@ -315,7 +315,7 @@ export async function saveAddon(data: any) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to save addon:", error)
@@ -330,7 +330,7 @@ export async function deleteAddon(id: string) {
         revalidatePath("/dashboard/new-order")
 
         const storeId = await getCurrentStore()
-        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`)
+        if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
         console.error("Failed to delete addon:", error)

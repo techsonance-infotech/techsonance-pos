@@ -25,27 +25,74 @@
     "appId": "com.techsonance.pos",
     "productName": "TechSonance POS",
     "icon": "public/icon-512.png",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*"
+    ],
     "files": [
       "dist-electron/**/*",
       "package.json",
       "prisma/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "!node_modules/**/build/Release/*.node.bak"
     ],
     "extraResources": [
       {
         "from": ".next/standalone",
         "to": "standalone",
         "filter": [
+          "**/*",
+          "**/node_modules/**/*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static",
+        "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "public",
+        "to": "standalone/public",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/standalone/node_modules",
+        "to": "standalone/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": ".next/standalone/.env",
+        "to": "standalone/.env"
       }
     ],
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/icon-512.png",
+      "category": "public.app-category.business"
+    },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "signAndEditExecutable": false,
       "icon": "public/icon-512.png"
     },

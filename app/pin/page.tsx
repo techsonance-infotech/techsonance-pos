@@ -47,6 +47,18 @@ export default async function PinPage({
                 </div>
 
                 <PinForm mode={mode as 'create' | 'enter'} userId={userId} />
+
+                <div className="text-center">
+                    <form action={async () => {
+                        "use server"
+                        const { logout } = await import("@/app/actions/logout")
+                        await logout()
+                    }}>
+                        <button type="submit" className="text-sm text-stone-500 hover:text-stone-800 hover:underline">
+                            Switch Account
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     )

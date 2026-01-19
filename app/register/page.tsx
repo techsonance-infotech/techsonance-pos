@@ -1,6 +1,7 @@
 import { UserPlus } from "lucide-react"
 import { RegisterForm } from "@/components/auth/register-form"
 import Link from "next/link"
+import Image from "next/image"
 
 export const dynamic = 'force-dynamic'
 
@@ -10,12 +11,15 @@ export default async function RegisterPage() {
 
     return (
         <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-2">
-            <div className="hidden bg-stone-900 lg:block relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#a69281] to-[#786a5d] flex items-center justify-center">
-                    <div className="text-center text-white space-y-2">
-                        <h1 className="text-6xl font-normal tracking-tight">{settings.businessName}</h1>
-                        <p className="text-lg opacity-90 font-light">Join Our Point of Sale System</p>
-                    </div>
+            <div className="hidden lg:block relative text-white bg-[#f0e4d4]">
+                <div className="absolute inset-0">
+                    <Image
+                        src="/login-panel-v2.jpg"
+                        alt="SyncServe Registration Illustration"
+                        fill
+                        className="object-cover"
+                        priority
+                    />
                 </div>
             </div>
             <div className="flex items-center justify-center py-12 bg-white">
