@@ -7,6 +7,35 @@ const path = require('path');
 const { app } = require('electron');
 const dbPath = path.join(app.getPath('userData'), 'pos.db');
 const db = new Database(dbPath);
+// Run database migrations
+function runMigrations() {
+    console.log('Running database migrations...');
+    try {
+        // Check if taxAmount column exists in orders table
+        const tableInfo = db.prepare("PRAGMA table_info(orders)").all();
+        const hasTaxAmount = tableInfo.some((col) => col.name === 'taxAmount');
+        const hasDiscountAmount = tableInfo.some((col) => col.name === 'discountAmount');
+        // Migration 1: Add taxAmount column if it doesn't exist
+        if (!hasTaxAmount) {
+            console.log('Adding taxAmount column to orders table...');
+            db.exec('ALTER TABLE orders ADD COLUMN taxAmount REAL DEFAULT 0');
+            console.log('✓ taxAmount column added');
+        }
+        // Migration 2: Add discountAmount column if it doesn't exist
+        if (!hasDiscountAmount) {
+            console.log('Adding discountAmount column to orders table...');
+            db.exec('ALTER TABLE orders ADD COLUMN discountAmount REAL DEFAULT 0');
+            console.log('✓ discountAmount column added');
+        }
+        if (hasTaxAmount && hasDiscountAmount) {
+            console.log('✓ Database schema is up to date');
+        }
+    }
+    catch (error) {
+        console.error('Migration error:', error);
+        // Don't throw - allow app to continue even if migration fails
+    }
+}
 // Initialize Schema
 function initDB() {
     db.exec(`
@@ -39,6 +68,8 @@ function initDB() {
             status TEXT,
             paymentMode TEXT,
             totalAmount REAL NOT NULL,
+            taxAmount REAL DEFAULT 0,
+            discountAmount REAL DEFAULT 0,
             items TEXT NOT NULL, -- JSON
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             synced INTEGER DEFAULT 0
@@ -50,6 +81,8 @@ function initDB() {
         );
     `);
     console.log("Database Initialized at " + dbPath);
+    // Run migrations after initialization
+    runMigrations();
 }
 // Data Access Object
 exports.dbAsync = {
@@ -103,11 +136,13 @@ exports.dbAsync = {
     // Orders
     saveOrder: (order) => {
         const stmt = db.prepare(`
-            INSERT OR REPLACE INTO orders (id, kotNo, customerName, customerMobile, tableId, tableName, status, paymentMode, totalAmount, items, createdAt, synced)
-            VALUES (@id, @kotNo, @customerName, @customerMobile, @tableId, @tableName, @status, @paymentMode, @totalAmount, @items, @createdAt, 0)
+            INSERT OR REPLACE INTO orders (id, kotNo, customerName, customerMobile, tableId, tableName, status, paymentMode, totalAmount, taxAmount, discountAmount, items, createdAt, synced)
+            VALUES (@id, @kotNo, @customerName, @customerMobile, @tableId, @tableName, @status, @paymentMode, @totalAmount, @taxAmount, @discountAmount, @items, @createdAt, 0)
         `);
         const info = stmt.run({
             ...order,
+            taxAmount: order.taxAmount || 0,
+            discountAmount: order.discountAmount || 0,
             items: JSON.stringify(order.items),
             createdAt: order.createdAt || new Date().toISOString()
         });

@@ -225,7 +225,7 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             )
         }
 
-        (revalidateTag as any)('business-settings')
+        (revalidateTag as any)('business-settings', 'max')
         revalidatePath('/')
         revalidatePath('/dashboard/settings/business')
         revalidatePath('/dashboard/settings/taxes')
@@ -284,7 +284,7 @@ export async function uploadLogo(formData: FormData) {
             create: { key: 'business_logo', value: url }
         })
 
-            ; (revalidateTag as any)('business-settings')
+            ; (revalidateTag as any)('business-settings', 'max')
         revalidatePath('/')
         revalidatePath('/dashboard')
         return { success: true, url }

@@ -185,10 +185,11 @@ const dexieService: POSDataService = {
 // Factory
 // ----------------------------------------------------------------------
 export function getPOSService(): POSDataService {
+    // We now share the same logic for Web and Deskop (Postgres + Dexie Offline Support)
     if (typeof window !== 'undefined' && 'electron' in window) {
         console.log("Using Electron POS Service")
         return electronService;
     }
-    console.log("Using Dexie POS Service")
+    console.log("Using Dexie POS Service (Universal)")
     return dexieService;
 }

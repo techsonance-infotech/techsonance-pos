@@ -11,6 +11,7 @@ interface ReceiptProps {
         taxRate?: string
         taxName?: string
         showTaxBreakdown?: boolean
+        enableDiscount?: boolean
         logoUrl?: string
     }
     storeDetails?: {
@@ -44,21 +45,28 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
 
     const subtotal = order.subtotal ?? calculatedSubtotal;
 
-    // Improved Tax Logic: Prioritize configured rate calculation if available, else trust the order's taxAmount
-    // Improved Tax Logic
-    let taxAmount = order.taxAmount ?? 0;
-    const taxRate = businessDetails?.taxRate ? parseFloat(businessDetails.taxRate.toString()) : 0;
-
-    // Recalculate tax if missing and rate exists
-    if (!order.taxAmount && taxRate > 0) {
-        taxAmount = (subtotal * taxRate) / 100
-    }
-
-    // Improved Discount Logic: Calculate if missing
+    // Improved Discount Logic: Only apply if enabled
+    const isDiscountEnabled = businessDetails?.enableDiscount === true;
     let discountAmount = order.discountAmount ?? 0;
-    if (!discountAmount && order.discount) {
+
+    if (isDiscountEnabled && !discountAmount && order.discount) {
         // If order.discount is just a number string '10', treat as fixed amount.
         discountAmount = parseFloat(order.discount.toString());
+    } else if (!isDiscountEnabled) {
+        discountAmount = 0;
+    }
+
+    // Improved Tax Logic: Only calculate if enabled
+    let taxAmount = order.taxAmount ?? 0;
+    const taxRate = businessDetails?.taxRate ? parseFloat(businessDetails.taxRate.toString()) : 0;
+    const isTaxEnabled = businessDetails?.showTaxBreakdown === true;
+
+    // Recalculate tax ONLY if enabled and missing
+    if (isTaxEnabled && !order.taxAmount && taxRate > 0) {
+        taxAmount = (subtotal * taxRate) / 100
+    } else if (!isTaxEnabled) {
+        // Force tax to 0 if disabled, just in case
+        taxAmount = 0;
     }
 
     const finalTotal = subtotal + taxAmount - discountAmount;
@@ -107,7 +115,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
 
                 {businessDetails?.email && <p className="">Email: {businessDetails.email}</p>}
 
-                {businessDetails?.taxName && (
+                {isTaxEnabled && businessDetails?.taxName && (
                     <p className="mt-1 font-bold">{businessDetails.taxName} Invoice</p>
                 )}
             </div>
@@ -179,7 +187,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                 </div>
 
                 {/* Discount */}
-                {discountAmount > 0 && (
+                {isDiscountEnabled && discountAmount > 0 && (
                     <div className="flex justify-between">
                         <span>
                             Discount
@@ -189,8 +197,8 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     </div>
                 )}
 
-                {/* Tax - show only if enabled or amount > 0 */}
-                {(businessDetails?.showTaxBreakdown || taxAmount > 0) && (
+                {/* Tax - show only if enabled */}
+                {isTaxEnabled && (
                     <div className="flex justify-between">
                         <span>
                             {businessDetails?.taxName || 'Tax'}

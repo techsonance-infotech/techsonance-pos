@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
+import { cookies } from "next/headers"
 
 export async function login(prevState: any, formData: FormData) {
     const identifier = formData.get("identifier") as string
@@ -25,9 +26,7 @@ export async function login(prevState: any, formData: FormData) {
             return { error: "Invalid credentials" }
         }
 
-        // Simple password check (Note: In production, use bcrypt.compare)
-        // The seeed data uses plain text 'password123' for now based on the prompt "password fields" without explicit hashing requirements for the demo, 
-        // but I should ideally add hashing. For now, sticking to the seed data's plain text to ensure it works immediately.
+        // Simple password check
         if (user.password !== password) {
             return { error: "Invalid credentials" }
         }
@@ -54,6 +53,20 @@ export async function login(prevState: any, formData: FormData) {
             console.error("Failed to update Last IP:", e)
         }
 
+        // Set persistent session cookie
+        const cookieStore = await cookies()
+        const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
+
+        cookieStore.set('session_user_id', user.id, {
+            maxAge: thirtyDays,
+            path: '/',
+            sameSite: 'lax',
+            secure: process.env.NODE_ENV === 'production',
+            httpOnly: true
+        })
+
+        console.log(`User ${user.id} logged in. Session cookie set.`)
+
         // Check if user has a PIN
         if (user.pin) {
             redirect(`/pin?uid=${user.id}`)
@@ -61,8 +74,7 @@ export async function login(prevState: any, formData: FormData) {
             redirect(`/pin?create=true&uid=${user.id}`)
         }
 
-        // Capture IP (Async update, don't await blocking redirect)
-        // Note: Code after redirect is unreachable. We must do it BEFORE redirect.
+        // Note: Code after redirect is unreachable.
     } catch (error) {
         if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
             throw error

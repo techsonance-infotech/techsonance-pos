@@ -50,31 +50,37 @@ export default function RecentOrdersPage() {
     })
 
     // Unified Print Handler
+    // Unified Print Handler
     const handlePrint = async (orderToPrint?: any) => {
-        // Use provided order or state
-        const order = orderToPrint || printOrder
+        // use provided order or fallback to selectedOrder (if viewing details)
+        const order = orderToPrint || selectedOrder
+        if (!order) return
 
-        // Check if running in Electron
-        if ((window as any).electron && (window as any).electron.isDesktop) {
-            if (!order) return
+        // 1. Set state to render the hidden receipt template
+        setPrintOrder(order)
 
-            try {
-                const html = renderToStaticMarkup(
-                    <ReceiptTemplate
-                        order={order}
-                        businessDetails={businessDetails}
-                        storeDetails={storeDetails}
-                    />
-                )
-                await (window as any).electron.printReceipt(html)
-                setPrintOrder(null)
-            } catch (e) {
-                console.error("Silent print failed", e)
-                handleWebPrint() // Fallback
+        // 2. Wait for render (short delay)
+        setTimeout(async () => {
+            // Check if running in Electron
+            if ((window as any).electron && (window as any).electron.isDesktop) {
+                try {
+                    const html = renderToStaticMarkup(
+                        <ReceiptTemplate
+                            order={order}
+                            businessDetails={businessDetails}
+                            storeDetails={storeDetails}
+                        />
+                    )
+                    await (window as any).electron.printReceipt(html)
+                    setPrintOrder(null)
+                } catch (e) {
+                    console.error("Silent print failed", e)
+                    handleWebPrint() // Fallback knows ref is ready now
+                }
+            } else {
+                handleWebPrint() // Fallback knows ref is ready now
             }
-        } else {
-            handleWebPrint()
-        }
+        }, 100)
     }
 
     // Use getOrder from server actions instead of require
@@ -467,7 +473,9 @@ export default function RecentOrdersPage() {
                                                     </tr>
                                                     {selectedOrder.taxAmount > 0 && (
                                                         <tr>
-                                                            <td colSpan={3} className="px-6 py-4 text-right font-semibold text-gray-600">GST</td>
+                                                            <td colSpan={3} className="px-6 py-4 text-right font-semibold text-gray-600">
+                                                                {businessDetails?.taxName || 'GST'}
+                                                            </td>
                                                             <td className="px-6 py-4 text-right font-semibold text-gray-900">
                                                                 +₹{Number(selectedOrder.taxAmount).toFixed(2)}
                                                             </td>
