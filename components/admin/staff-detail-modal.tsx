@@ -149,22 +149,30 @@ export function StaffDetailModal({ isOpen, onClose, user, onEdit, onSuccess }: S
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-4 border-t">
-                        <Button
-                            onClick={onEdit}
-                            className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit Details
-                        </Button>
-                        <Button
-                            onClick={handleDelete}
-                            disabled={loading}
-                            variant="destructive"
-                            className="flex-1"
-                        >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            {loading ? 'Disabling...' : 'Disable Account'}
-                        </Button>
+                        {!['SUPER_ADMIN', 'BUSINESS_OWNER'].includes(user.role) ? (
+                            <>
+                                <Button
+                                    onClick={onEdit}
+                                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                                >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit Details
+                                </Button>
+                                <Button
+                                    onClick={handleDelete}
+                                    disabled={loading}
+                                    variant="destructive"
+                                    className="flex-1"
+                                >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    {loading ? 'Disabling...' : 'Disable Account'}
+                                </Button>
+                            </>
+                        ) : (
+                            <div className="w-full p-3 bg-blue-50 text-blue-700 text-center rounded-lg text-sm font-medium">
+                                System Account: Cannot be edited or disabled
+                            </div>
+                        )}
                     </div>
                 </div>
             </DialogContent>

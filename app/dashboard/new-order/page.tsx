@@ -122,52 +122,7 @@ export default function NewOrderPage() {
                     }
                 }
 
-                // 3. Handle Resume Order
-                const resumeOrderId = searchParams.get('resumeOrderId')
-                if (resumeOrderId && loadedOrderRef.current !== resumeOrderId) {
-                    let order: any = null
-
-                    // Try Local First
-                    try {
-                        order = await posService.getOrder(resumeOrderId)
-                    } catch (e) { console.error("Local fetch failed", e) }
-
-                    // If not local and online, try Server
-                    if (!order && isOnline) {
-                        try {
-                            order = await getOrder(resumeOrderId)
-                        } catch (e) { console.error("Server fetch failed", e) }
-                    }
-
-                    if (order) {
-                        loadedOrderRef.current = resumeOrderId // Prevent re-loading
-                        setResumeId(order.id)
-                        setGuestName(order.customerName || '')
-                        setGuestMobile(order.customerMobile || '')
-                        if (order.tableId) {
-                            // URL params for table might override or match. 
-                            // If URL has table, arguably we keep it (moving order to new table?) 
-                            // or rely on order data. Let's rely on order data if present.
-                        }
-                        if (order.paymentMode) setPaymentMode(order.paymentMode)
-
-                        // Restore Cart
-                        if (Array.isArray(order.items)) {
-                            const restoredCart: CartItem[] = order.items.map((item: any) => ({
-                                cartId: Math.random().toString(36).substr(2, 9),
-                                id: item.id || item.productId, // Handle both structures if stored differently
-                                name: item.name,
-                                unitPrice: item.unitPrice || item.price,
-                                quantity: item.quantity,
-                                addons: item.addons || []
-                            }))
-                            setCart(restoredCart)
-                        }
-                        toast.success("Order Loaded")
-                    } else {
-                        toast.error("Order not found")
-                    }
-                }
+                // Resume order is handled by a separate useEffect
 
                 // 2. If Online & Local Empty, fetch from Server (Products)
                 if (localProducts.length === 0 && isOnline) {
@@ -227,10 +182,13 @@ export default function NewOrderPage() {
         loadInitialData()
     }, [isOnline])
 
-    // New Effect: Handle Resume Order (Runs on URL change or Network change)
+    // New Effect: Handle Resume Order (Runs on URL change)
     useEffect(() => {
         const resumeId = searchParams.get('resumeId') || searchParams.get('resumeOrderId')
         if (!resumeId || loadedOrderRef.current === resumeId) return
+
+        // Set ref immediately to prevent duplicate calls
+        loadedOrderRef.current = resumeId
 
         const loadResumeOrder = async () => {
             const posService = getPOSService()
@@ -242,14 +200,13 @@ export default function NewOrderPage() {
             } catch (e) { console.error("Local fetch failed", e) }
 
             // If not local and online, try Server
-            if (!order && isOnline) {
+            if (!order) {
                 try {
                     order = await getOrder(resumeId)
                 } catch (e) { console.error("Server fetch failed", e) }
             }
 
             if (order) {
-                loadedOrderRef.current = resumeId // Prevent re-loading
                 setResumeId(order.id)
                 setGuestName(order.customerName || '')
                 setGuestMobile(order.customerMobile || '')
@@ -259,7 +216,7 @@ export default function NewOrderPage() {
                 if (Array.isArray(order.items)) {
                     const restoredCart: CartItem[] = order.items.map((item: any) => ({
                         cartId: Math.random().toString(36).substr(2, 9),
-                        id: item.id || item.productId, // Handle both structures if stored differently
+                        id: item.id || item.productId,
                         name: item.name,
                         unitPrice: item.unitPrice || item.price,
                         quantity: item.quantity,
@@ -269,12 +226,14 @@ export default function NewOrderPage() {
                 }
                 toast.success("Order Loaded")
             } else {
+                // Reset ref if order not found so user can retry
+                loadedOrderRef.current = null
                 toast.error("Order not found")
             }
         }
 
         loadResumeOrder()
-    }, [searchParams, isOnline]) // Only depends on network status for initial data
+    }, [searchParams]) // Only depends on URL params
 
     // --- Calculations ---
     const subtotal = cart.reduce((sum, item) => {

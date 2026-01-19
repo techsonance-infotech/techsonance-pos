@@ -178,14 +178,16 @@ export default function StaffSettingsPage() {
                                                 Active
                                             </span>
                                         )}
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={(e) => handleEdit(member, e)}
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                                        >
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
+                                        {!['SUPER_ADMIN', 'BUSINESS_OWNER'].includes(member.role) && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={(e) => handleEdit(member, e)}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
                             ))

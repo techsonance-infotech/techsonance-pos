@@ -14,6 +14,55 @@ export async function getTables() {
     })
 }
 
+// Get tables with held order timestamps for timer display
+export async function getTablesWithHeldOrders() {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) return []
+
+    // Fetch all tables
+    const tables = await prisma.table.findMany({
+        where: { storeId: user.defaultStoreId },
+        orderBy: { name: 'asc' }
+    })
+
+    // Fetch all held orders for this store that have a tableId
+    const heldOrders = await prisma.order.findMany({
+        where: {
+            storeId: user.defaultStoreId,
+            status: 'HELD',
+            tableId: { not: null }
+        },
+        select: {
+            id: true,
+            tableId: true,
+            createdAt: true
+        }
+    })
+
+    // Create a map of tableId -> { createdAt, orderId }
+    const heldOrderMap = new Map<string, { createdAt: Date; orderId: string }>()
+    for (const order of heldOrders) {
+        if (order.tableId) {
+            const existing = heldOrderMap.get(order.tableId)
+            if (!existing || order.createdAt < existing.createdAt) {
+                heldOrderMap.set(order.tableId, { createdAt: order.createdAt, orderId: order.id })
+            }
+        }
+    }
+
+    // Merge table data with held order info
+    const result = tables.map((table: { id: string; name: string; capacity: number; status: string }) => {
+        const heldInfo = heldOrderMap.get(table.id)
+        return {
+            ...table,
+            heldOrderCreatedAt: heldInfo?.createdAt.toISOString() || null,
+            heldOrderId: heldInfo?.orderId || null
+        }
+    })
+
+    return result
+}
+
 export async function addTable(name: string, capacity: number) {
     const user = await getUserProfile()
     if (!user?.defaultStoreId) {
