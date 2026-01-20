@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog"
 import { addTable, deleteTable, updateTableStatus } from "@/app/actions/tables"
 import { useRouter } from "next/navigation"
-import { getPOSService } from "@/lib/pos-service"
 import { useElapsedTimer } from "@/hooks/use-elapsed-timer"
 
 // Timer component for individual table
@@ -47,20 +46,9 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
     const [tables, setTables] = useState<Table[]>(initialTables)
 
     // Sync with server data when initialTables changes (navigation back to page)
+    // Always trust server data, including empty arrays after data cleanup
     useEffect(() => {
-        if (initialTables.length > 0) {
-            setTables(initialTables)
-        } else {
-            // Fallback to local cache if server data is empty (offline scenario)
-            const loadLocal = async () => {
-                const posService = getPOSService()
-                const local = await posService.getTables()
-                if (local && local.length > 0) {
-                    setTables(local as Table[])
-                }
-            }
-            loadLocal()
-        }
+        setTables(initialTables)
     }, [initialTables])
     // user prop is available if needed, though previously it was only used to set state.
 

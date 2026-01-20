@@ -3,7 +3,7 @@
 // Force HMR Update
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building, Trash2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
@@ -137,6 +137,17 @@ export default function SettingsPage() {
                         colorClass="text-emerald-600"
                         iconBgClass="bg-emerald-50"
                         href="/dashboard/settings/backup"
+                    />
+                )}
+
+                {(userRole === 'SUPER_ADMIN' || userRole === 'BUSINESS_OWNER') && (
+                    <SettingCard
+                        icon={Trash2}
+                        title="Data Cleanup"
+                        description="Clear orders, products, and system data"
+                        colorClass="text-red-600"
+                        iconBgClass="bg-red-50"
+                        href="/dashboard/settings/data-cleanup"
                     />
                 )}
 
