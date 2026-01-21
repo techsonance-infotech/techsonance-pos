@@ -110,10 +110,9 @@ body {
     z-index: 9999;
   }
 
-  /* Analytics Print Styles */
+  /* Analytics Print Styles - Removed forced A4 to support Thermal Receipts */
   @page {
-    size: A4;
-    margin: 1.5cm;
+    margin: 0;
   }
 
   body {

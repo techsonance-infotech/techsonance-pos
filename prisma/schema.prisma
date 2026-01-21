@@ -168,6 +168,9 @@ model User {
   // Security & Control
   isLocked        Boolean  @default(false)
   isApproved      Boolean  @default(false) // Track admin approval for new registrations
+  isVerified      Boolean  @default(false) // Email verification status
+  verificationToken String? // Hashed verification token
+  verificationExpiresAt DateTime? // Token expiry
   disabledModules String[] @default([]) // Array of module IDs e.g. ["orders", "reports"]
   lastIp          String?  // Track last login IP
 
@@ -350,3 +353,19 @@ model BackupSchedule {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+// ========== PASSWORD RESET OTP ==========
+model PasswordResetOtp {
+  id          String   @id @default(uuid())
+  email       String   // User's email
+  otpHash     String   // Hashed OTP (bcrypt)
+  resetToken  String?  // Secure reset token for password change step
+  expiresAt   DateTime // OTP expiry time (5 minutes from creation)
+  isUsed      Boolean  @default(false)
+  attempts    Int      @default(0) // Failed verification attempts
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+

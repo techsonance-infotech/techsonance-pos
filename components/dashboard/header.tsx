@@ -240,14 +240,16 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             </div>
 
             <div className="flex items-center gap-4">
-                {/* Tables Icon */}
-                <a
-                    href="/dashboard/tables"
-                    className="p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
-                    title="Tables"
-                >
-                    <LayoutGrid className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                </a>
+                {/* Tables Icon - Only show if Table Mode is enabled */}
+                {user?.defaultStore?.tableMode && (
+                    <a
+                        href="/dashboard/tables"
+                        className="p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
+                        title="Tables"
+                    >
+                        <LayoutGrid className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                    </a>
+                )}
 
                 {/* Hold Orders Icon */}
                 <button

@@ -44,6 +44,17 @@ export default function RecentOrdersPage() {
     const handleWebPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
+        pageStyle: `
+            @page {
+                size: 80mm auto;
+                margin: 0mm;
+            }
+            @media print {
+                body {
+                    margin: 0mm;
+                }
+            }
+        `,
         onAfterPrint: () => {
             setTimeout(() => setPrintOrder(null), 500)
         }
@@ -176,6 +187,8 @@ export default function RecentOrdersPage() {
         router.push(`/dashboard/new-order?resumeOrderId=${orderId}`)
     }
 
+    const [statusFilter, setStatusFilter] = useState("ALL") // ALL, COMPLETED, CANCELLED
+
     // Filter Logic
     const filteredOrders = orders.filter((order: any) => {
         const matchesSearch =
@@ -186,7 +199,10 @@ export default function RecentOrdersPage() {
         // Simple date string match for YYYY-MM-DD
         const matchesDate = dateFilter ? order.createdAt.toString().startsWith(dateFilter) : true
 
-        return matchesSearch && matchesDate
+        // Status Match
+        const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter
+
+        return matchesSearch && matchesDate && matchesStatus
     })
 
     if (loading) return <RecentOrdersLoading />
@@ -197,7 +213,7 @@ export default function RecentOrdersPage() {
                 {/* Header */}
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Recent Orders</h1>
-                    <p className="text-gray-500">View and manage completed orders</p>
+                    <p className="text-gray-500">View and manage orders history</p>
                 </div>
 
                 {/* Filter Bar */}
@@ -211,6 +227,19 @@ export default function RecentOrdersPage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-10 h-11 bg-white"
                         />
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="w-full md:w-48">
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        >
+                            <option value="ALL">All Orders</option>
+                            <option value="COMPLETED">Completed</option>
+                            <option value="CANCELLED">Cancelled</option>
+                        </select>
                     </div>
 
                     {/* Date Filter */}
@@ -235,7 +264,7 @@ export default function RecentOrdersPage() {
                         </div>
                         <h3 className="text-xl font-semibold text-gray-900 mb-1">No Orders Found</h3>
                         <p className="text-gray-500 max-w-sm mx-auto">
-                            No completed orders yet. New orders will appear here once they are finalized.
+                            No orders match your current filters.
                         </p>
                     </div>
                 ) : (
@@ -245,6 +274,7 @@ export default function RecentOrdersPage() {
                                 <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 font-medium">
                                     <tr>
                                         <th className="px-6 py-4">KOT No</th>
+                                        <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4">Date & Time</th>
                                         <th className="px-6 py-4">Customer</th>
                                         <th className="px-6 py-4">Items</th>
@@ -257,8 +287,16 @@ export default function RecentOrdersPage() {
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredOrders.map((order: any) => (
-                                        <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <tr key={order.id} className={`hover:bg-gray-50/50 transition-colors ${order.status === 'CANCELLED' ? 'bg-red-50/30' : ''}`}>
                                             <td className="px-6 py-4 font-bold text-gray-900">{order.kotNo}</td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${order.status === 'CANCELLED'
+                                                    ? 'bg-red-100 text-red-800 border-red-200'
+                                                    : 'bg-green-100 text-green-800 border-green-200'
+                                                    }`}>
+                                                    {order.status}
+                                                </span>
+                                            </td>
                                             <td className="px-6 py-4 text-gray-600">
                                                 {new Date(order.updatedAt).toLocaleString()}
                                             </td>
@@ -305,14 +343,17 @@ export default function RecentOrdersPage() {
                                                     >
                                                         <Eye className="h-4 w-4" />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleEditOrder(order.id)}
-                                                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-orange-600 transition-colors"
-                                                        title="Edit (Convert to Held)"
-                                                        disabled={actionLoading}
-                                                    >
-                                                        <Edit className="h-4 w-4" />
-                                                    </button>
+                                                    {order.status !== 'CANCELLED' && (
+                                                        <button
+                                                            onClick={() => handleEditOrder(order.id)}
+                                                            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-orange-600 transition-colors"
+                                                            title="Edit (Convert to Held)"
+                                                            disabled={actionLoading}
+                                                        >
+                                                            <Edit className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    {/* Do not allow deleting or resuming cancelled orders easily unless intended, sticking to existing delete logic which works for any */}
                                                     <button
                                                         onClick={() => setDeleteConfirmOrder(order)}
                                                         className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-red-600 transition-colors"
@@ -321,17 +362,19 @@ export default function RecentOrdersPage() {
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleResumeOrder(order.id)}
-                                                        className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${editedOrders.has(order.id)
-                                                            ? 'text-gray-500 hover:text-green-600 cursor-pointer'
-                                                            : 'text-gray-400 cursor-not-allowed opacity-50'
-                                                            }`}
-                                                        title={editedOrders.has(order.id) ? "Resume Order" : "Click Edit first to resume this order"}
-                                                        disabled={!editedOrders.has(order.id) || actionLoading}
-                                                    >
-                                                        <Play className="h-4 w-4" />
-                                                    </button>
+                                                    {order.status !== 'CANCELLED' && (
+                                                        <button
+                                                            onClick={() => handleResumeOrder(order.id)}
+                                                            className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${editedOrders.has(order.id)
+                                                                ? 'text-gray-500 hover:text-green-600 cursor-pointer'
+                                                                : 'text-gray-400 cursor-not-allowed opacity-50'
+                                                                }`}
+                                                            title={editedOrders.has(order.id) ? "Resume Order" : "Click Edit first to resume this order"}
+                                                            disabled={!editedOrders.has(order.id) || actionLoading}
+                                                        >
+                                                            <Play className="h-4 w-4" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

@@ -429,8 +429,24 @@ export async function verifySessionLicense(userId: string) {
     }
 
     if (!store.license) {
-        // New account / No license -> Treat as Invalid/Expired
-        return { valid: false, error: "No license found" }
+        // Check for Trial Period
+        const trialDays = parseInt(process.env.TRIAL_PERIOD_DAYS || '7')
+
+        // Use store creation date as the start of the trial
+        const trialStartDate = new Date(store.createdAt)
+        const now = new Date()
+
+        // Calculate difference in days
+        const diffTime = Math.abs(now.getTime() - trialStartDate.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        if (diffDays <= trialDays) {
+            // Still in trial
+            return { valid: true }
+        } else {
+            // New account / No license -> Treat as Invalid/Expired
+            return { valid: false, error: "Trial period expired. Please activate a license." }
+        }
     }
 
     // Verify Session License Refactored: 

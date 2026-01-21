@@ -1,10 +1,10 @@
-import { RegisterForm } from "@/components/auth/register-form"
-import Link from "next/link"
 import Image from "next/image"
+import Link from "next/link"
+import { ForgotPasswordForm } from "@/components/auth/forgot-password-form"
 
 export const dynamic = 'force-dynamic'
 
-export default async function RegisterPage() {
+export default function ForgotPasswordPage() {
     return (
         <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-2">
             {/* Left Panel - Same as login page */}
@@ -36,7 +36,7 @@ export default async function RegisterPage() {
                     </p>
                 </div>
 
-                {/* Powered by footer with link - increased section and centered */}
+                {/* Powered by footer with link */}
                 <div className="border-t border-[#e8ddd0] px-10 py-6">
                     <a
                         href="https://www.techsonanceinfotech.com/"
@@ -49,25 +49,17 @@ export default async function RegisterPage() {
                 </div>
             </div>
 
-            {/* Right Panel - Registration Form */}
+            {/* Right Panel - Forgot Password Form */}
             <div className="flex items-center justify-center py-12 bg-gradient-to-b from-[#fef9f3] to-[#fdf4e8] min-h-screen">
-                <div className="mx-auto grid w-full max-w-2xl gap-6 px-6">
-                    {/* Header */}
-                    <div className="grid gap-2">
-                        <h1 className="text-3xl font-bold text-[#1a1a1a]">Create Account</h1>
-                        <p className="text-muted-foreground text-sm">
-                            Register for a new POS account
-                        </p>
-                    </div>
+                <div className="mx-auto grid w-[420px] gap-6 px-6">
+                    {/* Forgot Password Form */}
+                    <ForgotPasswordForm />
 
-                    {/* Registration Form */}
-                    <RegisterForm />
-
-                    {/* Sign in link */}
+                    {/* Back to login link */}
                     <div className="text-center text-sm">
-                        Already have an account?{" "}
+                        Remember your password?{" "}
                         <Link href="/" className="text-[#d97706] hover:underline font-semibold">
-                            Sign in
+                            Back to Login
                         </Link>
                     </div>
                 </div>

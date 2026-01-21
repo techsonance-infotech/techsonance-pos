@@ -9,12 +9,16 @@ import { Label } from "@/components/ui/label"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
-import { Check, X } from "lucide-react"
+import { Check, X, Eye, EyeOff } from "lucide-react"
 
 function SubmitButton({ disabled }: { disabled?: boolean }) {
     const { pending } = useFormStatus()
     return (
-        <Button type="submit" className="w-full bg-[#d97706] hover:bg-[#b45309]" disabled={pending || disabled}>
+        <Button
+            type="submit"
+            className="w-full h-12 bg-[#f97316] hover:bg-[#ea580c] text-white text-md font-semibold rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={pending || disabled}
+        >
             {pending ? "Creating Account..." : "Create Account"}
         </Button>
     )
@@ -35,14 +39,20 @@ export function RegisterForm() {
     const [state, formAction] = useActionState(registerUser, null)
 
     // Form state for validation
+    const [businessName, setBusinessName] = useState('')
     const [username, setUsername] = useState('')
     const [email, setEmail] = useState('')
     const [contactNo, setContactNo] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
+    const [showPassword, setShowPassword] = useState(false)
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
     // Validation state
-    const [errors, setErrors] = useState<Record<string, string>>({})
+    const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+    // Business Name validation
+    const isBusinessNameValid = businessName.trim().length >= 3
 
     // Username validation
     const isUsernameValid = /^[a-zA-Z0-9_]{3,20}$/.test(username)
@@ -65,12 +75,25 @@ export function RegisterForm() {
     const passwordsMatch = password === confirmPassword && confirmPassword !== ''
 
     // Overall form validity
-    const isFormValid = isUsernameValid && isEmailValid && isPhoneValid && isPasswordStrong && passwordsMatch
+    const isFormValid = isBusinessNameValid && isUsernameValid && isEmailValid && isPhoneValid && isPasswordStrong && passwordsMatch
 
     // Handle phone input - only allow numbers
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 10)
         setContactNo(value)
+    }
+
+    const handleBlur = (field: string) => {
+        setTouched(prev => ({ ...prev, [field]: true }))
+    }
+
+    // Get input class based on validation state
+    const getInputClass = (isValid: boolean, fieldName: string, value: string) => {
+        const baseClass = "h-14 text-base bg-white border rounded-lg focus:ring-1 focus:ring-[#f97316]"
+        if (!touched[fieldName] || value === '') return `${baseClass} border-[#e5e5e5] focus:border-[#f97316]`
+        return isValid
+            ? `${baseClass} border-green-500 focus:border-green-500`
+            : `${baseClass} border-red-500 focus:border-red-500`
     }
 
     useEffect(() => {
@@ -86,103 +109,154 @@ export function RegisterForm() {
     }, [state, router])
 
     return (
-        <form action={formAction} className="grid gap-4">
+        <form action={formAction} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Business Name Field */}
             <div className="grid gap-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="businessName" className="text-[#333] font-medium text-sm">Business Name</Label>
+                <Input
+                    id="businessName"
+                    name="businessName"
+                    type="text"
+                    placeholder="Enter your business name"
+                    required
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    onBlur={() => handleBlur('businessName')}
+                    className={getInputClass(isBusinessNameValid, 'businessName', businessName)}
+                    autoFocus
+                />
+                {touched.businessName && businessName && !isBusinessNameValid && (
+                    <p className="text-xs text-red-500">Business name must be at least 3 characters</p>
+                )}
+            </div>
+
+            {/* Username Field */}
+            <div className="grid gap-2">
+                <Label htmlFor="username" className="text-[#333] font-medium text-sm">Username</Label>
                 <Input
                     id="username"
                     name="username"
                     type="text"
-                    placeholder="johndoe"
+                    placeholder="Enter username"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className={`border-gray-300 focus:border-[#d97706] focus:ring-[#d97706] ${username && !isUsernameValid ? 'border-red-500' : username && isUsernameValid ? 'border-green-500' : ''
-                        }`}
+                    onBlur={() => handleBlur('username')}
+                    className={getInputClass(isUsernameValid, 'username', username)}
                 />
-                {username && !isUsernameValid && (
+                {touched.username && username && !isUsernameValid && (
                     <p className="text-xs text-red-500">3-20 characters, letters, numbers, underscores only</p>
                 )}
             </div>
+
+            {/* Email Field */}
             <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-[#333] font-medium text-sm">Email</Label>
                 <Input
                     id="email"
                     name="email"
                     type="email"
-                    placeholder="john@example.com"
+                    placeholder="Enter your email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`border-gray-300 focus:border-[#d97706] focus:ring-[#d97706] ${email && !isEmailValid ? 'border-red-500' : email && isEmailValid ? 'border-green-500' : ''
-                        }`}
+                    onBlur={() => handleBlur('email')}
+                    className={getInputClass(isEmailValid, 'email', email)}
                 />
-                {email && !isEmailValid && (
+                {touched.email && email && !isEmailValid && (
                     <p className="text-xs text-red-500">Please enter a valid email address</p>
                 )}
             </div>
+
+            {/* Contact Number Field */}
             <div className="grid gap-2">
-                <Label htmlFor="contactNo">Contact Number (10 digits)</Label>
+                <Label htmlFor="contactNo" className="text-[#333] font-medium text-sm">Contact Number (Optional)</Label>
                 <Input
                     id="contactNo"
                     name="contactNo"
                     type="tel"
-                    placeholder="9876543210"
+                    placeholder="Enter 10-digit number"
                     value={contactNo}
                     onChange={handlePhoneChange}
-                    className={`border-gray-300 focus:border-[#d97706] focus:ring-[#d97706] ${contactNo && !isPhoneValid ? 'border-red-500' : contactNo && isPhoneValid ? 'border-green-500' : ''
-                        }`}
+                    onBlur={() => handleBlur('contactNo')}
+                    className={getInputClass(isPhoneValid, 'contactNo', contactNo)}
                 />
-                {contactNo && !isPhoneValid && (
+                {touched.contactNo && contactNo && !isPhoneValid && (
                     <p className="text-xs text-red-500">Must be exactly 10 digits</p>
                 )}
             </div>
+
+            {/* Password Field */}
             <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    placeholder="••••••••"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`border-gray-300 focus:border-[#d97706] focus:ring-[#d97706] ${password && !isPasswordStrong ? 'border-amber-500' : password && isPasswordStrong ? 'border-green-500' : ''
-                        }`}
-                />
+                <Label htmlFor="password" className="text-[#333] font-medium text-sm">Password</Label>
+                <div className="relative">
+                    <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onBlur={() => handleBlur('password')}
+                        className={`${getInputClass(isPasswordStrong, 'password', password)} pr-12`}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                </div>
                 {password && (
                     <div className="grid grid-cols-2 gap-1 mt-1">
-                        <PasswordRequirement met={hasMinLength} text="8+ characters" />
-                        <PasswordRequirement met={hasUppercase} text="Uppercase (A-Z)" />
-                        <PasswordRequirement met={hasLowercase} text="Lowercase (a-z)" />
-                        <PasswordRequirement met={hasNumber} text="Number (0-9)" />
-                        <PasswordRequirement met={hasSpecial} text="Special (!@#$%)" />
+                        <PasswordRequirement met={hasMinLength} text="8+ chars" />
+                        <PasswordRequirement met={hasUppercase} text="Uppercase" />
+                        <PasswordRequirement met={hasLowercase} text="Lowercase" />
+                        <PasswordRequirement met={hasNumber} text="Number" />
+                        <PasswordRequirement met={hasSpecial} text="Special" />
                     </div>
                 )}
             </div>
+
+            {/* Confirm Password Field */}
             <div className="grid gap-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type="password"
-                    placeholder="••••••••"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`border-gray-300 focus:border-[#d97706] focus:ring-[#d97706] ${confirmPassword && !passwordsMatch ? 'border-red-500' : confirmPassword && passwordsMatch ? 'border-green-500' : ''
-                        }`}
-                />
-                {confirmPassword && !passwordsMatch && (
+                <Label htmlFor="confirmPassword" className="text-[#333] font-medium text-sm">Confirm Password</Label>
+                <div className="relative">
+                    <Input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder="Confirm password"
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onBlur={() => handleBlur('confirmPassword')}
+                        className={`${getInputClass(passwordsMatch, 'confirmPassword', confirmPassword)} pr-12`}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                        {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                </div>
+                {touched.confirmPassword && confirmPassword && !passwordsMatch && (
                     <p className="text-xs text-red-500">Passwords do not match</p>
                 )}
                 {confirmPassword && passwordsMatch && (
                     <p className="text-xs text-green-600 flex items-center gap-1">
-                        <Check className="h-3 w-3" /> Passwords match
+                        <Check className="h-3 w-3" /> Match
                     </p>
                 )}
             </div>
-            <SubmitButton disabled={!isFormValid} />
+
+            {/* Submit Button */}
+            <div className="md:col-span-2 mt-2">
+                <SubmitButton disabled={!isFormValid} />
+            </div>
         </form>
     )
 }

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { ProductCustomizationModal, Product, Addon } from "@/components/pos/product-modal"
 import { useSearchParams, useRouter } from "next/navigation"
-import { saveOrder, getOrder } from "@/app/actions/orders"
+import { saveOrder, getOrder, cancelOrder } from "@/app/actions/orders"
 import { getPOSInitialData } from "@/app/actions/pos"
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { useCurrency } from "@/lib/hooks/use-currency"
@@ -63,6 +63,17 @@ export default function NewOrderPage() {
     const handleWebPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
+        pageStyle: `
+            @page {
+                size: 80mm auto;
+                margin: 0mm;
+            }
+            @media print {
+                body {
+                    margin: 0mm;
+                }
+            }
+        `,
         onAfterPrint: () => {
             setTimeout(() => setPrintOrder(null), 500)
         }
@@ -207,6 +218,15 @@ export default function NewOrderPage() {
             }
 
             if (order) {
+                // Prevent resuming cancelled or completed orders
+                if (order.status === 'CANCELLED' || order.status === 'COMPLETED') {
+                    toast.error(`Order is already ${order.status.toLowerCase()}`)
+                    loadedOrderRef.current = null
+                    // Clear URL params
+                    router.push('/dashboard/new-order')
+                    return
+                }
+
                 setResumeId(order.id)
                 setGuestName(order.customerName || '')
                 setGuestMobile(order.customerMobile || '')
@@ -645,13 +665,31 @@ export default function NewOrderPage() {
                                     {printing ? 'Printing...' : 'Save & Print'}
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        if (confirm("Are you sure you want to clear the current order?")) {
-                                            setCart([])
-                                            setGuestName('')
-                                            setGuestMobile('')
-                                            setResumeId(null)
-                                            setPaymentMode('CASH')
+                                    onClick={async () => {
+                                        if (confirm("Are you sure you want to clear/cancel this order?")) {
+                                            setLoading(true)
+                                            try {
+                                                if (resumeId) {
+                                                    // Cancel backend order + release table
+                                                    const res = await cancelOrder(resumeId)
+                                                    if (res.success) {
+                                                        toast.success("Order cancelled and table released")
+                                                    } else {
+                                                        toast.error(res.error || "Failed to cancel order")
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                console.error(e)
+                                            } finally {
+                                                setCart([])
+                                                setGuestName('')
+                                                setGuestMobile('')
+                                                setResumeId(null)
+                                                setPaymentMode('CASH')
+                                                setLoading(false)
+                                                router.refresh() // Force revalidation of server components (Tables)
+                                                router.push('/dashboard/new-order')
+                                            }
                                         }
                                     }}
                                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 shadow-sm active:scale-95 transition-all"

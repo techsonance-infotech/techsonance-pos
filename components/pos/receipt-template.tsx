@@ -85,7 +85,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     };
 
     return (
-        <div ref={ref} className="hidden print:block bg-white text-black font-mono text-xs leading-tight" style={{ width: '80mm', padding: '10px', boxSizing: 'border-box' }}>
+        <div ref={ref} className="hidden print:block bg-white text-black font-mono text-xs leading-tight" style={{ width: '78mm', padding: '4px', margin: '0 auto', boxSizing: 'border-box' }}>
             {/* Header */}
             <div className="text-center mb-2 border-b border-black pb-2 border-dashed flex flex-col items-center justify-center">
 
@@ -143,10 +143,10 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
 
             {/* Items Header */}
             <div className="border-b border-black border-dashed mb-1 pb-1 flex font-bold uppercase text-[11px]">
-                <div style={{ width: '45%' }}>Item</div>
+                <div style={{ width: '40%' }}>Item</div>
                 <div style={{ width: '15%', textAlign: 'center' }}>Qty</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Price</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Amt</div>
+                <div style={{ width: '22%', textAlign: 'right' }}>Price</div>
+                <div style={{ width: '23%', textAlign: 'right' }}>Amt</div>
             </div>
 
             {/* Items List */}
@@ -156,20 +156,20 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     return (
                         <div key={index}>
                             <div className="flex text-[11px]">
-                                <div style={{ width: '45%' }} className="truncate font-medium">{item.name}</div>
+                                <div style={{ width: '40%' }} className="truncate font-medium">{item.name}</div>
                                 <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
-                                <div style={{ width: '20%', textAlign: 'right' }}>{item.unitPrice}</div>
-                                <div style={{ width: '20%', textAlign: 'right', fontWeight: 'bold' }}>
+                                <div style={{ width: '22%', textAlign: 'right' }}>{item.unitPrice}</div>
+                                <div style={{ width: '23%', textAlign: 'right', fontWeight: 'bold' }}>
                                     {itemTotal.toFixed(2)}
                                 </div>
                             </div>
                             {/* Addons */}
                             {item.addons && item.addons.length > 0 && item.addons.map((addon: any, idx: number) => (
                                 <div key={idx} className="flex text-[10px] text-gray-600" style={{ paddingLeft: '8px' }}>
-                                    <div style={{ width: '45%' }}>+ {addon.addon.name}</div>
+                                    <div style={{ width: '40%' }}>+ {addon.addon.name}</div>
                                     <div style={{ width: '15%', textAlign: 'center' }}>{addon.quantity}</div>
-                                    <div style={{ width: '20%', textAlign: 'right' }}>{addon.addon.price}</div>
-                                    <div style={{ width: '20%', textAlign: 'right' }}>
+                                    <div style={{ width: '22%', textAlign: 'right' }}>{addon.addon.price}</div>
+                                    <div style={{ width: '23%', textAlign: 'right' }}>
                                         {(addon.addon.price * addon.quantity).toFixed(2)}
                                     </div>
                                 </div>

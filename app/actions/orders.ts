@@ -164,13 +164,19 @@ export async function getHeldOrders() {
 const fetchRecentOrders = async (storeId: string) => {
     try {
         const orders = await prisma.order.findMany({
-            where: { status: 'COMPLETED', storeId },
+            where: {
+                status: {
+                    in: ['COMPLETED', 'CANCELLED']
+                },
+                storeId
+            },
             orderBy: { createdAt: 'desc' },
             take: 50,
             select: {
                 id: true,
                 kotNo: true,
                 totalAmount: true,
+                status: true,
                 customerName: true,
                 customerMobile: true,
                 tableName: true,
@@ -306,5 +312,53 @@ export async function searchOrders(query: string) {
     } catch (error) {
         console.error("Search Orders Error:", error)
         return []
+    }
+}
+
+// Cancel Order (Update Status + Release Table)
+export async function cancelOrder(orderId: string) {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) return { error: "Unauthorized" }
+
+    try {
+        const order = await prisma.order.findUnique({
+            where: { id: orderId }
+        })
+
+        if (!order) return { error: "Order not found" }
+
+        const operations: any[] = []
+
+        // 1. Update Order Status
+        operations.push(prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CANCELLED' }
+        }))
+
+        // 2. Release Table if assigned
+        if (order.tableId) {
+            operations.push(prisma.table.update({
+                where: { id: order.tableId },
+                data: { status: 'AVAILABLE' }
+            }))
+        }
+
+        await prisma.$transaction(operations)
+
+        // Notification
+        await createNotification(
+            user.id,
+            "Order Cancelled",
+            `Order ${order.kotNo} was cancelled. Table released.`
+        )
+
+        revalidatePath('/dashboard/hold-orders')
+        revalidatePath('/dashboard/recent-orders')
+        revalidatePath('/dashboard/tables')
+
+        return { success: true, message: "Order cancelled and table released" }
+    } catch (error) {
+        console.error("Cancel Order Error:", error)
+        return { error: "Failed to cancel order" }
     }
 }
