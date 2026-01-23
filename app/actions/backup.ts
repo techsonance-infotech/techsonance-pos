@@ -3,7 +3,7 @@
 // console.log("[BackupActionFile] Module loaded")
 
 import { prisma } from "@/lib/prisma"
-import { PrismaClient as PostgresClient } from "@prisma/client-postgres"
+import { PrismaClient as PostgresClient } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { getUserProfile } from "./user"
 import { isSuperAdmin } from "@/lib/tenant"
