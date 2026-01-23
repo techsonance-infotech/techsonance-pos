@@ -24,34 +24,45 @@ const SETTINGS_KEYS = [
 ] as const
 
 // Internal DB Fetcher
+// Internal DB Fetcher
 async function fetchBusinessSettings() {
-    const settings = await prisma.systemConfig.findMany({
-        where: {
-            key: { in: [...SETTINGS_KEYS] }
+    try {
+        const settings = await prisma.systemConfig.findMany({
+            where: {
+                key: { in: [...SETTINGS_KEYS] }
+            }
+        })
+
+        // Convert array to object
+        const settingsMap = settings.reduce((acc: any, curr: any) => {
+            acc[curr.key] = curr.value
+            return acc
+        }, {} as Record<string, string>)
+
+        return {
+            businessName: settingsMap.business_name || '',
+            logoUrl: settingsMap.business_logo || '', // Default empty or placeholder
+            address: settingsMap.business_address || '',
+            phone: settingsMap.business_phone || '',
+            email: settingsMap.business_email || '',
+            gstNo: settingsMap.business_gst || '',
+            taxRate: settingsMap.tax_rate || '5',
+            taxName: settingsMap.tax_name || 'GST',
+            showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
+            enableDiscount: settingsMap.enable_discount === 'true',
+            defaultDiscount: settingsMap.default_discount || '0',
+            discountType: settingsMap.discount_type || 'FIXED', // 'FIXED' | 'PERCENTAGE'
+            minOrderForDiscount: settingsMap.min_order_for_discount || '0',
+            maxDiscount: settingsMap.max_discount || '0'
         }
-    })
-
-    // Convert array to object
-    const settingsMap = settings.reduce((acc: any, curr: any) => {
-        acc[curr.key] = curr.value
-        return acc
-    }, {} as Record<string, string>)
-
-    return {
-        businessName: settingsMap.business_name || '',
-        logoUrl: settingsMap.business_logo || '', // Default empty or placeholder
-        address: settingsMap.business_address || '',
-        phone: settingsMap.business_phone || '',
-        email: settingsMap.business_email || '',
-        gstNo: settingsMap.business_gst || '',
-        taxRate: settingsMap.tax_rate || '5',
-        taxName: settingsMap.tax_name || 'GST',
-        showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
-        enableDiscount: settingsMap.enable_discount === 'true',
-        defaultDiscount: settingsMap.default_discount || '0',
-        discountType: settingsMap.discount_type || 'FIXED', // 'FIXED' | 'PERCENTAGE'
-        minOrderForDiscount: settingsMap.min_order_for_discount || '0',
-        maxDiscount: settingsMap.max_discount || '0'
+    } catch (e) {
+        console.error("fetchBusinessSettings failed:", e)
+        // Return default safe values on error
+        return {
+            businessName: '', logoUrl: '', address: '', phone: '', email: '', gstNo: '',
+            taxRate: '5', taxName: 'GST', showTaxBreakdown: false, enableDiscount: false,
+            defaultDiscount: '0', discountType: 'FIXED', minOrderForDiscount: '0', maxDiscount: '0'
+        }
     }
 }
 
