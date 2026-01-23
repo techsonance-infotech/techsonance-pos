@@ -1,0 +1,516 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client-postgres"
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+  MANAGER
+  CASHIER
+  USER
+}
+
+// ========== MULTI-TENANT: Company (Tenant) ==========
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique  // URL-friendly identifier
+  logo        String?
+  address     String?
+  phone       String?
+  email       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stores      Store[]
+  users       User[]
+  license     License?  // Company-level license
+  licenseRequests LicenseRequest[]  // License purchase requests
+
+  @@index([isActive])
+  @@index([slug])
+}
+
+// ========== LICENSE REQUEST SYSTEM ==========
+enum LicenseRequestStatus {
+  PENDING           // User submitted request
+  PAYMENT_PENDING   // Admin sent payment link
+  PAYMENT_UPLOADED  // User uploaded screenshot
+  VERIFIED          // Admin verified payment
+  COMPLETED         // License key sent
+  REJECTED          // Request rejected
+}
+
+model LicenseRequest {
+  id            String   @id @default(uuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  requestedById String
+  requestedBy   User     @relation("LicenseRequestUser", fields: [requestedById], references: [id])
+  
+  planType      String   // "ANNUAL" or "PERPETUAL"
+  planPrice     Float    // 4999 or 9999
+  
+  status        LicenseRequestStatus @default(PENDING)
+  
+  // Payment proof
+  paymentScreenshot  String?  // URL to uploaded image
+  paymentVerifiedAt  DateTime?
+  
+  // License key (filled when verified)
+  licenseKey    String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  messages      LicenseRequestMessage[]
+  
+  @@index([companyId])
+  @@index([status])
+}
+
+model LicenseRequestMessage {
+  id            String   @id @default(uuid())
+  requestId     String
+  request       LicenseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  
+  senderId      String
+  sender        User     @relation("LicenseRequestMessages", fields: [senderId], references: [id])
+  
+  content       String
+  attachmentUrl String?  // For images/files
+  
+  isAdminMessage Boolean @default(false)
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([requestId])
+}
+
+// ========== BACKUP ENUMS ==========
+enum BackupType {
+  MANUAL
+  SCHEDULED
+}
+
+enum BackupScope {
+  FULL
+  COMPANY
+}
+
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  location  String
+  tableMode Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Multi-tenant: Store belongs to Company
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  users     User[]   @relation("UserStores")
+  
+  categories Category[]
+  tables     Table[]
+  orders     Order[]
+
+  defaultForUsers User[] @relation("DefaultStore")
+
+  @@index([companyId])
+}
+
+model License {
+  id          String   @id @default(uuid())
+  key         String   @unique // Stores the SIGNED VALIDATION TOKEN or Legacy Token
+  keyHash     String?  // SHA-256 hash of the valid Windows-style key (for secure lookup)
+  maskedKey   String?  // Masked version of the key (XXXXX-XXXXX-12345) for display
+  status      LicenseStatus @default(ACTIVE)
+  type        LicenseType   @default(PERPETUAL)
+  
+  validFrom   DateTime @default(now())
+  validUntil  DateTime? // Null for perpetual
+  
+  maxDevices  Int      @default(1)
+  devices     LicenseDevice[]
+
+  // Audit fields
+  revokedAt     DateTime?
+  revokedBy     String?
+  extendedAt    DateTime?
+  extendedCount Int      @default(0)
+
+  // License is now linked to Company (not Store)
+  companyId   String   @unique
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+}
+
+model LicenseDevice {
+  id          String   @id @default(uuid())
+  licenseId   String
+  license     License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  
+  fingerprint String
+  deviceName  String?
+  lastSeen    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([licenseId, fingerprint])
+}
+
+enum LicenseStatus {
+  ACTIVE
+  PENDING
+  EXPIRED
+  REVOKED
+}
+
+enum LicenseType {
+  TRIAL
+  ANNUAL
+  PERPETUAL
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  isEnabled Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityRule {
+  id        String   @id @default(uuid())
+  type      SecurityRuleType
+  value     String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+enum SecurityRuleType {
+  IP
+  COUNTRY
+  USER_AGENT
+}
+
+model User {
+  id           String      @id @default(uuid())
+  username     String      @unique
+  email        String      @unique
+  contactNo    String?
+  password     String
+  pin          String?
+  role         Role        @default(USER)
+  tableMode    Boolean?
+
+  // Security & Control
+  isLocked        Boolean  @default(false)
+  isApproved      Boolean  @default(false) // Track admin approval for new registrations
+  isVerified      Boolean  @default(false) // Email verification status
+  verificationToken String? // Hashed verification token
+  verificationExpiresAt DateTime? // Token expiry
+  disabledModules String[] @default([]) // Array of module IDs e.g. ["orders", "reports"]
+  lastIp          String?  // Track last login IP
+
+  // Multi-tenant: User belongs to Company (null for SUPER_ADMIN = global access)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+
+  // Store Relations
+  stores         Store[]   @relation("UserStores")
+  defaultStoreId String?
+  defaultStore   Store?    @relation("DefaultStore", fields: [defaultStoreId], references: [id])
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  notifications Notification[]
+  orders       Order[]
+  backupLogs   BackupLog[]    // Backups triggered by this user
+  licenseRequests LicenseRequest[] @relation("LicenseRequestUser")
+  licenseRequestMessages LicenseRequestMessage[] @relation("LicenseRequestMessages")
+  activityLogs   ActivityLog[]
+  supportTickets SupportTicket[]
+  supportMessages SupportMessage[]
+
+  @@index([companyId])
+}
+
+model Table {
+  id        String   @id @default(uuid())
+  name      String
+  capacity  Int      @default(4)
+  status    TableStatus @default(AVAILABLE)
+
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  kotNo          String      @unique
+  status         OrderStatus @default(HELD)
+  
+  totalAmount    Float
+  taxAmount      Float       @default(0)
+  discountAmount Float       @default(0)
+  items          Json
+  paymentMode    PaymentMode?
+  
+  customerName   String?
+  customerMobile String?
+  
+  tableId        String?
+  tableName      String?
+  
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+
+  storeId        String
+  store          Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Indexes for fast queries
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
+}
+
+enum OrderStatus {
+  HELD
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMode {
+  CASH
+  CARD
+  UPI
+  OTHER
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  image     String?
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  
+  storeId   String
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([storeId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  description String?
+  image       String?
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  addons      Addon[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Addon {
+  id          String   @id @default(uuid())
+  name        String
+  price       Float
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ========== BACKUP MODELS ==========
+model BackupLog {
+  id            String       @id @default(uuid())
+  type          BackupType   // MANUAL, SCHEDULED
+  scope         BackupScope  // FULL, COMPANY
+  companyId     String?      // null for FULL backups
+  status        BackupStatus @default(PENDING)
+  filePath      String?
+  fileName      String?
+  fileSize      Int?         // bytes
+  encryptionKey String?      // for encrypted backups (optional)
+  errorMessage  String?
+  
+  // Triggered by user (for manual backups)
+  triggeredById String?
+  triggeredBy   User?        @relation(fields: [triggeredById], references: [id])
+  
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  
+  @@index([status])
+  @@index([companyId])
+  @@index([startedAt])
+}
+
+model BackupSchedule {
+  id            String   @id @default(uuid())
+  frequency     String   // daily, weekly, monthly
+  time          String   // HH:mm format (e.g., "02:00")
+  dayOfWeek     Int?     // 0-6 for weekly (0 = Sunday)
+  dayOfMonth    Int?     // 1-31 for monthly
+  retentionDays Int      @default(30)
+  isEnabled     Boolean  @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ========== PASSWORD RESET OTP ==========
+model PasswordResetOtp {
+  id          String   @id @default(uuid())
+  email       String   // User's email
+  otpHash     String   // Hashed OTP (bcrypt)
+  resetToken  String?  // Secure reset token for password change step
+  expiresAt   DateTime // OTP expiry time (5 minutes from creation)
+  isUsed      Boolean  @default(false)
+  attempts    Int      @default(0) // Failed verification attempts
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+
+// ========== ACTIVITY LOGS ==========
+model ActivityLog {
+  id          String   @id @default(uuid())
+  action      String   // e.g., "CREATE_ORDER", "UPDATE_SETTINGS"
+  module      String   // e.g., "POS", "SETTINGS", "AUTH"
+  details     String   // JSON string details
+  
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  isSynced    Boolean  @default(false) // Track sync status to MongoDB
+  
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([module])
+  @@index([action])
+  @@index([createdAt])
+  @@index([isSynced])
+}
+
+// ========== SUPPORT SYSTEM ==========
+model SupportTicket {
+  id          String   @id @default(uuid())
+  ticketId    String   @unique // Human readable e.g. TKT-1001
+  title       String
+  category    String   // Billing, Technical, feature_request, etc.
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  description String
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  
+  attachments String?  // JSON string or comma-separated URLs
+  systemInfo  String?  // JSON string of device info
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  storeId     String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  messages    SupportMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([ticketId])
+}
+
+model SupportMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  senderId    String
+  sender      User?    @relation(fields: [senderId], references: [id])
+
+  message     String
+  attachments String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([ticketId])
+}
+
+model FaqArticle {
+  id          String   @id @default(uuid())
+  question    String
+  answer      String   // Markdown or HTML
+  category    String
+  isVisible   Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

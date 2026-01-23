@@ -14,7 +14,7 @@ export interface PrintLayoutProps {
 export function PrintLayout({
     title,
     dateRange,
-    companyName = 'TechSonance POS',
+    companyName = 'SyncServe POS',
     storeName,
     children,
     additionalInfo = []

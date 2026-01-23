@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Home, Download, Trash2, Calendar, Loader2, Database, Cloud, Lock, HardDrive, RefreshCw, CheckCircle, XCircle, Clock, Settings2, Play } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
+import { getUserProfile } from "@/app/actions/user"
 import {
     getBackupHistory,
     triggerManualBackup,
@@ -70,6 +72,10 @@ export default function BackupManagementPage() {
             getBackupSchedule()
         ])
 
+        if (historyResult.error) {
+            toast.error(historyResult.error)
+        }
+
         if (historyResult.backups) {
             setBackups(historyResult.backups)
         }
@@ -89,11 +95,11 @@ export default function BackupManagementPage() {
         setIsLoading(false)
     }
 
-    async function handleManualBackup() {
+    async function handleManualBackup(type: 'AUTO' | 'POSTGRES' | 'SQLITE' = 'AUTO') {
         setIsBackingUp(true)
-        toast.info("Starting backup... This may take a few minutes.")
+        toast.info(`Starting ${type === 'AUTO' ? '' : type} backup...`)
 
-        const result = await triggerManualBackup('FULL')
+        const result = await triggerManualBackup('FULL', type)
 
         if (result.success) {
             toast.success(result.message || "Backup completed successfully!")
@@ -150,10 +156,10 @@ export default function BackupManagementPage() {
         // Target URL is now handled via ONLINE_DATABASE_URL env var on server
         const result = await syncToCloud()
 
-        if (result.success) {
-            toast.success("Cloud Sync completed successfully!")
-        } else {
-            toast.error(result.error || "Cloud Sync failed")
+        // Legacy sync is deprecated, but we handle the response to satisfy TS
+        // Legacy sync is deprecated
+        if (result.error) {
+            toast.error(result.error)
         }
         setIsSyncing(false)
     }
@@ -235,7 +241,7 @@ export default function BackupManagementPage() {
     }
 
     return (
-        <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
+        <div className="flex flex-col min-h-full max-w-7xl mx-auto space-y-6 pb-10">
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-3 rounded-xl border border-gray-100 shadow-sm w-fit">
                 <Home className="h-4 w-4 text-orange-500" />
@@ -251,28 +257,34 @@ export default function BackupManagementPage() {
                     <h1 className="text-3xl font-bold text-gray-900">Database Backup</h1>
                     <p className="text-gray-500 mt-1">Backup and restore your POS data</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setShowScheduleForm(true)}>
                         <Settings2 className="h-4 w-4 mr-2" />
-                        Schedule Settings
+                        Schedule
                     </Button>
-                    <Button
-                        onClick={handleManualBackup}
-                        disabled={isBackingUp}
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                        {isBackingUp ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Backing up...
-                            </>
-                        ) : (
-                            <>
-                                <Play className="h-4 w-4 mr-2" />
-                                Create Backup
-                            </>
-                        )}
-                    </Button>
+
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                        <Button
+                            onClick={() => handleManualBackup('POSTGRES')}
+                            disabled={isBackingUp}
+                            size="sm"
+                            className="bg-white text-gray-700 hover:bg-gray-50 border shadow-sm"
+                            title="Backup Online Database (Postgres)"
+                        >
+                            {isBackingUp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Database className="h-4 w-4 mr-2 text-blue-600" />}
+                            PG Backup
+                        </Button>
+                        <Button
+                            onClick={() => handleManualBackup('SQLITE')}
+                            disabled={isBackingUp}
+                            size="sm"
+                            className="bg-white text-gray-700 hover:bg-gray-50 border shadow-sm"
+                            title="Backup Local Database (SQLite)"
+                        >
+                            {isBackingUp ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <HardDrive className="h-4 w-4 mr-2 text-orange-600" />}
+                            SQLite Backup
+                        </Button>
+                    </div>
                 </div>
             </div>
 

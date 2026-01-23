@@ -29,12 +29,31 @@ export default async function UsersPage() {
         select: { id: true, name: true, location: true },
         orderBy: { name: 'asc' }
     })
+    console.log("UsersPage: Fetched stores:", allStores.length, allStores)
 
     // Calculate stats
     const totalUsers = users.length + pendingUsers.length
     const activeUsers = users.filter((u: any) => !u.isLocked).length
     const lockedUsers = users.filter((u: any) => u.isLocked).length
     const adminUsers = users.filter((u: any) => u.role === 'SUPER_ADMIN').length
+
+    // Serialize dates for client component
+    const serializedUsers = users.map((u: any) => ({
+        ...u,
+        createdAt: u.createdAt.toISOString(),
+        updatedAt: u.updatedAt.toISOString(),
+        verificationExpiresAt: u.verificationExpiresAt?.toISOString() || null,
+        stores: u.stores.map((s: any) => ({
+            ...s,
+            createdAt: s.createdAt.toISOString(),
+            updatedAt: s.updatedAt.toISOString(),
+        }))
+    }))
+
+    const serializedStores = allStores.map((s: any) => ({
+        ...s,
+        // id, name, location are strings/primitives, no dates selected
+    }))
 
     return (
         <div className="flex flex-col h-full max-w-7xl mx-auto space-y-6 pb-10">
@@ -144,7 +163,7 @@ export default async function UsersPage() {
                     <h2 className="text-2xl font-bold text-gray-900">Approved Users</h2>
                     <p className="text-gray-500 mt-1">Manage existing users and permissions</p>
                 </div>
-                <UsersTable users={users} stores={allStores} />
+                <UsersTable users={serializedUsers} stores={allStores} />
             </div>
         </div>
     )

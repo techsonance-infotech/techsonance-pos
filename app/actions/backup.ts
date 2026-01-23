@@ -1,6 +1,9 @@
 'use server'
 
+// console.log("[BackupActionFile] Module loaded")
+
 import { prisma } from "@/lib/prisma"
+import { PrismaClient as PostgresClient } from "@prisma/client-postgres"
 import { revalidatePath } from "next/cache"
 import { getUserProfile } from "./user"
 import { isSuperAdmin } from "@/lib/tenant"
@@ -8,11 +11,28 @@ import { exec } from "child_process"
 import { promisify } from "util"
 import path from "path"
 import fs from "fs"
+import os from "os"
 
 const execAsync = promisify(exec)
 
 // Backup directory configuration
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(process.cwd(), 'backups')
+
+// PostgreSQL client for web operations
+let pgClient: PostgresClient | null = null
+function getPostgresClient() {
+    if (!pgClient) {
+        pgClient = new PostgresClient({
+            datasourceUrl: process.env.DATABASE_URL
+        })
+    }
+    return pgClient
+}
+
+// Get the appropriate prisma client based on context
+function getDbClient(isPostgres: boolean) {
+    return isPostgres ? getPostgresClient() : prisma
+}
 
 /**
  * Get the pg_dump executable path
@@ -131,69 +151,142 @@ async function ensureBackupDir() {
 
 /**
  * Get backup history (filtered by role)
+ * Combines database records with filesystem scan to show all backup files
  */
 export async function getBackupHistory(limit: number = 20) {
-    const user = await getUserProfile()
-    if (!user) {
-        return { error: "Unauthorized" }
-    }
-
-    // Only Super Admin and Business Owner can view backups
-    if (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER') {
-        return { error: "Unauthorized" }
-    }
-
+    // console.log("[BackupHistory] Server action called")
     try {
-        const whereClause = user.role === 'SUPER_ADMIN'
-            ? {} // Super Admin sees all
-            : { companyId: user.companyId } // Others see only their company
+        const user = await getUserProfile()
+        if (!user) return { error: "Unauthorized" }
 
-        const backups = await prisma.backupLog.findMany({
-            where: whereClause,
-            orderBy: { startedAt: 'desc' },
-            take: limit,
-            include: {
-                triggeredBy: {
-                    select: {
-                        username: true
+        // console.log(`[BackupHistory] User profile found: ${!!user}, role: ${user?.role}`)
+
+        await ensureBackupDir()
+        const filesystemBackups: any[] = []
+
+        // console.log(`[BackupHistory] Checking folder: ${BACKUP_DIR}`)
+        if (fs.existsSync(BACKUP_DIR)) {
+            const files = fs.readdirSync(BACKUP_DIR)
+            // console.log(`[BackupHistory] Files in directory: ${files.join(', ')}`)
+
+            for (const file of files) {
+                if (file.startsWith('backup_') && (file.endsWith('.sql') || file.endsWith('.sqlite'))) {
+                    try {
+                        const filePath = path.join(BACKUP_DIR, file)
+                        const stats = fs.statSync(filePath)
+
+                        filesystemBackups.push({
+                            id: `fs_${file}`,
+                            type: file.endsWith('.sql') ? 'POSTGRES' : 'SQLITE',
+                            scope: 'FULL',
+                            status: 'COMPLETED',
+                            fileName: file,
+                            filePath: filePath,
+                            fileSize: stats.size,
+                            startedAt: stats.mtime,
+                            completedAt: stats.mtime,
+                            triggeredBy: { username: 'System (FS)' },
+                            source: 'filesystem'
+                        })
+                    } catch (e) {
+                        console.error(`[BackupHistory] Error processing file ${file}:`, e)
                     }
                 }
             }
-        })
+        }
 
-        return { success: true, backups }
-    } catch (error) {
-        console.error("Error fetching backup history:", error)
-        return { error: "Failed to fetch backup history" }
+        // console.log(`[BackupHistory] Found ${filesystemBackups.length} filesystem backups`)
+
+        // Try DB fetch, but don't let it crash the whole thing
+        let dbBackups: any[] = []
+        try {
+            // Only attempt DB fetch if user is authenticated
+            if (user) {
+                const dbUrl = (process.env.DATABASE_URL || '').replace(/^["']|["']$/g, '')
+                const isPostgres = dbUrl.startsWith("postgres:") || dbUrl.startsWith("postgresql:")
+                const db = getDbClient(isPostgres) as any
+
+                dbBackups = await db.backupLog.findMany({
+                    where: user.role === 'SUPER_ADMIN' ? {} : { companyId: user.companyId },
+                    orderBy: { startedAt: 'desc' },
+                    take: limit,
+                    include: { triggeredBy: { select: { username: true } } }
+                })
+                // console.log(`[BackupHistory] Fetched ${dbBackups.length} records from DB`)
+            } else {
+                console.warn(`[BackupHistory] User not authenticated, skipping DB fetch`)
+            }
+        } catch (dbError: any) {
+            console.warn(`[BackupHistory] DB fetch failed: ${dbError.message}`)
+        }
+
+        // Merge
+        const dbFileNames = new Set(dbBackups.map(b => b.fileName).filter(Boolean))
+        const combined = [
+            ...dbBackups,
+            ...filesystemBackups.filter(fb => !dbFileNames.has(fb.fileName))
+        ].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+
+        const finalBackups = combined.slice(0, limit)
+        // console.log(`[BackupHistory] Returning ${finalBackups.length} records`)
+
+        return { success: true, backups: finalBackups }
+
+    } catch (error: any) {
+        console.error("[BackupHistory] Fatal error:", error)
+        return { error: "Failed to fetch backup history: " + error.message }
     }
 }
 
 /**
  * Trigger a manual database backup
  */
-export async function triggerManualBackup(scope: 'FULL' | 'COMPANY' = 'FULL') {
+/**
+ * Trigger a manual database backup (SQLite File Copy)
+ */
+export async function triggerManualBackup(scope: 'FULL' | 'COMPANY' = 'FULL', dbType: 'AUTO' | 'POSTGRES' | 'SQLITE' = 'AUTO') {
     const user = await getUserProfile()
     if (!user) {
         return { error: "Unauthorized" }
     }
 
-    // Only Super Admin and Business Owner can trigger backups
     if (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER') {
         return { error: "Unauthorized" }
     }
 
-    // Non-Super Admins can only backup their own company
-    if (user.role !== 'SUPER_ADMIN' && scope === 'FULL') {
-        return { error: "Only Super Admin can perform full database backup" }
+    const companyId = scope === 'COMPANY' ? user.companyId : null
+
+    // 1. Determine Database Type FIRST
+    const sqliteUrl = process.env.SQLITE_DATABASE_URL
+    const dbUrl = process.env.DATABASE_URL
+
+    let isPostgres = false
+
+    if (dbType === 'POSTGRES') {
+        isPostgres = true
+    } else if (dbType === 'SQLITE') {
+        isPostgres = false
+    } else {
+        // AUTO detection - PRIORITIZE PORTGRES on web (where DATABASE_URL is set)
+        if (dbUrl && (dbUrl.startsWith("postgres:") || dbUrl.startsWith("postgresql:"))) {
+            isPostgres = true
+        } else if (sqliteUrl && sqliteUrl.startsWith("file:")) {
+            isPostgres = false
+        } else if (dbUrl && dbUrl.startsWith("file:")) {
+            isPostgres = false
+        } else {
+            return { error: "Invalid Database Configuration" }
+        }
     }
 
-    const companyId = scope === 'COMPANY' ? user.companyId : null
+    // Get the correct database client based on backup type
+    const db = getDbClient(isPostgres) as any
 
     try {
         await ensureBackupDir()
 
-        // Create backup log entry
-        const backupLog = await prisma.backupLog.create({
+        // Create backup log entry using the correct client
+        const backupLog = await db.backupLog.create({
             data: {
                 type: 'MANUAL',
                 scope: scope,
@@ -203,83 +296,148 @@ export async function triggerManualBackup(scope: 'FULL' | 'COMPANY' = 'FULL') {
             }
         })
 
-        // Generate filename
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-        const fileName = scope === 'FULL'
-            ? `full_backup_${timestamp}.sql`
-            : `company_${user.company?.slug || companyId}_${timestamp}.sql`
-        const filePath = path.join(BACKUP_DIR, fileName)
 
-        // Get database URL from environment
-        const databaseUrl = process.env.DATABASE_URL
-        if (!databaseUrl) {
-            await prisma.backupLog.update({
-                where: { id: backupLog.id },
-                data: {
-                    status: 'FAILED',
-                    errorMessage: 'DATABASE_URL not configured',
-                    completedAt: new Date()
+        // ---------------------------------------------------------
+        // POSTGRES BACKUP STRATEGY
+        // ---------------------------------------------------------
+        if (isPostgres) {
+            const fileName = `backup_${timestamp}.sql`
+            const filePath = path.join(BACKUP_DIR, fileName)
+            const connectionString = dbUrl! // Verified above
+
+            try {
+                // Find compatible pg_dump
+                let pgDumpCmd = 'pg_dump' // Default
+
+                // Common paths on MacOS for newer Postgres versions (prioritize latest)
+                const candidatePaths = [
+                    // Postgres 18 (matching your server version)
+                    '/opt/homebrew/opt/postgresql@18/bin/pg_dump',
+                    '/Applications/Postgres.app/Contents/Versions/18/bin/pg_dump',
+                    // Postgres.app latest symlink
+                    '/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump',
+                    // Postgres 17 fallback
+                    '/opt/homebrew/opt/postgresql@17/bin/pg_dump',
+                    '/Applications/Postgres.app/Contents/Versions/17/bin/pg_dump',
+                    // Postgres 16 fallback (may not work with server 18)
+                    '/opt/homebrew/opt/postgresql@16/bin/pg_dump',
+                    '/Applications/Postgres.app/Contents/Versions/16/bin/pg_dump',
+                    // Generic Homebrew paths
+                    '/opt/homebrew/bin/pg_dump',
+                    '/usr/local/bin/pg_dump'
+                ]
+
+                // Use the first one that exists
+                for (const p of candidatePaths) {
+                    if (fs.existsSync(p)) {
+                        pgDumpCmd = `"${p}"`
+                        // console.log("Found pg_dump at:", p)
+                        break
+                    }
                 }
-            })
-            return { error: "Database URL not configured" }
-        }
 
-        try {
-            // Execute pg_dump
-            // For COMPANY scope, we'd need to filter by company_id which is complex
-            // For now, we do full backup and note that company-specific is a future enhancement
+                // Construct pg_dump command
+                // pg_dump "connection_string" -F p -f "file_path"
+                // We wrap connection string in quotes to handle special chars
+                const cmd = `${pgDumpCmd} "${connectionString}" -F p -f "${filePath}"`
 
-            // Get pg_dump path
-            const pgDumpPath = getPgDumpPath()
-            console.log("Using pg_dump path:", pgDumpPath)
+                // Execute
+                await new Promise((resolve, reject) => {
+                    exec(cmd, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error("pg_dump error:", stderr)
+                            reject(error)
+                        } else {
+                            resolve(stdout)
+                        }
+                    })
+                })
 
-            // Wrap executable path in quotes if it contains spaces and doesn't have them
-            const pgDumpCmd = pgDumpPath.includes(' ') && !pgDumpPath.startsWith('"') && !pgDumpPath.startsWith("'")
-                ? `"${pgDumpPath}"`
-                : pgDumpPath
+                // Get file size
+                if (!fs.existsSync(filePath)) throw new Error("Backup file not created")
+                const stats = fs.statSync(filePath)
 
-            const command = `${pgDumpCmd} "${databaseUrl}" -Fp -f "${filePath}"`
+                // Update Success
+                await db.backupLog.update({
+                    where: { id: backupLog.id },
+                    data: {
+                        status: 'COMPLETED',
+                        filePath: filePath,
+                        fileName: fileName,
+                        fileSize: stats.size,
+                        completedAt: new Date()
+                    }
+                })
 
-            await execAsync(command, { timeout: 300000 }) // 5 minute timeout
-
-            // Get file size
-            const stats = fs.statSync(filePath)
-            const fileSize = stats.size
-
-            // Update backup log with success
-            await prisma.backupLog.update({
-                where: { id: backupLog.id },
-                data: {
-                    status: 'COMPLETED',
-                    filePath: filePath,
-                    fileName: fileName,
-                    fileSize: fileSize,
-                    completedAt: new Date()
+                revalidatePath('/dashboard/settings/backup')
+                return {
+                    success: true,
+                    message: "Postgres backup completed successfully",
+                    backup: { id: backupLog.id, fileName, fileSize: stats.size }
                 }
-            })
 
-            revalidatePath('/dashboard/settings/backup')
-            return {
-                success: true,
-                message: "Backup completed successfully",
-                backup: {
-                    id: backupLog.id,
-                    fileName,
-                    fileSize
-                }
+            } catch (pgError: any) {
+                console.error("Postgres backup failed:", pgError)
+                await db.backupLog.update({
+                    where: { id: backupLog.id },
+                    data: { status: 'FAILED', errorMessage: pgError.message || 'pg_dump failed', completedAt: new Date() }
+                })
+                return { error: "Backup failed: " + (pgError.message || "pg_dump execution failed") }
             }
-        } catch (execError: any) {
-            console.error("Backup execution error:", execError)
-            await prisma.backupLog.update({
-                where: { id: backupLog.id },
-                data: {
-                    status: 'FAILED',
-                    errorMessage: execError.message || 'Backup command failed',
-                    completedAt: new Date()
-                }
-            })
-            return { error: "Backup failed: " + (execError.message || 'Unknown error') }
         }
+
+        // ---------------------------------------------------------
+        // SQLITE BACKUP STRATEGY
+        // ---------------------------------------------------------
+        else {
+            const fileName = `backup_${timestamp}.sqlite`
+            const filePath = path.join(BACKUP_DIR, fileName)
+
+            // Resolve DB Path
+            const activeUrl = (sqliteUrl && sqliteUrl.startsWith("file:")) ? sqliteUrl : dbUrl!
+            const relativePath = activeUrl.replace("file:", "").replace("./", "")
+            // For relative paths, always look in prisma/ directory (standard Prisma location)
+            const distinctDbPath = relativePath.startsWith('/')
+                ? relativePath
+                : path.resolve(process.cwd(), 'prisma', relativePath)
+
+            try {
+                if (!fs.existsSync(distinctDbPath)) {
+                    throw new Error(`Database file not found at ${distinctDbPath}`)
+                }
+
+                fs.copyFileSync(distinctDbPath, filePath)
+
+                const stats = fs.statSync(filePath)
+
+                await db.backupLog.update({
+                    where: { id: backupLog.id },
+                    data: {
+                        status: 'COMPLETED',
+                        filePath: filePath,
+                        fileName: fileName,
+                        fileSize: stats.size,
+                        completedAt: new Date()
+                    }
+                })
+
+                revalidatePath('/dashboard/settings/backup')
+                return {
+                    success: true,
+                    message: "SQLite backup completed successfully",
+                    backup: { id: backupLog.id, fileName, fileSize: stats.size }
+                }
+            } catch (copyError: any) {
+                console.error("SQLite backup failed:", copyError)
+                await db.backupLog.update({
+                    where: { id: backupLog.id },
+                    data: { status: 'FAILED', errorMessage: copyError.message || 'File copy failed', completedAt: new Date() }
+                })
+                return { error: "Backup failed: " + copyError.message }
+            }
+        }
+
     } catch (error) {
         console.error("Error triggering backup:", error)
         return { error: "Failed to initiate backup" }
@@ -289,60 +447,120 @@ export async function triggerManualBackup(scope: 'FULL' | 'COMPANY' = 'FULL') {
 /**
  * Sync local database to online cloud database
  */
+/**
+ * Sync local database to online cloud database (Deprecated for SQLite)
+ /**
+ * Full DB Overwrite - pg_dump local Postgres and restore to online database
+ * This is a DESTRUCTIVE operation that completely replaces the online database
+ */
 export async function syncToCloud(targetUrl?: string) {
     const user = await getUserProfile()
-    if (!user || user.role !== 'SUPER_ADMIN') {
-        return { error: "Unauthorized: Only Super Admin can perform cloud sync" }
-    }
-
-    const finalUrl = targetUrl || process.env.ONLINE_DATABASE_URL
-    if (!finalUrl) {
-        return { error: "Target database URL is not configured (ONLINE_DATABASE_URL)" }
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
+        return { error: "Unauthorized" }
     }
 
     try {
-        const localUrl = process.env.DATABASE_URL
-        if (!localUrl) {
-            return { error: "Local DATABASE_URL not configured" }
+        const localDbUrl = (process.env.DATABASE_URL || '').replace(/^["']|["']$/g, '')
+        const onlineDbUrl = targetUrl || process.env.ONLINE_DATABASE_URL || ''
+
+        if (!localDbUrl || !localDbUrl.startsWith('postgres')) {
+            return { error: "Local DATABASE_URL is not a valid Postgres connection" }
         }
 
-        // Locate executables
-        const pgDumpPath = getPgDumpPath()
-        const psqlPath = getPsqlPath()
+        if (!onlineDbUrl || !onlineDbUrl.startsWith('postgres')) {
+            return { error: "ONLINE_DATABASE_URL is not configured or invalid" }
+        }
 
-        console.log("Syncing from local to cloud...")
-        console.log("pg_dump:", pgDumpPath)
-        console.log("psql:", psqlPath)
+        // Find pg_dump and psql executables
+        const candidatePaths = [
+            '/opt/homebrew/opt/postgresql@18/bin',
+            '/Applications/Postgres.app/Contents/Versions/latest/bin',
+            '/opt/homebrew/opt/postgresql@17/bin',
+            '/Applications/Postgres.app/Contents/Versions/17/bin',
+            '/opt/homebrew/opt/postgresql@16/bin',
+            '/Applications/Postgres.app/Contents/Versions/16/bin',
+            '/opt/homebrew/bin',
+            '/usr/local/bin',
+            '/usr/bin'
+        ]
 
-        // Quote paths if necessary
-        const pgDumpCmd = pgDumpPath.includes(' ') && !pgDumpPath.startsWith('"') && !pgDumpPath.startsWith("'")
-            ? `"${pgDumpPath}"`
-            : pgDumpPath
+        let pgBinPath = ''
+        for (const p of candidatePaths) {
+            if (fs.existsSync(path.join(p, 'pg_dump'))) {
+                pgBinPath = p
+                break
+            }
+        }
 
-        const psqlCmd = psqlPath.includes(' ') && !psqlPath.startsWith('"') && !psqlPath.startsWith("'")
-            ? `"${psqlPath}"`
-            : psqlPath
+        if (!pgBinPath) {
+            return { error: "Could not find pg_dump. Please install PostgreSQL." }
+        }
 
-        // COMMAND: pg_dump [LOCAL] | psql [REMOTE]
-        // We use --no-owner --no-acl to avoid permission issues on the target
-        // --clean --if-exists drops objects before creating them (Careful!)
-        const command = `${pgDumpCmd} "${localUrl}" --no-owner --no-acl --clean --if-exists | ${psqlCmd} "${finalUrl}"`
+        const pgDump = path.join(pgBinPath, 'pg_dump')
+        const psql = path.join(pgBinPath, 'psql')
 
-        // Execute via shell
-        // Note: passing passwords via URL usually works for pg_dump/psql, 
-        // but explicit PGPASSWORD env var might be needed if it fails.
-        // Prisma URL contains password, so tools should parse it.
-        await execAsync(command, {
-            timeout: 600000,
-            maxBuffer: 1024 * 1024 * 100 // 100MB buffer for stderr
+        // Create temp file for the dump
+        const tempDumpFile = path.join(os.tmpdir(), `full_sync_${Date.now()}.sql`)
+
+        // console.log("[FullSync] Starting pg_dump from local database...")
+
+        // Step 1: Dump local database (schema + data, clean format)
+        const dumpCmd = `"${pgDump}" "${localDbUrl}" --clean --if-exists --no-owner --no-acl -F p -f "${tempDumpFile}"`
+
+        await new Promise<void>((resolve, reject) => {
+            exec(dumpCmd, (error, stdout, stderr) => {
+                if (error) {
+                    console.error("pg_dump error:", stderr)
+                    reject(new Error(`pg_dump failed: ${stderr || error.message}`))
+                } else {
+                    // console.log("[FullSync] pg_dump completed successfully")
+                    resolve()
+                }
+            })
         })
 
-        return { success: true, message: "Cloud sync completed successfully!" }
+        // Verify dump file was created
+        if (!fs.existsSync(tempDumpFile)) {
+            return { error: "pg_dump did not create output file" }
+        }
+
+        const dumpStats = fs.statSync(tempDumpFile)
+        // console.log(`[FullSync] Dump file size: ${dumpStats.size} bytes`)
+
+        // Step 2: Restore to online database
+        // console.log("[FullSync] Restoring to online database...")
+
+        const restoreCmd = `"${psql}" "${onlineDbUrl}" -f "${tempDumpFile}"`
+
+        await new Promise<void>((resolve, reject) => {
+            exec(restoreCmd, { maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
+                // psql may output warnings/notices to stderr even on success
+                if (error && !stderr.includes('already exists') && !stderr.includes('NOTICE')) {
+                    console.error("psql restore error:", stderr)
+                    reject(new Error(`Restore failed: ${stderr || error.message}`))
+                } else {
+                    // console.log("[FullSync] Restore completed")
+                    if (stderr) console.log("[FullSync] Restore warnings:", stderr.slice(0, 500))
+                    resolve()
+                }
+            })
+        })
+
+        // Cleanup temp file
+        try {
+            fs.unlinkSync(tempDumpFile)
+        } catch (e) {
+            console.log("[FullSync] Could not delete temp file:", tempDumpFile)
+        }
+
+        return {
+            success: true,
+            message: `Full database sync completed! Dumped ${Math.round(dumpStats.size / 1024)} KB of data to online database.`
+        }
 
     } catch (error: any) {
-        console.error("Cloud Sync Error:", error)
-        const msg = error.stderr || error.message || "Unknown error during sync"
-        return { error: `Sync failed: ${msg}` }
+        console.error("[FullSync] Error:", error)
+        return { error: "Full sync failed: " + error.message }
     }
 }
 
@@ -401,9 +619,9 @@ export async function getBackupDownloadInfo(backupId: string) {
  * Delete a backup
  */
 export async function deleteBackup(backupId: string) {
-    const isAdmin = await isSuperAdmin()
-    if (!isAdmin) {
-        return { error: "Only Super Admin can delete backups" }
+    const user = await getUserProfile()
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
+        return { error: "Only Super Admin or Business Owner can delete backups" }
     }
 
     try {
@@ -437,8 +655,8 @@ export async function deleteBackup(backupId: string) {
  * Get backup schedule configuration
  */
 export async function getBackupSchedule() {
-    const isAdmin = await isSuperAdmin()
-    if (!isAdmin) {
+    const user = await getUserProfile()
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
         return { error: "Unauthorized" }
     }
 
@@ -475,8 +693,8 @@ export async function updateBackupSchedule(data: {
     retentionDays: number
     isEnabled: boolean
 }) {
-    const isAdmin = await isSuperAdmin()
-    if (!isAdmin) {
+    const user = await getUserProfile()
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
         return { error: "Unauthorized" }
     }
 
@@ -656,50 +874,69 @@ function calculateNextRunTime(
 }
 
 /**
- * Run cleanup of old backups based on retention policy
+ * Run cleanup of old backups - keeps top 3 latest for each type (Postgres and SQLite)
  */
 export async function cleanupOldBackups() {
-    const isAdmin = await isSuperAdmin()
-    if (!isAdmin) {
+    const user = await getUserProfile()
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
         return { error: "Unauthorized" }
     }
 
     try {
-        const schedule = await prisma.backupSchedule.findFirst()
-        if (!schedule) {
-            return { error: "No backup schedule configured" }
+        await ensureBackupDir()
+        let deletedCount = 0
+
+        // Get all backup files from filesystem
+        const files = fs.readdirSync(BACKUP_DIR)
+
+        // Separate by type
+        const postgresFiles = files
+            .filter(f => f.startsWith('backup_') && f.endsWith('.sql'))
+            .sort((a, b) => b.localeCompare(a)) // Newest first (timestamps are ISO format)
+
+        const sqliteFiles = files
+            .filter(f => f.startsWith('backup_') && f.endsWith('.sqlite'))
+            .sort((a, b) => b.localeCompare(a)) // Newest first
+
+        // Keep top 3 for Postgres, delete the rest
+        const postgresToDelete = postgresFiles.slice(3)
+        for (const file of postgresToDelete) {
+            const filePath = path.join(BACKUP_DIR, file)
+            try {
+                fs.unlinkSync(filePath)
+                deletedCount++
+            } catch (e) {
+                console.error(`Failed to delete ${file}:`, e)
+            }
         }
 
-        const cutoffDate = new Date()
-        cutoffDate.setDate(cutoffDate.getDate() - schedule.retentionDays)
-
-        // Find old backups
-        const oldBackups = await prisma.backupLog.findMany({
-            where: {
-                completedAt: {
-                    lt: cutoffDate
-                },
-                status: 'COMPLETED'
+        // Keep top 3 for SQLite, delete the rest
+        const sqliteToDelete = sqliteFiles.slice(3)
+        for (const file of sqliteToDelete) {
+            const filePath = path.join(BACKUP_DIR, file)
+            try {
+                fs.unlinkSync(filePath)
+                deletedCount++
+            } catch (e) {
+                console.error(`Failed to delete ${file}:`, e)
             }
+        }
+
+        // Also clean up database records for files that no longer exist
+        const allBackupLogs = await prisma.backupLog.findMany({
+            where: { status: 'COMPLETED' }
         })
 
-        let deletedCount = 0
-        for (const backup of oldBackups) {
-            // Delete file
-            if (backup.filePath && fs.existsSync(backup.filePath)) {
-                fs.unlinkSync(backup.filePath)
+        for (const log of allBackupLogs) {
+            if (log.filePath && !fs.existsSync(log.filePath)) {
+                await prisma.backupLog.delete({ where: { id: log.id } })
             }
-            // Delete record
-            await prisma.backupLog.delete({
-                where: { id: backup.id }
-            })
-            deletedCount++
         }
 
         revalidatePath('/dashboard/settings/backup')
         return {
             success: true,
-            message: `Cleaned up ${deletedCount} old backups`
+            message: `Cleaned up ${deletedCount} old backups. Kept 3 latest Postgres and 3 latest SQLite backups.`
         }
     } catch (error) {
         console.error("Error cleaning up backups:", error)
@@ -730,44 +967,87 @@ export async function checkAndRunDueScheduledBackup() {
 }
 
 /**
- * Perform the actual scheduled backup
+ * Perform the actual scheduled backup - supports both Postgres and SQLite
  */
 async function performScheduledBackup(scheduleId: string, currentSchedule: any) {
     try {
         await ensureBackupDir()
 
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const dbUrl = process.env.DATABASE_URL || ''
+        const sqliteUrl = process.env.SQLITE_DATABASE_URL || ''
+
+        // Detect database type - prefer Postgres for web deployments
+        const isPostgres = dbUrl.startsWith("postgres:") || dbUrl.startsWith("postgresql:")
+
+        const fileName = isPostgres
+            ? `backup_${timestamp}.sql`
+            : `backup_${timestamp}.sqlite`
+        const filePath = path.join(BACKUP_DIR, fileName)
+
         // Create log entry
         const backupLog = await prisma.backupLog.create({
             data: {
                 type: 'SCHEDULED',
-                scope: 'FULL', // Scheduled backups are always FULL for now
+                scope: 'FULL',
                 status: 'IN_PROGRESS'
             }
         })
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-        const fileName = `scheduled_backup_${timestamp}.sql`
-        const filePath = path.join(BACKUP_DIR, fileName)
-        const databaseUrl = process.env.DATABASE_URL
-
-        if (!databaseUrl) {
-            throw new Error("DATABASE_URL not configured")
-        }
-
         try {
-            // Re-use logic for pg_dump execution
-            const pgDumpPath = getPgDumpPath()
-            const pgDumpCmd = pgDumpPath.includes(' ') && !pgDumpPath.startsWith('"') && !pgDumpPath.startsWith("'")
-                ? `"${pgDumpPath}"`
-                : pgDumpPath
+            if (isPostgres) {
+                // Postgres backup using pg_dump
+                const candidatePaths = [
+                    '/opt/homebrew/opt/postgresql@18/bin/pg_dump',
+                    '/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump',
+                    '/opt/homebrew/opt/postgresql@17/bin/pg_dump',
+                    '/opt/homebrew/opt/postgresql@16/bin/pg_dump',
+                    '/opt/homebrew/bin/pg_dump',
+                    '/usr/local/bin/pg_dump',
+                    'pg_dump'
+                ]
 
-            const command = `${pgDumpCmd} "${databaseUrl}" -Fp -f "${filePath}"`
+                let pgDumpCmd = 'pg_dump'
+                for (const p of candidatePaths) {
+                    if (fs.existsSync(p)) {
+                        pgDumpCmd = `"${p}"`
+                        break
+                    }
+                }
 
-            await execAsync(command, { timeout: 600000 }) // 10 minute timeout for scheduled
+                const cmd = `${pgDumpCmd} "${dbUrl}" -F p -f "${filePath}"`
+                await new Promise((resolve, reject) => {
+                    exec(cmd, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error("pg_dump error:", stderr)
+                            reject(error)
+                        } else {
+                            resolve(stdout)
+                        }
+                    })
+                })
 
-            // Get file size
+            } else {
+                // SQLite backup using file copy
+                const activeUrl = (sqliteUrl && sqliteUrl.startsWith("file:")) ? sqliteUrl : dbUrl
+                const relativePath = activeUrl.replace("file:", "").replace("./", "")
+                const distinctDbPath = relativePath.startsWith('/')
+                    ? relativePath
+                    : path.resolve(process.cwd(), 'prisma', relativePath)
+
+                if (!fs.existsSync(distinctDbPath)) {
+                    throw new Error(`Database file not found at ${distinctDbPath}`)
+                }
+
+                fs.copyFileSync(distinctDbPath, filePath)
+            }
+
+            // Verify file was created and get size
+            if (!fs.existsSync(filePath)) {
+                throw new Error("Backup file was not created")
+            }
+
             const stats = fs.statSync(filePath)
-            const fileSize = stats.size
 
             // Update log to completed
             await prisma.backupLog.update({
@@ -776,34 +1056,24 @@ async function performScheduledBackup(scheduleId: string, currentSchedule: any) 
                     status: 'COMPLETED',
                     filePath,
                     fileName,
-                    fileSize,
+                    fileSize: stats.size,
                     completedAt: new Date()
                 }
             })
 
-            // Run cleanup safely
-            try {
-                await cleanupOldBackups()
-            } catch (cleanupError) {
-                console.error("Cleanup failed but backup succeeded:", cleanupError)
-            }
+            console.log(`Scheduled backup completed: ${fileName} (${stats.size} bytes)`)
 
         } catch (execError: any) {
             console.error("Scheduled backup failed:", execError)
-
-            // Capture detailed error info
-            const detailedError = execError.stderr || execError.message || 'Unknown error'
-            console.error("Backup detailed stderr:", detailedError)
 
             await prisma.backupLog.update({
                 where: { id: backupLog.id },
                 data: {
                     status: 'FAILED',
-                    errorMessage: `Cmd Failed: ${detailedError}`.substring(0, 1000), // Truncate to avoid DB error
+                    errorMessage: execError.message || 'Unknown error',
                     completedAt: new Date()
                 }
             })
-            // Throw to prevent schedule update? No, we should still update schedule to try later
         }
 
         // Update Next Run Time
@@ -830,6 +1100,6 @@ async function performScheduledBackup(scheduleId: string, currentSchedule: any) 
         }
 
     } catch (error) {
-        console.error("Fatal error in scheduled backup:", error)
+        console.error("Critical error in performScheduledBackup:", error)
     }
 }

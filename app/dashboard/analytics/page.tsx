@@ -23,6 +23,7 @@ import {
     getPaymentMethodAnalysis,
     getProfitLossReport
 } from "@/app/actions/analytics"
+import { OfflineAnalyticsService } from "@/lib/services/analytics-offline"
 import { getUserProfile } from "@/app/actions/user"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
@@ -65,9 +66,9 @@ export default function AnalyticsPage() {
                 return
             }
 
-            const allowedRoles = ['SUPER_ADMIN', 'BUSINESS_OWNER']
+            const allowedRoles = ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER']
             if (!allowedRoles.includes(user.role)) {
-                toast.error("Access denied. Analytics is only available to Super Admin and Business Owner.")
+                toast.error("Access denied. Analytics is only available to Admin and Manager roles.")
                 router.push('/dashboard')
                 return
             }
@@ -76,7 +77,8 @@ export default function AnalyticsPage() {
             loadOverview()
             setLoading(false)
         } catch (error: any) {
-            toast.error(error.message || "Access denied")
+            console.error('Access check failed:', error)
+            toast.error("Access denied")
             router.push('/dashboard')
         }
     }
@@ -93,18 +95,26 @@ export default function AnalyticsPage() {
             }
 
             setOverview(data)
+            setOverview(data)
         } catch (error: any) {
-            console.error('Failed to load overview:', error)
-            toast.error(error.message || "Failed to load overview")
+            console.warn('Server analytics failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getSalesOverview()
+                setOverview(offlineData)
+                toast.info("Showing cached offline metrics")
+            } catch (offlineError) {
+                console.error('Offline analytics failed:', offlineError)
+                toast.error("Failed to load overview")
 
-            // Set default data to prevent crashes
-            setOverview({
-                today: { sales: 0, orders: 0 },
-                week: { sales: 0, orders: 0 },
-                month: { sales: 0, orders: 0 },
-                topCategory: 'N/A',
-                trend: []
-            })
+                // Set default data to prevent crashes
+                setOverview({
+                    today: { sales: 0, orders: 0 },
+                    week: { sales: 0, orders: 0 },
+                    month: { sales: 0, orders: 0 },
+                    topCategory: 'N/A',
+                    trend: []
+                })
+            }
         } finally {
             setTabLoading(false)
         }
@@ -116,7 +126,14 @@ export default function AnalyticsPage() {
             const data = await getDailySalesReport(date)
             setDailyReport(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load daily report")
+            console.warn('Server daily report failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getDailySalesReport(date)
+                setDailyReport(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load daily report:', error)
+                toast.error("Failed to load daily report")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -128,7 +145,14 @@ export default function AnalyticsPage() {
             const data = await getCategoryWiseReport(startDate, endDate)
             setCategoryReport(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load category report")
+            console.warn('Server category report failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getCategoryWiseReport(startDate, endDate)
+                setCategoryReport(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load category report:', error)
+                toast.error("Failed to load category report")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -140,7 +164,14 @@ export default function AnalyticsPage() {
             const data = await getDateRangeReport(startDate, endDate)
             setDateRangeData(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load date range report")
+            console.warn('Server date range report failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getDateRangeReport(startDate, endDate)
+                setDateRangeData(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load date range report:', error)
+                toast.error("Failed to load date range report")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -152,7 +183,14 @@ export default function AnalyticsPage() {
             const data = await getMonthlySalesReport(new Date().getFullYear())
             setMonthlyReport(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load monthly report")
+            console.warn('Server monthly report failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getMonthlySalesReport(new Date().getFullYear())
+                setMonthlyReport(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load monthly report:', error)
+                toast.error("Failed to load monthly report")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -164,7 +202,14 @@ export default function AnalyticsPage() {
             const data = await getTopSellingItems(10, startDate, endDate)
             setTopItems(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load top items")
+            console.warn('Server top items failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getTopSellingItems(10, startDate, endDate)
+                setTopItems(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load top items:', error)
+                toast.error("Failed to load top items")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -176,7 +221,14 @@ export default function AnalyticsPage() {
             const data = await getPaymentMethodAnalysis(startDate, endDate)
             setPaymentAnalysis(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load payment analysis")
+            console.warn('Server payment analysis failed, trying offline...', error)
+            try {
+                const offlineData = await OfflineAnalyticsService.getPaymentMethodAnalysis(startDate, endDate)
+                setPaymentAnalysis(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load payment analysis:', error)
+                toast.error("Failed to load payment analysis")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -189,7 +241,15 @@ export default function AnalyticsPage() {
             const data = await getProfitLossReport(now.getMonth() + 1, now.getFullYear())
             setProfitLoss(data)
         } catch (error: any) {
-            toast.error(error.message || "Failed to load profit & loss")
+            console.warn('Server P&L failed, trying offline...', error)
+            try {
+                const now = new Date()
+                const offlineData = await OfflineAnalyticsService.getProfitLossReport(now.getMonth() + 1, now.getFullYear())
+                setProfitLoss(offlineData)
+            } catch (offlineError) {
+                console.error('Failed to load profit & loss:', error)
+                toast.error("Failed to load profit & loss")
+            }
         } finally {
             setTabLoading(false)
         }
@@ -246,13 +306,13 @@ export default function AnalyticsPage() {
             const user = await getUserProfile()
 
             await exportDailyReport(dailyReport, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -264,13 +324,13 @@ export default function AnalyticsPage() {
             const user = await getUserProfile()
 
             await exportCategoryReport(categoryReport, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -282,13 +342,13 @@ export default function AnalyticsPage() {
             const user = await getUserProfile()
 
             await exportMonthlyReport(monthlyReport, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -300,13 +360,13 @@ export default function AnalyticsPage() {
             const user = await getUserProfile()
 
             await exportTopItemsReport(topItems, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -318,13 +378,13 @@ export default function AnalyticsPage() {
             const user = await getUserProfile()
 
             await exportPaymentAnalysis(paymentAnalysis, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -340,13 +400,13 @@ export default function AnalyticsPage() {
                 date: `${dateRangeData.startDate} to ${dateRangeData.endDate}`,
                 orders: dateRangeData.transactions || []
             }, format, {
-                companyName: user?.company?.name || 'TechSonance POS',
+                companyName: user?.company?.name || 'SyncServe POS',
                 storeName: user?.defaultStore?.name,
                 currency: currency.symbol
             })
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -370,7 +430,7 @@ export default function AnalyticsPage() {
                 await generatePDF({
                     title: 'Profit & Loss Report',
                     dateRange: `${profitLoss.month}/${profitLoss.year}`,
-                    companyName: user?.company?.name || 'TechSonance POS',
+                    companyName: user?.company?.name || 'SyncServe POS',
                     storeName: user?.defaultStore?.name,
                     fileName: `profit-loss_${profitLoss.month}-${profitLoss.year}_${Date.now()}.pdf`,
                     columns: [
@@ -395,7 +455,7 @@ export default function AnalyticsPage() {
             }
         } catch (error: any) {
             console.error('Export failed:', error)
-            toast.error(error.message || 'Export failed')
+            toast.error('Export failed')
         }
     }
 
@@ -515,16 +575,84 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Sales Trend Chart */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Sales Trend (Last 7 Days)</h3>
-                                <LineChart
-                                    data={overview.trend.map((t: any) => ({
-                                        label: t.date,
-                                        value: t.sales
-                                    }))}
-                                    height={300}
-                                    valuePrefix={currency.symbol}
-                                />
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="space-y-1">
+                                        <h3 className="text-lg font-bold text-gray-900">Sales Trend</h3>
+                                        <p className="text-sm text-gray-500">Performance over the last 7 days</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full">
+                                        <Clock className="w-4 h-4" />
+                                        <span>7 Days</span>
+                                    </div>
+                                </div>
+
+                                {/* Sales Trend Bar Chart */}
+                                {overview.trend && overview.trend.length > 0 ? (
+                                    <div className="space-y-4">
+                                        <div className="h-[280px] flex items-end gap-3 px-4">
+                                            {(() => {
+                                                const trendData = overview.trend || []
+                                                const maxValue = Math.max(...trendData.map((t: any) => t.sales || 0), 1)
+
+                                                return trendData.map((t: any, index: number) => {
+                                                    const value = t.sales || 0
+                                                    const heightPercent = (value / maxValue) * 100
+                                                    const barHeight = Math.max(heightPercent * 2.2, 4) // min 4px for visibility
+
+                                                    return (
+                                                        <div key={index} className="flex-1 flex flex-col items-center gap-2">
+                                                            {/* Value label */}
+                                                            <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                                                                {currency.symbol}{value >= 1000 ? `${(value / 1000).toFixed(1)}K` : value.toFixed(0)}
+                                                            </span>
+                                                            {/* Bar */}
+                                                            <div
+                                                                className="w-full rounded-t-lg transition-all duration-300 hover:opacity-90 cursor-pointer relative group"
+                                                                style={{
+                                                                    height: `${barHeight}px`,
+                                                                    background: `linear-gradient(180deg, #10B981 0%, #059669 100%)`,
+                                                                    minHeight: '4px'
+                                                                }}
+                                                                title={`${t.date}: ${currency.symbol}${value.toFixed(2)}`}
+                                                            >
+                                                                {/* Hover tooltip */}
+                                                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                                                    {currency.symbol}{value.toFixed(2)}
+                                                                </div>
+                                                            </div>
+                                                            {/* Date label */}
+                                                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                                                                {t.date}
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                })
+                                            })()}
+                                        </div>
+
+                                        {/* Summary row */}
+                                        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                                            <div className="text-sm text-gray-500">
+                                                Total: <span className="font-semibold text-gray-900">
+                                                    {currency.symbol}{(overview.trend.reduce((sum: number, t: any) => sum + (t.sales || 0), 0)).toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <div className="text-sm text-gray-500">
+                                                Avg/Day: <span className="font-semibold text-gray-900">
+                                                    {currency.symbol}{((overview.trend.reduce((sum: number, t: any) => sum + (t.sales || 0), 0)) / (overview.trend.length || 1)).toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center h-64 text-gray-400">
+                                        <div className="text-center">
+                                            <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                            <p>No sales data for the last 7 days</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </>
                     )}
@@ -532,12 +660,15 @@ export default function AnalyticsPage() {
 
                 {/* Daily Sales Tab */}
                 <TabsContent value="daily" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Daily Sales Report</h2>
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Daily Sales Report</h2>
+                            <p className="text-gray-500 text-sm">Detailed daily transaction analysis</p>
+                        </div>
                         <div className="flex items-center gap-3">
                             <input
                                 type="date"
-                                className="px-4 py-2 border border-gray-200 rounded-lg"
+                                className="px-4 py-2 border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                 defaultValue={new Date().toISOString().split('T')[0]}
                                 onChange={(e) => loadDailyReport(new Date(e.target.value))}
                             />
@@ -574,8 +705,11 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Hourly Breakdown */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Hourly Sales Breakdown</h3>
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900">Hourly Sales Breakdown</h3>
+                                    <p className="text-sm text-gray-500">Peak business hours analysis</p>
+                                </div>
                                 <BarChart
                                     data={dailyReport.hourlyBreakdown.map((h: any) => ({
                                         label: `${h.hour}:00`,
@@ -628,8 +762,11 @@ export default function AnalyticsPage() {
 
                 {/* Category-wise Tab - Will continue in next message due to length */}
                 <TabsContent value="category" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Category-wise Sales Report</h2>
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Category-wise Sales Report</h2>
+                            <p className="text-gray-500 text-sm">Detailed breakdown of sales by product category</p>
+                        </div>
                         {categoryReport && (
                             <ExportToolbar
                                 onPrint={() => window.print()}
@@ -654,8 +791,11 @@ export default function AnalyticsPage() {
                             {/* Charts */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {/* Bar Chart */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Revenue by Category</h3>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-900">Revenue by Category</h3>
+                                        <p className="text-sm text-gray-500">Comparison of sales across categories</p>
+                                    </div>
                                     <BarChart
                                         data={categoryReport.categories.map((cat: any) => ({
                                             label: cat.name,
@@ -667,8 +807,11 @@ export default function AnalyticsPage() {
                                 </div>
 
                                 {/* Pie Chart */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Revenue Distribution</h3>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-900">Revenue Distribution</h3>
+                                        <p className="text-sm text-gray-500">Market share by category</p>
+                                    </div>
                                     <div className="flex justify-center">
                                         <PieChart
                                             data={categoryReport.categories.map((cat: any, index: number) => ({
@@ -719,8 +862,11 @@ export default function AnalyticsPage() {
 
                 {/* Date Range Report Tab */}
                 <TabsContent value="daterange" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Date Range Report</h2>
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Date Range Report</h2>
+                            <p className="text-gray-500 text-sm">Custom period analysis</p>
+                        </div>
                         {dateRangeData && (
                             <ExportToolbar
                                 onPrint={() => window.print()}
@@ -753,9 +899,12 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Daily Trend Chart */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Daily Sales Trend</h3>
-                                <LineChart
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900">Daily Sales Trend</h3>
+                                    <p className="text-sm text-gray-500">Sales performance over the selected period</p>
+                                </div>
+                                <BarChart
                                     data={dateRangeData.dailyBreakdown.map((d: any) => ({
                                         label: d.date,
                                         value: d.sales
@@ -801,9 +950,24 @@ export default function AnalyticsPage() {
 
                 {/* Monthly Sales Report Tab */}
                 <TabsContent value="monthly" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
                             <h2 className="text-2xl font-bold text-gray-900">Monthly Sales Report</h2>
+                            <p className="text-gray-500 text-sm">Year-over-year performance</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <select
+                                className="px-4 py-2 border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                defaultValue={new Date().getFullYear()}
+                                onChange={(e) => {
+                                    const year = parseInt(e.target.value)
+                                    getMonthlySalesReport(year).then(setMonthlyReport)
+                                }}
+                            >
+                                {[2024, 2025, 2026].map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
                             {monthlyReport && (
                                 <ExportToolbar
                                     onPrint={() => window.print()}
@@ -813,18 +977,6 @@ export default function AnalyticsPage() {
                                 />
                             )}
                         </div>
-                        <select
-                            className="px-4 py-2 border border-gray-200 rounded-lg"
-                            defaultValue={new Date().getFullYear()}
-                            onChange={(e) => {
-                                const year = parseInt(e.target.value)
-                                getMonthlySalesReport(year).then(setMonthlyReport)
-                            }}
-                        >
-                            {[2024, 2025, 2026].map(year => (
-                                <option key={year} value={year}>{year}</option>
-                            ))}
-                        </select>
                     </div>
 
 
@@ -846,8 +998,11 @@ export default function AnalyticsPage() {
                                 </div>
 
                                 {/* Monthly Bar Chart */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Sales by Month</h3>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-900">Sales by Month</h3>
+                                        <p className="text-sm text-gray-500">Revenue trend analysis</p>
+                                    </div>
                                     <BarChart
                                         data={monthlyReport.months.map((m: any) => ({
                                             label: m.month,
@@ -859,7 +1014,7 @@ export default function AnalyticsPage() {
                                 </div>
 
                                 {/* Monthly Table */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
                                     <h3 className="text-lg font-bold text-gray-900 mb-4">Monthly Breakdown</h3>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
@@ -891,8 +1046,11 @@ export default function AnalyticsPage() {
 
                 {/* Top Selling Items Tab */}
                 <TabsContent value="topitems" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Top Selling Items</h2>
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Top Selling Items</h2>
+                            <p className="text-gray-500 text-sm">Best performing products by revenue and volume</p>
+                        </div>
                         {topItems && (
                             <ExportToolbar
                                 onPrint={() => window.print()}
@@ -933,8 +1091,11 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Bar Chart */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4">Top 10 Items by Quantity</h3>
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                <div className="mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900">Top 10 Items by Quantity</h3>
+                                    <p className="text-sm text-gray-500">Most popular menu items</p>
+                                </div>
                                 <BarChart
                                     data={topItems.items.map((item: any) => ({
                                         label: item.name.substring(0, 15),
@@ -946,7 +1107,7 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* Full Table */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-900 mb-4">Complete List</h3>
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
@@ -983,8 +1144,11 @@ export default function AnalyticsPage() {
 
                 {/* Payment Method Analysis Tab */}
                 <TabsContent value="payment" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <h2 className="text-2xl font-bold text-gray-900">Payment Method Analysis</h2>
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-900">Payment Method Analysis</h2>
+                            <p className="text-gray-500 text-sm">Transaction distribution by payment type</p>
+                        </div>
                         {paymentAnalysis && (
                             <ExportToolbar
                                 onPrint={() => window.print()}
@@ -1009,8 +1173,11 @@ export default function AnalyticsPage() {
                             {/* Charts */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {/* Pie Chart */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Payment Distribution</h3>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-900">Payment Distribution</h3>
+                                        <p className="text-sm text-gray-500">Share by payment method</p>
+                                    </div>
                                     <div className="flex justify-center">
                                         <PieChart
                                             data={paymentAnalysis.methods.map((method: any) => ({
@@ -1023,8 +1190,11 @@ export default function AnalyticsPage() {
                                 </div>
 
                                 {/* Bar Chart */}
-                                <div className="bg-white rounded-xl border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Revenue by Payment Method</h3>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="mb-6">
+                                        <h3 className="text-lg font-bold text-gray-900">Revenue by Payment Method</h3>
+                                        <p className="text-sm text-gray-500">Comparative analysis</p>
+                                    </div>
                                     <BarChart
                                         data={paymentAnalysis.methods.map((method: any) => ({
                                             label: method.method,
@@ -1076,9 +1246,24 @@ export default function AnalyticsPage() {
 
                 {/* Profit & Loss Tab */}
                 <TabsContent value="profitloss" className="space-y-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-between gap-4 mb-6">
+                        <div>
                             <h2 className="text-2xl font-bold text-gray-900">Profit & Loss Report</h2>
+                            <p className="text-gray-500 text-sm">Revenue and growth analysis</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <select
+                                className="px-4 py-2 border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                defaultValue={new Date().getMonth() + 1}
+                                onChange={(e) => {
+                                    const month = parseInt(e.target.value)
+                                    getProfitLossReport(month, new Date().getFullYear()).then(setProfitLoss)
+                                }}
+                            >
+                                {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, i) => (
+                                    <option key={i} value={i + 1}>{m}</option>
+                                ))}
+                            </select>
                             {profitLoss && (
                                 <ExportToolbar
                                     onPrint={() => window.print()}
@@ -1088,18 +1273,6 @@ export default function AnalyticsPage() {
                                 />
                             )}
                         </div>
-                        <select
-                            className="px-4 py-2 border border-gray-200 rounded-lg"
-                            defaultValue={new Date().getMonth() + 1}
-                            onChange={(e) => {
-                                const month = parseInt(e.target.value)
-                                getProfitLossReport(month, new Date().getFullYear()).then(setProfitLoss)
-                            }}
-                        >
-                            {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, i) => (
-                                <option key={i} value={i + 1}>{m}</option>
-                            ))}
-                        </select>
                     </div>
 
                     {profitLoss && (
@@ -1132,7 +1305,7 @@ export default function AnalyticsPage() {
                             </div>
 
                             {/* P&L Summary */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6">
+                            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-900 mb-6">{profitLoss.month} Summary</h3>
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center pb-4 border-b border-gray-100">

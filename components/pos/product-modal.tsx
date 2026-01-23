@@ -32,9 +32,11 @@ interface ProductCustomizationModalProps {
     product: Product | null
     addons: Addon[]
     onAddToBill: (item: { product: Product, quantity: number, addons: { addon: Addon, quantity: number }[] }) => void
+    initialQuantity?: number
+    initialAddons?: { addon: Addon, quantity: number }[]
 }
 
-export function ProductCustomizationModal({ isOpen, onClose, product, addons, onAddToBill }: ProductCustomizationModalProps) {
+export function ProductCustomizationModal({ isOpen, onClose, product, addons, onAddToBill, initialQuantity, initialAddons }: ProductCustomizationModalProps) {
     const [quantity, setQuantity] = useState(1)
     const [selectedAddons, setSelectedAddons] = useState<{ [key: string]: number }>({})
     const [addonSearch, setAddonSearch] = useState("")
@@ -42,8 +44,17 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
     // Reset state when product opens
     useEffect(() => {
         if (isOpen) {
-            setQuantity(1)
-            setSelectedAddons({})
+            setQuantity(initialQuantity || 1)
+
+            // Convert array to map
+            const addonsMap: { [key: string]: number } = {}
+            if (initialAddons && initialAddons.length > 0) {
+                initialAddons.forEach(a => {
+                    addonsMap[a.addon.id] = a.quantity
+                })
+            }
+            setSelectedAddons(addonsMap)
+
             setAddonSearch("")
         }
     }, [isOpen, product])
@@ -90,7 +101,7 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
                     <h2 className="text-xl font-bold text-gray-800">{product.name}</h2>
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                            onClick={() => setQuantity(Math.max(0, quantity - 1))}
                             className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
                         >
                             <Minus className="h-4 w-4" />
@@ -187,9 +198,14 @@ export function ProductCustomizationModal({ isOpen, onClose, product, addons, on
                     </button>
                     <button
                         onClick={handleAdd}
-                        className="py-3 px-4 rounded-xl bg-orange-600 font-bold text-white hover:bg-orange-700 shadow-lg shadow-orange-200 hover:shadow-xl hover:scale-[1.02] transition-all"
+                        className={cn(
+                            "py-3 px-4 rounded-xl font-bold text-white shadow-lg transition-all hover:shadow-xl hover:scale-[1.02]",
+                            quantity === 0
+                                ? "bg-red-600 hover:bg-red-700 shadow-red-200"
+                                : "bg-orange-600 hover:bg-orange-700 shadow-orange-200"
+                        )}
                     >
-                        Add to Bill
+                        {quantity === 0 ? "Remove Item" : (initialQuantity ? "Update Bill" : "Add to Bill")}
                     </button>
                 </div>
 

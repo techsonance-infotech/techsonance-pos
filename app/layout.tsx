@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 
 export const metadata: Metadata = {
-  title: "CafePOS - Professional Point of Sale",
+  title: "SyncServe POS - Professional Point of Sale",
   description: "Next Generation POS for Modern Businesses",
   manifest: "/manifest.json",
 };

@@ -14,9 +14,11 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog"
 import { addTable, deleteTable, updateTableStatus } from "@/app/actions/tables"
-import { useRouter } from "next/navigation"
-import { getPOSService } from "@/lib/pos-service"
+import { useRouter, usePathname } from "next/navigation"
 import { useElapsedTimer } from "@/hooks/use-elapsed-timer"
+import { getPOSService } from "@/lib/pos-service"
+import { useNetworkStatus } from "@/hooks/use-network-status"
+import { toast } from "sonner"
 
 // Timer component for individual table
 function TableTimer({ startTime }: { startTime: string | null }) {
@@ -41,45 +43,118 @@ type Table = {
 
 interface TablesClientProps {
     initialTables: Table[]
+    userRole?: string
 }
 
-export default function TablesClient({ initialTables }: TablesClientProps) {
+export default function TablesClient({ initialTables, userRole }: TablesClientProps) {
     const [tables, setTables] = useState<Table[]>(initialTables)
+    const isOnline = useNetworkStatus()
+    const [effectiveRole, setEffectiveRole] = useState(userRole)
+    const router = useRouter()
+    const pathname = usePathname()
+
+    // Hydrate Role
+    useEffect(() => {
+        if (!userRole || userRole === 'OFFLINE_ACCESS') {
+            const loadCachedProfile = async () => {
+                try {
+                    const { getPOSService } = await import("@/lib/pos-service")
+                    const settings = await getPOSService().getSettings()
+                    const profile = settings.find(s => s.key === 'user_profile')?.value
+                    if (profile && profile.role) {
+                        setEffectiveRole(profile.role)
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+            loadCachedProfile()
+        } else {
+            setEffectiveRole(userRole)
+        }
+    }, [userRole])
+
+    // Refresh tables on Local/Global Events
+    useEffect(() => {
+        const handleRefresh = () => {
+            // If offline (or simply to ensure local consistency), reload from cache
+            // We can do this regardless of online status if we want immediate UI feedback from local hold
+            const loadCachedTables = async () => {
+                try {
+                    const { getPOSService } = await import("@/lib/pos-service")
+                    const cached = await getPOSService().getTables()
+                    if (cached && cached.length > 0) {
+                        setTables(cached as any)
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+            loadCachedTables()
+
+            if (isOnline) {
+                router.refresh()
+            }
+        }
+
+        window.addEventListener('tableUpdated', handleRefresh)
+        window.addEventListener('holdOrderUpdated', handleRefresh)
+
+        return () => {
+            window.removeEventListener('tableUpdated', handleRefresh)
+            window.removeEventListener('holdOrderUpdated', handleRefresh)
+        }
+    }, [isOnline, router])
 
     // Sync with server data when initialTables changes (navigation back to page)
     useEffect(() => {
-        if (initialTables.length > 0) {
-            setTables(initialTables)
-        } else {
-            // Fallback to local cache if server data is empty (offline scenario)
-            const loadLocal = async () => {
-                const posService = getPOSService()
-                const local = await posService.getTables()
-                if (local && local.length > 0) {
-                    setTables(local as Table[])
+        const syncTables = async () => {
+            // If offline, ignore initialTables and force load from cache to ensure timer/status is fresh
+            if (!isOnline) {
+                try {
+                    const { getPOSService } = await import("@/lib/pos-service")
+                    const cached = await getPOSService().getTables()
+                    if (cached && cached.length > 0) {
+                        setTables(cached as any)
+                    }
+                } catch (e) {
+                    console.error("Failed to load cached tables", e)
                 }
+                return
             }
-            loadLocal()
+
+            // If online, use server data if available
+            if (initialTables.length > 0) {
+                setTables(initialTables)
+            }
         }
-    }, [initialTables])
+        syncTables()
+    }, [initialTables, isOnline, pathname])
     // user prop is available if needed, though previously it was only used to set state.
 
     const [isAddOpen, setIsAddOpen] = useState(false)
     const [floorName, setFloorName] = useState("")
     const [tableNumber, setTableNumber] = useState("")
     const [newTableCapacity, setNewTableCapacity] = useState(4)
-    const router = useRouter()
     const [adding, setAdding] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [vacatingId, setVacatingId] = useState<string | null>(null)
 
     const handleAddTable = async () => {
         if (!tableNumber || adding) return
-        setAdding(true)
 
         const finalName = floorName.trim()
             ? `${floorName.trim()} Table ${tableNumber}`
             : `Table ${tableNumber}`
+
+        // Client-side validation
+        const exists = tables.some(t => t.name.toLowerCase() === finalName.toLowerCase())
+        if (exists) {
+            toast.error(`Table "${finalName}" already exists`)
+            return
+        }
+
+        setAdding(true)
 
         try {
             const newTable = await addTable(finalName, newTableCapacity)
@@ -88,6 +163,9 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
             setTableNumber("")
             setNewTableCapacity(4)
             setIsAddOpen(false)
+            toast.success("Table created successfully")
+        } catch (error: any) {
+            toast.error(error.message || "Failed to create table")
         } finally {
             setAdding(false)
         }
@@ -110,14 +188,26 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
         e.stopPropagation()
         setVacatingId(id)
         try {
-            const updatedTable = await updateTableStatus(id, 'AVAILABLE')
+            try {
+                // Try Server First
+                await updateTableStatus(id, 'AVAILABLE')
+            } catch (serverError) {
+                console.warn("Server update failed, falling back to local:", serverError)
+                // Fallback to Offline Service
+                const { getPOSService } = await import("@/lib/pos-service")
+                await getPOSService().updateTableStatus(id, 'AVAILABLE')
+                toast.success("Table vacated locally (Offline)")
+            }
+
             // Clear held order info when marking as vacant
             setTables(prev => prev.map(t => t.id === id ? {
                 ...t,
-                ...updatedTable,
+                status: 'AVAILABLE',
                 heldOrderCreatedAt: null,
                 heldOrderId: null
             } : t))
+        } catch (error) {
+            toast.error("Failed to vacate table")
         } finally {
             setVacatingId(null)
         }
@@ -139,71 +229,77 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
                     <h1 className="text-2xl font-bold text-gray-900">Table Management</h1>
                     <p className="text-gray-500">Manage your floor plan and track occupancy</p>
                 </div>
-                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
-                            <Plus className="h-4 w-4" /> Add Table
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Add New Table</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Floor / Area</label>
-                                    <Input
-                                        value={floorName}
-                                        onChange={(e) => setFloorName(e.target.value)}
-                                        placeholder="e.g. Ground Floor"
-                                        list="floor-options"
-                                    />
-                                    <datalist id="floor-options">
-                                        <option value="Ground Floor" />
-                                        <option value="First Floor" />
-                                        <option value="Second Floor" />
-                                        <option value="Third Floor" />
-                                        <option value="Terrace" />
-                                        <option value="Garden" />
-                                    </datalist>
+                {(effectiveRole === 'SUPER_ADMIN' || effectiveRole === 'BUSINESS_OWNER' || effectiveRole === 'MANAGER') && (
+                    <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                        <DialogTrigger asChild>
+                            <Button
+                                className="bg-orange-600 hover:bg-orange-700 text-white gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={!isOnline}
+                                title={!isOnline ? "Editing tables is disabled while offline" : "Add Table"}
+                            >
+                                <Plus className="h-4 w-4" /> Add Table
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Add New Table</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Floor / Area</label>
+                                        <Input
+                                            value={floorName}
+                                            onChange={(e) => setFloorName(e.target.value)}
+                                            placeholder="e.g. Ground Floor"
+                                            list="floor-options"
+                                        />
+                                        <datalist id="floor-options">
+                                            <option value="Ground Floor" />
+                                            <option value="First Floor" />
+                                            <option value="Second Floor" />
+                                            <option value="Third Floor" />
+                                            <option value="Terrace" />
+                                            <option value="Garden" />
+                                        </datalist>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Table Number</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">Table</span>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                className="pl-14"
+                                                value={tableNumber}
+                                                onChange={(e) => setTableNumber(e.target.value)}
+                                                placeholder="1"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                    <span className="text-xs text-gray-500 block mb-1">Preview Name:</span>
+                                    <span className="font-bold text-gray-900">
+                                        {floorName ? `${floorName} Table ${tableNumber}` : tableNumber ? `Table ${tableNumber}` : '...'}
+                                    </span>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Table Number</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">Table</span>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            className="pl-14"
-                                            value={tableNumber}
-                                            onChange={(e) => setTableNumber(e.target.value)}
-                                            placeholder="1"
-                                        />
+                                    <label className="text-sm font-medium">Capacity (Pax)</label>
+                                    <div className="flex items-center gap-4">
+                                        <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.max(1, newTableCapacity - 1))}>-</Button>
+                                        <span className="font-bold w-8 text-center">{newTableCapacity}</span>
+                                        <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.min(30, newTableCapacity + 1))} disabled={newTableCapacity >= 30}>+</Button>
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                <span className="text-xs text-gray-500 block mb-1">Preview Name:</span>
-                                <span className="font-bold text-gray-900">
-                                    {floorName ? `${floorName} Table ${tableNumber}` : tableNumber ? `Table ${tableNumber}` : '...'}
-                                </span>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Capacity (Pax)</label>
-                                <div className="flex items-center gap-4">
-                                    <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.max(1, newTableCapacity - 1))}>-</Button>
-                                    <span className="font-bold w-8 text-center">{newTableCapacity}</span>
-                                    <Button variant="outline" size="icon" onClick={() => setNewTableCapacity(Math.min(30, newTableCapacity + 1))} disabled={newTableCapacity >= 30}>+</Button>
-                                </div>
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                            <Button type="button" onClick={handleAddTable} className="bg-orange-600 text-white">Save Table</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                                <Button type="button" onClick={handleAddTable} className="bg-orange-600 text-white">Save Table</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -257,6 +353,8 @@ export default function TablesClient({ initialTables }: TablesClientProps) {
                                     variant="destructive"
                                     className="h-8 w-8 shadow-sm"
                                     onClick={(e) => handleDelete(e, table.id)}
+                                    disabled={!isOnline}
+                                    title={!isOnline ? "Offline" : "Delete Table"}
                                 >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>

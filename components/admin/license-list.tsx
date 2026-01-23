@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from "react"
-import { Search, Filter, Shield, Plus, Clock, CheckCircle, XCircle, Laptop, RefreshCw, Eye, Copy, Check } from "lucide-react"
+import { Search, Filter, Shield, Plus, Clock, CheckCircle, XCircle, Users, RefreshCw, Eye, Copy, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,10 +18,12 @@ type License = {
     maxDevices: number
     extendedCount: number
     createdAt: Date
-    store: {
+    company: {
+        id: string
         name: string
-        location: string | null
-        users: { email: string, username: string }[]
+        slug: string
+        users: { email: string, username: string, role?: string }[]
+        _count?: { stores: number }
     }
     devices: any[]
     maskedKey?: string | null
@@ -165,7 +167,7 @@ export function LicenseList({ initialLicenses }: { initialLicenses: License[] })
                 <div className="relative w-full sm:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
-                        placeholder="Search by store, email, or key..."
+                        placeholder="Search by company, email, or key..."
                         value={searchQuery}
                         onChange={(e) => handleSearch(e.target.value)}
                         className="pl-10"
@@ -195,21 +197,21 @@ export function LicenseList({ initialLicenses }: { initialLicenses: License[] })
                 </Button>
             </div>
 
-            <div className="rounded-md border bg-white">
+            <div className="rounded-xl bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border-0">
                 <div className="relative w-full overflow-auto">
                     <table className="w-full caption-bottom text-sm text-left">
-                        <thead className="[&_tr]:border-b">
-                            <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Store</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">License Key</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Type</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Status</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Devices</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Expires</th>
-                                <th className="h-10 px-4 align-middle font-medium text-muted-foreground text-right">Actions</th>
+                        <thead className="bg-gray-50/80 backdrop-blur-sm sticky top-0 z-10">
+                            <tr className="shadow-sm">
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600 first:rounded-tl-xl">Company</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600">License Key</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600">Type</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600">Status</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600">Devices</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600">Expires</th>
+                                <th className="h-12 px-6 align-middle font-semibold text-gray-600 text-right last:rounded-tr-xl">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="[&_tr:last-child]:border-0">
+                        <tbody className="divide-y divide-gray-100">
                             {filteredLicenses.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-muted-foreground">
@@ -218,10 +220,14 @@ export function LicenseList({ initialLicenses }: { initialLicenses: License[] })
                                 </tr>
                             ) : (
                                 filteredLicenses.map(license => (
-                                    <tr key={license.id} className="border-b transition-colors hover:bg-muted/50">
+                                    <tr key={license.id} className="transition-colors hover:bg-muted/50">
                                         <td className="p-4 align-middle">
-                                            <div className="font-medium">{license.store.name}</div>
-                                            <div className="text-xs text-muted-foreground">{license.store.users[0]?.email || 'No owner'}</div>
+                                            <div className="font-medium">{license.company.name}</div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {license.company.slug} • {
+                                                    (license.company.users.find((u: any) => u.role === 'BUSINESS_OWNER') || license.company.users[0])?.email || 'No owner'
+                                                }
+                                            </div>
                                         </td>
                                         <td className="p-4 align-middle font-mono text-xs">
                                             <div className="flex items-center gap-2">
@@ -241,8 +247,8 @@ export function LicenseList({ initialLicenses }: { initialLicenses: License[] })
                                         <td className="p-4 align-middle">{getStatusBadge(license)}</td>
                                         <td className="p-4 align-middle">
                                             <div className="flex items-center gap-1">
-                                                <Laptop className="h-3 w-3 text-muted-foreground" />
-                                                {license.devices.length}/{license.maxDevices}
+                                                <Users className="h-3 w-3 text-muted-foreground" />
+                                                {license.company.users.length}/{license.maxDevices}
                                             </div>
                                         </td>
                                         <td className="p-4 align-middle">

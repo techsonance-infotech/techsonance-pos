@@ -91,6 +91,15 @@ export async function saveOrder(orderData: any) {
             `Order ${savedOrder.kotNo} ${orderStatus === 'COMPLETED' ? 'completed' : (orderData.id ? 'updated' : 'held')} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
         )
 
+        // Log Activity
+        const { logActivity } = await import("@/lib/logger")
+        await logActivity(
+            orderData.id ? (orderStatus === 'HELD' ? 'UPDATE_HOLD' : 'UPDATE_ORDER') : (orderStatus === 'HELD' ? 'HOLD_ORDER' : 'CREATE_ORDER'),
+            'POS',
+            `Order ${savedOrder.kotNo} saved with status ${orderStatus}. Total: ${orderData.totalAmount}`,
+            user.id
+        )
+
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
         // Also revalidate tables since status changed
@@ -164,13 +173,19 @@ export async function getHeldOrders() {
 const fetchRecentOrders = async (storeId: string) => {
     try {
         const orders = await prisma.order.findMany({
-            where: { status: 'COMPLETED', storeId },
+            where: {
+                status: {
+                    in: ['COMPLETED', 'CANCELLED']
+                },
+                storeId
+            },
             orderBy: { createdAt: 'desc' },
             take: 50,
             select: {
                 id: true,
                 kotNo: true,
                 totalAmount: true,
+                status: true,
                 customerName: true,
                 customerMobile: true,
                 tableName: true,
@@ -253,8 +268,15 @@ export async function deleteOrder(orderId: string) {
         if (!user?.defaultStoreId) return { error: "Unauthorized" }
 
         await prisma.order.delete({
-            where: { id: orderId } // Prisma will throw if not found
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
         })
+
+        const { logActivity } = await import("@/lib/logger")
+        await logActivity('DELETE_ORDER', 'POS', `Deleted order ${orderId}`, user.id)
+
         revalidatePath('/dashboard/hold-orders')
         return { success: true }
     } catch (error) {
@@ -265,8 +287,14 @@ export async function deleteOrder(orderId: string) {
 // Get Single Order (For Resume)
 export async function getOrder(orderId: string) {
     try {
+        const user = await getUserProfile()
+        if (!user?.defaultStoreId) return null
+
         const order = await prisma.order.findUnique({
-            where: { id: orderId }
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
         })
         return order
     } catch (error) {
@@ -306,5 +334,56 @@ export async function searchOrders(query: string) {
     } catch (error) {
         console.error("Search Orders Error:", error)
         return []
+    }
+}
+
+// Cancel Order (Update Status + Release Table)
+export async function cancelOrder(orderId: string) {
+    const user = await getUserProfile()
+    if (!user?.defaultStoreId) return { error: "Unauthorized" }
+
+    try {
+        const order = await prisma.order.findUnique({
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
+        })
+
+        if (!order) return { error: "Order not found" }
+
+        const operations: any[] = []
+
+        // 1. Update Order Status
+        operations.push(prisma.order.update({
+            where: { id: orderId },
+            data: { status: 'CANCELLED' }
+        }))
+
+        // 2. Release Table if assigned
+        if (order.tableId) {
+            operations.push(prisma.table.update({
+                where: { id: order.tableId },
+                data: { status: 'AVAILABLE' }
+            }))
+        }
+
+        await prisma.$transaction(operations)
+
+        // Notification
+        await createNotification(
+            user.id,
+            "Order Cancelled",
+            `Order ${order.kotNo} was cancelled. Table released.`
+        )
+
+        revalidatePath('/dashboard/hold-orders')
+        revalidatePath('/dashboard/recent-orders')
+        revalidatePath('/dashboard/tables')
+
+        return { success: true, message: "Order cancelled and table released" }
+    } catch (error) {
+        console.error("Cancel Order Error:", error)
+        return { error: "Failed to cancel order" }
     }
 }

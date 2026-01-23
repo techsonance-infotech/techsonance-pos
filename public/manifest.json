@@ -1,6 +1,6 @@
 {
-    "name": "CafePOS",
-    "short_name": "CafePOS",
+    "name": "SyncServe POS",
+    "short_name": "SyncServe POS",
     "description": "Professional POS System",
     "start_url": "/dashboard",
     "display": "standalone",

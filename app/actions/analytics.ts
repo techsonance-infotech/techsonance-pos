@@ -10,9 +10,9 @@ async function checkAnalyticsAccess() {
     const user = await getUserProfile()
     if (!user) throw new Error("Unauthorized")
 
-    const allowedRoles = ['SUPER_ADMIN', 'BUSINESS_OWNER']
+    const allowedRoles = ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER']
     if (!allowedRoles.includes(user.role)) {
-        throw new Error("Access denied. Analytics is only available to Super Admin and Business Owner.")
+        throw new Error("Access denied. Analytics is only available to Super Admin, Business Owner, and Manager.")
     }
 
     if (!user.defaultStoreId) throw new Error("No store selected")

@@ -47,6 +47,7 @@ export async function createStore(formData: FormData) {
                 name,
                 location,
                 tableMode: formData.get("tableMode") === 'true',
+                companyId: user.companyId, // Ensure store belongs to the company
                 users: { connect: { id: user.id } }
             }
         })
