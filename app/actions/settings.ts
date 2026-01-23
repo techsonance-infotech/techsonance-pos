@@ -2,8 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
-import { writeFile, mkdir } from "fs/promises"
-import { join } from "path"
+
 import { getUserProfile } from "./user"
 import { logActivity } from "@/lib/logger"
 
@@ -25,34 +24,45 @@ const SETTINGS_KEYS = [
 ] as const
 
 // Internal DB Fetcher
+// Internal DB Fetcher
 async function fetchBusinessSettings() {
-    const settings = await prisma.systemConfig.findMany({
-        where: {
-            key: { in: [...SETTINGS_KEYS] }
+    try {
+        const settings = await prisma.systemConfig.findMany({
+            where: {
+                key: { in: [...SETTINGS_KEYS] }
+            }
+        })
+
+        // Convert array to object
+        const settingsMap = settings.reduce((acc: any, curr: any) => {
+            acc[curr.key] = curr.value
+            return acc
+        }, {} as Record<string, string>)
+
+        return {
+            businessName: settingsMap.business_name || '',
+            logoUrl: settingsMap.business_logo || '', // Default empty or placeholder
+            address: settingsMap.business_address || '',
+            phone: settingsMap.business_phone || '',
+            email: settingsMap.business_email || '',
+            gstNo: settingsMap.business_gst || '',
+            taxRate: settingsMap.tax_rate || '5',
+            taxName: settingsMap.tax_name || 'GST',
+            showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
+            enableDiscount: settingsMap.enable_discount === 'true',
+            defaultDiscount: settingsMap.default_discount || '0',
+            discountType: settingsMap.discount_type || 'FIXED', // 'FIXED' | 'PERCENTAGE'
+            minOrderForDiscount: settingsMap.min_order_for_discount || '0',
+            maxDiscount: settingsMap.max_discount || '0'
         }
-    })
-
-    // Convert array to object
-    const settingsMap = settings.reduce((acc: any, curr: any) => {
-        acc[curr.key] = curr.value
-        return acc
-    }, {} as Record<string, string>)
-
-    return {
-        businessName: settingsMap.business_name || '',
-        logoUrl: settingsMap.business_logo || '', // Default empty or placeholder
-        address: settingsMap.business_address || '',
-        phone: settingsMap.business_phone || '',
-        email: settingsMap.business_email || '',
-        gstNo: settingsMap.business_gst || '',
-        taxRate: settingsMap.tax_rate || '5',
-        taxName: settingsMap.tax_name || 'GST',
-        showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
-        enableDiscount: settingsMap.enable_discount === 'true',
-        defaultDiscount: settingsMap.default_discount || '0',
-        discountType: settingsMap.discount_type || 'FIXED', // 'FIXED' | 'PERCENTAGE'
-        minOrderForDiscount: settingsMap.min_order_for_discount || '0',
-        maxDiscount: settingsMap.max_discount || '0'
+    } catch (e) {
+        console.error("fetchBusinessSettings failed:", e)
+        // Return default safe values on error
+        return {
+            businessName: '', logoUrl: '', address: '', phone: '', email: '', gstNo: '',
+            taxRate: '5', taxName: 'GST', showTaxBreakdown: false, enableDiscount: false,
+            defaultDiscount: '0', discountType: 'FIXED', minOrderForDiscount: '0', maxDiscount: '0'
+        }
     }
 }
 
@@ -273,74 +283,4 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
     }
 }
 
-export async function uploadLogo(formData: FormData) {
-    try {
-        const user = await getUserProfile()
-        const file = formData.get('logo') as File
-        if (!file) return { success: false, message: "No file provided" }
 
-        const bytes = await file.arrayBuffer()
-        const buffer = Buffer.from(bytes)
-
-        // Ensure directory exists
-        const uploadDir = join(process.cwd(), 'public', 'uploads')
-        try {
-            await mkdir(uploadDir, { recursive: true })
-        } catch (e) {
-            // Ignore error if exists
-        }
-
-        // Unique filename
-        const filename = `logo-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`
-        const path = join(uploadDir, filename)
-
-        await writeFile(path, buffer)
-
-        const url = `/uploads/${filename}`
-
-        // If user has a company, update company logo
-        if (user?.companyId) {
-            await prisma.company.update({
-                where: { id: user.companyId },
-                data: { logo: url }
-            })
-            // Revalidate all pages that show the logo
-            revalidatePath('/dashboard/settings/business')
-            revalidatePath('/dashboard')
-            revalidatePath('/dashboard/new-order')
-            revalidatePath('/dashboard/recent-orders')
-
-            await logActivity(
-                'UPLOAD_LOGO',
-                'SETTINGS',
-                { url, companyId: user.companyId },
-                user.id
-            )
-
-            return { success: true, url }
-        }
-
-        // Fallback to global setting for Super Admin without company
-        await prisma.systemConfig.upsert({
-            where: { key: 'business_logo' },
-            update: { value: url },
-            create: { key: 'business_logo', value: url }
-        })
-
-            ; (revalidateTag as any)('business-settings', 'max')
-        revalidatePath('/')
-        revalidatePath('/dashboard')
-
-        await logActivity(
-            'UPLOAD_LOGO',
-            'SETTINGS',
-            { url },
-            user?.id
-        )
-
-        return { success: true, url }
-    } catch (error) {
-        console.error("Logo upload failed:", error)
-        return { success: false, message: "Failed to upload logo" }
-    }
-}

@@ -1,27 +1,18 @@
-
 import { LoginForm } from "@/components/auth/login-form"
-import fs from "fs/promises"
-import path from "path"
 import Image from "next/image"
-
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 
 export const dynamic = 'force-dynamic'
+// Hardcoded config to avoid fs read issues in Vercel Edge/Serverless
+const LOGIN_CONFIG = {
+  title: "SyncServe",
+  description: "Sync every order, serve with speed",
+  footer: "Powered by TechSonance InfoTech LLP"
+}
 
 async function getLoginConfig() {
-  try {
-    const configPath = path.join(process.cwd(), 'config', 'login-config.json')
-    const configFile = await fs.readFile(configPath, 'utf-8')
-    return JSON.parse(configFile)
-  } catch (error) {
-    console.error('Error reading login config:', error)
-    return {
-      title: "SyncServe",
-      description: "Sync every order, serve with speed",
-      footer: "Powered by TechSonance InfoTech LLP"
-    }
-  }
+  return LOGIN_CONFIG
 }
 
 export default async function LoginPage() {

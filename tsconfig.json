@@ -40,6 +40,8 @@
   "exclude": [
     "node_modules",
     "electron",
-    "scripts"
+    "scripts",
+    "dist",
+    "build"
   ]
 }
