@@ -21,20 +21,27 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
     if (isPostgres) {
-        // Dynamic import to avoid loading SQLite bindings in Vercel
-        const { PrismaClient: PostgresClient } = require('@prisma/client-postgres')
-        return new PostgresClient({
+        // Vercel / Web Mode: Use the STANDARD @prisma/client (Postgres)
+        // Vercel automatically bundles the engine for the default client.
+        const { PrismaClient } = require('@prisma/client')
+        return new PrismaClient({
             datasourceUrl: dbUrl,
             log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
         })
     } else {
-        // SQLite mode
-        const { PrismaClient: SqliteClient } = require('@prisma/client')
-        const client = new SqliteClient({
-            datasourceUrl: useSqlite ? sqliteUrl : (dbUrl || sqliteUrl),
-            log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-        })
-        return client.$extends(withAccelerate())
+        // Desktop / Electron Mode: Use the CUSTOM @prisma/client-sqlite
+        // This client is generated into node_modules/@prisma/client-sqlite
+        try {
+            const { PrismaClient: SqliteClient } = require('@prisma/client-sqlite')
+            const client = new SqliteClient({
+                datasourceUrl: useSqlite ? sqliteUrl : (dbUrl || sqliteUrl),
+                log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+            })
+            return client.$extends(withAccelerate())
+        } catch (e) {
+            console.error("Failed to load SQLite client. Run 'npx prisma generate --schema=prisma/schema.prisma'")
+            throw e
+        }
     }
 }
 

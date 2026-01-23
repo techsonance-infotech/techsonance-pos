@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { updateBusinessSettings, uploadLogo } from "@/app/actions/settings"
+import { updateBusinessSettings } from "@/app/actions/settings"
+import { uploadLogo } from "@/app/actions/upload-logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
