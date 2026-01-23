@@ -47,7 +47,7 @@ export async function verifyPin(prevState: any, formData: FormData) {
 
         // Migrate to hashed PIN if needed
         if (needsMigration) {
-            console.log(`Migrating PIN for user ${user.username} to hashed format`)
+            // console.log(`Migrating PIN for user ${user.username} to hashed format`)
             const hashedPin = await bcrypt.hash(pin, 10)
             await prisma.user.update({
                 where: { id: user.id },

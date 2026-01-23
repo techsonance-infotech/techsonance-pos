@@ -25,6 +25,7 @@ export interface POSDataService {
     // Tables (Offline Cache)
     getTables: () => Promise<LocalTable[]>;
     saveTablesBulk: (tables: LocalTable[]) => Promise<void>;
+    updateTableStatus: (tableId: string, status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED') => Promise<void>;
 }
 
 // ----------------------------------------------------------------------
@@ -75,11 +76,13 @@ const electronService: POSDataService = {
         // Placeholder for electron
     },
     getTables: async () => {
-        // Placeholder for electron
-        return [];
+        return await (window as any).electron.getTables() || [];
     },
     saveTablesBulk: async (tables) => {
         // Placeholder for electron
+    },
+    updateTableStatus: async (tableId, status) => {
+        // Placeholder
     }
 };
 
@@ -98,7 +101,38 @@ const dexieService: POSDataService = {
     },
     saveOrder: async (order) => {
         try {
-            await db.orders.put(order);
+            await db.transaction('rw', db.orders, db.posTables, async () => {
+                await db.orders.put(order);
+
+                // Update Table Status
+                if (order.tableId) {
+                    const table = await db.posTables.get(order.tableId);
+                    if (table) {
+                        if (order.originalStatus === 'HELD') {
+                            await db.posTables.update(order.tableId, {
+                                status: 'OCCUPIED',
+                                heldOrderId: order.id,
+                                heldOrderCreatedAt: new Date(order.createdAt).toISOString()
+                            });
+                        } else if (order.originalStatus === 'COMPLETED' || order.status === 'COMPLETED' || order.originalStatus === 'CANCELLED' || order.status === 'CANCELLED') {
+                            // Clear hold info
+                            await db.posTables.update(order.tableId, {
+                                status: 'AVAILABLE',
+                                heldOrderId: null as any, // Dexie workaround to clear
+                                heldOrderCreatedAt: null as any
+                            });
+                        }
+                    }
+                }
+            });
+
+            // Dispatch Events to update UI
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('holdOrderUpdated'));
+                window.dispatchEvent(new Event('tableUpdated'));
+                window.dispatchEvent(new Event('recentOrdersUpdated'));
+            }
+
             return { success: true, id: order.id };
         } catch (e) {
             console.error(e);
@@ -115,6 +149,9 @@ const dexieService: POSDataService = {
                 await db.orders.update(id, { status: 'SYNCED', syncedAt: Date.now() });
             }
         });
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('holdOrderUpdated')); // Sync might change status
+        }
     },
     saveProductsBulk: async (products) => {
         await db.transaction('rw', db.products, async () => {
@@ -177,6 +214,36 @@ const dexieService: POSDataService = {
         await db.transaction('rw', db.posTables, async () => {
             await db.posTables.clear();
             await db.posTables.bulkPut(tables);
+        });
+    },
+
+    // New: Update Table Status (Offline)
+    updateTableStatus: async (tableId, status) => {
+        await db.transaction('rw', db.posTables, db.orders, async () => {
+            await db.posTables.update(tableId, { status });
+
+            if (status === 'AVAILABLE') {
+                // Clear hold info on the table itself
+                await db.posTables.update(tableId, {
+                    heldOrderId: null as any,
+                    heldOrderCreatedAt: null as any
+                });
+
+                // Find held orders locally and cancel/detach them
+                const heldOrders = await db.orders
+                    .filter(o => o.tableId === tableId && o.originalStatus === 'HELD')
+                    .toArray();
+
+                for (const o of heldOrders) {
+                    // If pending sync, just cancel. If synced, we can't easily cancel on server from here without sync.
+                    // But for offline UI consistency, we mark as CANCELLED so it disappears from timer logic.
+                    await db.orders.update(o.id, {
+                        status: 'CANCELLED',
+                        originalStatus: 'CANCELLED', // Force
+                        tableId: undefined
+                    });
+                }
+            }
         });
     }
 };

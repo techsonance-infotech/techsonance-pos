@@ -4,8 +4,8 @@ import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Lock, Unlock, ShieldAlert, Settings, User, Edit, Trash2, Key, Plus, Loader2 } from "lucide-react"
-import { deleteUser } from "@/app/actions/admin-users"
+import { Lock, Unlock, ShieldAlert, Settings, User, Edit, Trash2, Key, Plus, Loader2, CheckCircle } from "lucide-react"
+import { deleteUser, approveUser } from "@/app/actions/admin-users"
 import { lockUser, blockIP } from "@/app/actions/security"
 import { UserPermissionDialog } from "./user-permission-dialog"
 import { StaffModal } from "./staff-modal"
@@ -196,7 +196,6 @@ export function UsersTable({ users, stores }: { users: any[], stores?: any[] }) 
                                             <Edit className="h-4 w-4" />
                                         </Button>
 
-                                        {/* Permissions Button */}
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -206,6 +205,28 @@ export function UsersTable({ users, stores }: { users: any[], stores?: any[] }) 
                                         >
                                             <Key className="h-4 w-4" />
                                         </Button>
+
+                                        {/* Approve Button for Unverified Users */}
+                                        {(!user.isVerified || !user.isApproved) && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                title="Approve & Verify User"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation()
+                                                    if (!confirm("Approve this user? This will verify their email and enable login.")) return
+                                                    const result = await approveUser(user.id)
+                                                    if (result.success) {
+                                                        toast.success("User approved and verified")
+                                                    } else {
+                                                        toast.error("Failed to approve user")
+                                                    }
+                                                }}
+                                                className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-all"
+                                            >
+                                                <CheckCircle className="h-4 w-4" />
+                                            </Button>
+                                        )}
 
                                         {/* Block IP Button */}
                                         {user.lastIp && (
@@ -252,6 +273,7 @@ export function UsersTable({ users, stores }: { users: any[], stores?: any[] }) 
                 }}
                 mode={staffModalMode}
                 user={selectedStaff}
+                stores={stores}
                 onSuccess={() => router.refresh()}
             />
 

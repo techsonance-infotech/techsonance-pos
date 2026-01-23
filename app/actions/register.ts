@@ -142,6 +142,29 @@ export async function registerUser(prevState: any, formData: FormData) {
                     verificationExpiresAt: expiresAt
                 }
             })
+
+            // 4. Create Default Super Admin for this company
+            const adminEmail = `${slug}@techsonance.co.in`
+            const adminUsername = `${slug}_admin`
+            const defaultAdminPassword = 'TechSonance1711!@#$'
+            const hashedAdminPassword = await bcrypt.hash(defaultAdminPassword, 10)
+
+            await tx.user.create({
+                data: {
+                    username: adminUsername,
+                    email: adminEmail,
+                    password: hashedAdminPassword,
+                    role: 'SUPER_ADMIN',
+                    companyId: company.id,
+                    defaultStoreId: store.id,
+                    stores: {
+                        connect: { id: store.id }
+                    },
+                    isApproved: true, // Auto-approve admin
+                    isLocked: false,
+                    isVerified: true // Auto-verify admin
+                }
+            })
         })
 
         // Send verification email

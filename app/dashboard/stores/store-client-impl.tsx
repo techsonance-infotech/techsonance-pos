@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Building2, MapPin, Check, Plus, Edit, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,8 @@ import { switchStore, createStore, updateStore, deleteStore } from "@/app/action
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { getPOSService } from "@/lib/pos-service"
+import { useNetworkStatus } from "@/hooks/use-network-status"
 import {
     Dialog,
     DialogContent,
@@ -18,11 +20,34 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog"
 
-export default function StoreManagementClient({ user }: { user: any }) {
+export default function StoreManagementClient({ user: initialUser }: { user: any }) {
     const router = useRouter()
+    const isOnline = useNetworkStatus()
+    const [user, setUser] = useState<any>(initialUser)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [editingStore, setEditingStore] = useState<any>(null)
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        if (!initialUser) {
+            // Load from cache
+            const loadUser = async () => {
+                try {
+                    const posService = getPOSService()
+                    const settings = await posService.getSettings()
+                    const profileSetting = settings.find((s: any) => s.key === 'user_profile')
+                    if (profileSetting && profileSetting.value) {
+                        setUser(profileSetting.value)
+                    }
+                } catch (e) {
+                    console.error("Failed to load cached user", e)
+                }
+            }
+            loadUser()
+        }
+    }, [initialUser])
+
+    if (!user) return <div className="p-8 text-center text-gray-500">Loading stores...</div>
 
     // Form States
     const [name, setName] = useState("")
@@ -104,7 +129,7 @@ export default function StoreManagementClient({ user }: { user: any }) {
             {/* Top Bar */}
             {canManage && (
                 <div className="flex justify-end mb-6">
-                    <Button onClick={() => setIsCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                    <Button onClick={() => setIsCreateOpen(true)} disabled={!isOnline} className="bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50">
                         <Plus className="mr-2 h-4 w-4" /> Add New Store
                     </Button>
                 </div>
@@ -139,8 +164,10 @@ export default function StoreManagementClient({ user }: { user: any }) {
                                 </div>
                             ) : (
                                 <Button
-                                    className="w-full bg-orange-500 hover:bg-orange-600 text-white mb-4"
+                                    className="w-full bg-orange-500 hover:bg-orange-600 text-white mb-4 disabled:opacity-50"
                                     onClick={() => handleSwitch(store.id)}
+                                    disabled={!isOnline}
+                                    title={!isOnline ? "Offline" : "Switch Store"}
                                 >
                                     Switch to This Store
                                 </Button>
@@ -149,10 +176,10 @@ export default function StoreManagementClient({ user }: { user: any }) {
                             {/* Management Actions */}
                             {canManage && (
                                 <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
-                                    <Button variant="ghost" size="sm" onClick={() => openEdit(store)} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                                    <Button variant="ghost" size="sm" onClick={() => openEdit(store)} disabled={!isOnline} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50">
                                         <Edit className="h-4 w-4 mr-1" /> Edit
                                     </Button>
-                                    <Button variant="ghost" size="sm" onClick={() => handleDelete(store.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                    <Button variant="ghost" size="sm" onClick={() => handleDelete(store.id)} disabled={!isOnline} className="text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50">
                                         <Trash2 className="h-4 w-4 mr-1" /> Delete
                                     </Button>
                                 </div>

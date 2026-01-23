@@ -91,6 +91,15 @@ export async function saveOrder(orderData: any) {
             `Order ${savedOrder.kotNo} ${orderStatus === 'COMPLETED' ? 'completed' : (orderData.id ? 'updated' : 'held')} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
         )
 
+        // Log Activity
+        const { logActivity } = await import("@/lib/logger")
+        await logActivity(
+            orderData.id ? (orderStatus === 'HELD' ? 'UPDATE_HOLD' : 'UPDATE_ORDER') : (orderStatus === 'HELD' ? 'HOLD_ORDER' : 'CREATE_ORDER'),
+            'POS',
+            `Order ${savedOrder.kotNo} saved with status ${orderStatus}. Total: ${orderData.totalAmount}`,
+            user.id
+        )
+
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
         // Also revalidate tables since status changed
@@ -259,8 +268,15 @@ export async function deleteOrder(orderId: string) {
         if (!user?.defaultStoreId) return { error: "Unauthorized" }
 
         await prisma.order.delete({
-            where: { id: orderId } // Prisma will throw if not found
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
         })
+
+        const { logActivity } = await import("@/lib/logger")
+        await logActivity('DELETE_ORDER', 'POS', `Deleted order ${orderId}`, user.id)
+
         revalidatePath('/dashboard/hold-orders')
         return { success: true }
     } catch (error) {
@@ -271,8 +287,14 @@ export async function deleteOrder(orderId: string) {
 // Get Single Order (For Resume)
 export async function getOrder(orderId: string) {
     try {
+        const user = await getUserProfile()
+        if (!user?.defaultStoreId) return null
+
         const order = await prisma.order.findUnique({
-            where: { id: orderId }
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
         })
         return order
     } catch (error) {
@@ -322,7 +344,10 @@ export async function cancelOrder(orderId: string) {
 
     try {
         const order = await prisma.order.findUnique({
-            where: { id: orderId }
+            where: {
+                id: orderId,
+                storeId: user.defaultStoreId // Strict isolation
+            }
         })
 
         if (!order) return { error: "Order not found" }

@@ -19,6 +19,8 @@ type Notification = {
     createdAt: Date
 }
 
+import { getHeldOrdersCount, searchOrders } from "@/app/actions/orders"
+
 export function Header({ initialUser }: { initialUser: any | null }) {
     const [user, setUser] = useState(initialUser)
     const [notifications, setNotifications] = useState<Notification[]>([])
@@ -61,8 +63,6 @@ export function Header({ initialUser }: { initialUser: any | null }) {
 
     // Held Orders Count
     const [heldCount, setHeldCount] = useState(0)
-    // Dynamic import to avoid server-component issues
-    const { getHeldOrdersCount } = require("@/app/actions/orders")
 
     useEffect(() => {
         async function loadHeldCount() {
@@ -104,7 +104,6 @@ export function Header({ initialUser }: { initialUser: any | null }) {
     const [searchResults, setSearchResults] = useState<any[]>([])
     const [isSearching, setIsSearching] = useState(false)
     const [showResults, setShowResults] = useState(false)
-    const { searchOrders } = require("@/app/actions/orders") // Dynamic import
 
     useEffect(() => {
         const timer = setTimeout(async () => {
@@ -134,34 +133,45 @@ export function Header({ initialUser }: { initialUser: any | null }) {
         <header className="flex h-20 items-center justify-between bg-white px-8 shadow-sm z-50 relative transition-colors print:hidden">
             {/* Left: Outlet Selector */}
             <div className="flex items-center gap-4">
-                <a href="/dashboard/stores" className="flex items-center gap-2 text-gray-700 bg-white border border-gray-200 px-4 py-2 rounded-full cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+                {/* Store Display - Visible to all, but link disabled if module restricted */}
+                <div className={cn(
+                    "flex items-center gap-2 bg-white border border-gray-200 px-4 py-2 rounded-full transition-all shadow-sm",
+                    (!user?.disabledModules?.includes('stores') || user?.role === 'MANAGER' || user?.role === 'BUSINESS_OWNER' || user?.role === 'SUPER_ADMIN') ? "cursor-pointer hover:bg-gray-50 hover:border-gray-300" : "cursor-default opacity-80"
+                )}
+                    onClick={() => {
+                        if (!user?.disabledModules?.includes('stores') || user?.role === 'MANAGER' || user?.role === 'BUSINESS_OWNER' || user?.role === 'SUPER_ADMIN') {
+                            window.location.href = "/dashboard/stores"
+                        }
+                    }}
+                >
                     <MapPin className="h-4 w-4 text-orange-500" />
                     <span className="text-sm font-medium">{user?.defaultStore?.name || "Select Store"}</span>
-                </a>
+                </div>
 
                 {/* Network & Sync Status */}
                 {!isOnline ? (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-xs font-bold animate-pulse">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 ring-2 ring-red-50 text-red-700 rounded-full text-xs font-bold animate-pulse" title="System Offline">
                         <WifiOff className="h-3 w-3" />
-                        <span>Offline</span>
+                        <span>Offline Mode</span>
                     </div>
                 ) : isSyncing ? (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 ring-2 ring-blue-50 text-blue-700 rounded-full text-xs font-bold transition-all" title="Syncing Data">
                         <RefreshCw className="h-3 w-3 animate-spin" />
-                        <span>Syncing...</span>
+                        <span>Syncing{pendingCount > 0 ? ` ${pendingCount} Orders` : '...'}</span>
                     </div>
                 ) : pendingCount > 0 ? (
                     <button
                         onClick={() => syncNow()}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold hover:bg-amber-200 transition-colors"
-                        title="Click to sync pending orders"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 ring-2 ring-amber-50 text-amber-900 rounded-full text-xs font-bold hover:bg-amber-200 transition-all shadow-sm animate-bounce cursor-pointer"
+                        title="Click to sync pending orders manually"
                     >
                         <RefreshCw className="h-3 w-3" />
-                        <span>{pendingCount} Pending</span>
+                        <span>{pendingCount} Saved Locally</span>
                     </button>
                 ) : (
-                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-xs font-bold opacity-50 hover:opacity-100 transition-opacity" title="System Online & Synced">
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-xs font-bold opacity-60 hover:opacity-100 transition-opacity cursor-default" title="System Online & Synced">
                         <Wifi className="h-3 w-3" />
+                        <span>Online</span>
                     </div>
                 )}
             </div>
@@ -240,8 +250,8 @@ export function Header({ initialUser }: { initialUser: any | null }) {
             </div>
 
             <div className="flex items-center gap-4">
-                {/* Tables Icon - Only show if Table Mode is enabled */}
-                {user?.defaultStore?.tableMode && (
+                {/* Tables Icon - Only show if Table Mode is enabled AND module is active */}
+                {user?.defaultStore?.tableMode && (!user?.disabledModules?.includes('tables')) && (
                     <a
                         href="/dashboard/tables"
                         className="p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
@@ -252,104 +262,108 @@ export function Header({ initialUser }: { initialUser: any | null }) {
                 )}
 
                 {/* Hold Orders Icon */}
-                <button
-                    onClick={() => window.location.href = '/dashboard/hold-orders'}
-                    className="relative p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
-                    title="Hold Orders"
-                >
-                    <Clock className="h-6 w-6 group-hover:scale-110 transition-transform" />
-                    {heldCount > 0 && (
-                        <span className="absolute top-2 right-2 h-4 w-4 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white animate-in zoom-in">
-                            {heldCount}
-                        </span>
-                    )}
-                </button>
-
-                {/* Notification Bell */}
-                <div className="relative">
+                {(!user?.disabledModules?.includes('orders')) && (
                     <button
-                        onClick={() => setShowNotifications(!showNotifications)}
-                        className={cn(
-                            "p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm",
-                            showNotifications ? "bg-orange-50 text-orange-600" : "hover:bg-gray-50"
-                        )}
+                        onClick={() => window.location.href = '/dashboard/hold-orders'}
+                        className="relative p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm hover:text-orange-600 group"
+                        title="Hold Orders"
                     >
-                        <Bell className="h-6 w-6" />
-                        {unreadCount > 0 && (
-                            <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
+                        <Clock className="h-6 w-6 group-hover:scale-110 transition-transform" />
+                        {heldCount > 0 && (
+                            <span className="absolute top-2 right-2 h-4 w-4 rounded-full bg-orange-600 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white animate-in zoom-in">
+                                {heldCount}
+                            </span>
                         )}
                     </button>
+                )}
 
-                    {/* Notification Popup */}
-                    {showNotifications && (
-                        <div className="absolute right-0 top-full mt-4 w-96 origin-top-right rounded-2xl bg-white dark:bg-stone-900 shadow-xl border border-gray-100 dark:border-stone-800 focus:outline-none z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-4 border-b border-gray-100 dark:border-stone-800 flex items-center justify-between bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
-                                <h3 className="font-bold text-gray-900 dark:text-gray-100">Notifications</h3>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setUnreadOnly(!unreadOnly)}
-                                        className={cn(
-                                            "p-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1",
-                                            unreadOnly ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"
-                                        )}
-                                        title="Filter Unread"
-                                    >
-                                        <Filter className="h-3 w-3" /> Unread
-                                    </button>
-                                    <button
-                                        onClick={handleMarkAllRead}
-                                        className="p-1.5 rounded-lg text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition-colors"
-                                        title="Mark all as read"
-                                    >
-                                        <CheckCheck className="h-4 w-4" />
-                                    </button>
+                {/* Notification Bell - Hidden for USER and CASHIER roles */}
+                {(!['USER', 'CASHIER'].includes(user?.role)) && (
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            className={cn(
+                                "p-2.5 rounded-xl text-gray-500 transition-all hover:bg-gray-50 hover:shadow-sm",
+                                showNotifications ? "bg-orange-50 text-orange-600" : "hover:bg-gray-50"
+                            )}
+                        >
+                            <Bell className="h-6 w-6" />
+                            {unreadCount > 0 && (
+                                <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
+                            )}
+                        </button>
+
+                        {/* Notification Popup */}
+                        {showNotifications && (
+                            <div className="absolute right-0 top-full mt-4 w-96 origin-top-right rounded-2xl bg-white dark:bg-stone-900 shadow-xl border border-gray-100 dark:border-stone-800 focus:outline-none z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                <div className="p-4 border-b border-gray-100 dark:border-stone-800 flex items-center justify-between bg-white/50 dark:bg-stone-900/50 backdrop-blur-sm">
+                                    <h3 className="font-bold text-gray-900 dark:text-gray-100">Notifications</h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setUnreadOnly(!unreadOnly)}
+                                            className={cn(
+                                                "p-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1",
+                                                unreadOnly ? "bg-orange-100 text-orange-700" : "text-gray-500 hover:bg-gray-100"
+                                            )}
+                                            title="Filter Unread"
+                                        >
+                                            <Filter className="h-3 w-3" /> Unread
+                                        </button>
+                                        <button
+                                            onClick={handleMarkAllRead}
+                                            className="p-1.5 rounded-lg text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                                            title="Mark all as read"
+                                        >
+                                            <CheckCheck className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="max-h-[400px] overflow-y-auto">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-400">
+                                            <p className="text-sm">No notifications found</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y dark:divide-stone-800">
+                                            {notifications.map(note => (
+                                                <div
+                                                    key={note.id}
+                                                    className={cn(
+                                                        "p-4 hover:bg-gray-50 dark:hover:bg-stone-800/50 transition-colors flex gap-3 group relative cursor-pointer",
+                                                        !note.isRead && "bg-orange-50/30 dark:bg-orange-900/5"
+                                                    )}
+                                                    onClick={() => handleMarkRead(note.id)}
+                                                >
+                                                    <div className={cn("mt-1.5 h-2 w-2 rounded-full flex-shrink-0", !note.isRead ? "bg-orange-500" : "bg-gray-300 dark:bg-stone-700")} />
+                                                    <div className="flex-1 space-y-1">
+                                                        <p className={cn("text-sm font-semibold", !note.isRead ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400")}>
+                                                            {note.title}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                                                            {note.message}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-400">
+                                                            {new Date(note.createdAt).toLocaleTimeString()}
+                                                        </p>
+                                                    </div>
+                                                    {!note.isRead && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleMarkRead(note.id); }}
+                                                            className="opacity-0 group-hover:opacity-100 absolute right-2 top-2 p-1 text-gray-400 hover:text-orange-600 transition-all"
+                                                            title="Mark as read"
+                                                        >
+                                                            <Check className="h-3 w-3" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <div className="max-h-[400px] overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <div className="p-8 text-center text-gray-400">
-                                        <p className="text-sm">No notifications found</p>
-                                    </div>
-                                ) : (
-                                    <div className="divide-y dark:divide-stone-800">
-                                        {notifications.map(note => (
-                                            <div
-                                                key={note.id}
-                                                className={cn(
-                                                    "p-4 hover:bg-gray-50 dark:hover:bg-stone-800/50 transition-colors flex gap-3 group relative cursor-pointer",
-                                                    !note.isRead && "bg-orange-50/30 dark:bg-orange-900/5"
-                                                )}
-                                                onClick={() => handleMarkRead(note.id)}
-                                            >
-                                                <div className={cn("mt-1.5 h-2 w-2 rounded-full flex-shrink-0", !note.isRead ? "bg-orange-500" : "bg-gray-300 dark:bg-stone-700")} />
-                                                <div className="flex-1 space-y-1">
-                                                    <p className={cn("text-sm font-semibold", !note.isRead ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400")}>
-                                                        {note.title}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-                                                        {note.message}
-                                                    </p>
-                                                    <p className="text-[10px] text-gray-400">
-                                                        {new Date(note.createdAt).toLocaleTimeString()}
-                                                    </p>
-                                                </div>
-                                                {!note.isRead && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleMarkRead(note.id); }}
-                                                        className="opacity-0 group-hover:opacity-100 absolute right-2 top-2 p-1 text-gray-400 hover:text-orange-600 transition-all"
-                                                        title="Mark as read"
-                                                    >
-                                                        <Check className="h-3 w-3" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Profile Dropdown */}
                 <div className="relative group pl-6 border-l border-gray-100 dark:border-stone-800">
@@ -371,9 +385,11 @@ export function Header({ initialUser }: { initialUser: any | null }) {
                                 <p className="text-xs text-stone-500 font-medium">{user?.role}</p>
                             </div>
 
-                            <a href="/dashboard/settings" className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-stone-800 rounded-xl transition-colors">
-                                <Settings className="mr-3 h-4 w-4 text-gray-400 group-hover:text-orange-500" /> Settings
-                            </a>
+                            {(user?.role === 'SUPER_ADMIN' || user?.role === 'BUSINESS_OWNER' || user?.role === 'MANAGER') && (
+                                <a href="/dashboard/settings" className="flex items-center w-full px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-stone-800 rounded-xl transition-colors">
+                                    <Settings className="mr-3 h-4 w-4 text-gray-400 group-hover:text-orange-500" /> Settings
+                                </a>
+                            )}
 
                             <div className="h-px bg-gray-100 dark:bg-stone-800 my-1 mx-2" />
 

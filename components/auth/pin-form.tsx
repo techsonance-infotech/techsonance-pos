@@ -113,7 +113,7 @@ function PinInputGroup({
                         key={index}
                         id={`${id}-${index}`}
                         ref={(el) => { inputs.current[index] = el }}
-                        type="text"
+                        type="password"
                         inputMode="numeric"
                         value={value[index] || ""}
                         onChange={(e) => handleChange(e, index)}

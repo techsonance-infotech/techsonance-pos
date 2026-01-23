@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { cookies } from "next/headers"
 import bcrypt from 'bcryptjs'
+import { logActivity } from "@/lib/logger"
 
 /**
  * Login action with "Keep me logged in" support
@@ -17,7 +18,7 @@ import bcrypt from 'bcryptjs'
  *   - User is logged out when browser is closed
  */
 export async function login(prevState: any, formData: FormData) {
-    const identifier = formData.get("identifier") as string
+    const identifier = (formData.get("identifier") as string).trim()
     const password = formData.get("password") as string
     const keepLoggedIn = formData.get("keep_logged_in") === "on" // Checkbox value
 
@@ -33,6 +34,9 @@ export async function login(prevState: any, formData: FormData) {
                     { username: identifier },
                     { email: identifier }
                 ]
+            },
+            include: {
+                company: true // Fetch company details to check status
             }
         })
 
@@ -45,9 +49,13 @@ export async function login(prevState: any, formData: FormData) {
         let needsMigration = false
 
         // 1. Try bcrypt verification first (for reset passwords and new registrations)
-        // Check if stored password looks like a bcrypt hash (starts with $2a$ or $2b$)
-        if (user.password.startsWith('$2') && user.password.length === 60) {
-            isValidPassword = await bcrypt.compare(password, user.password)
+        // Check if stored password looks like a bcrypt hash (starts with $2)
+        if (user.password.startsWith('$2')) {
+            try {
+                isValidPassword = await bcrypt.compare(password, user.password)
+            } catch (e) {
+                console.error("Bcrypt compare failed:", e)
+            }
         }
 
         // 2. If it's not a hash or bcrypt failed (check plain text fallback)
@@ -71,7 +79,7 @@ export async function login(prevState: any, formData: FormData) {
                     where: { id: user.id },
                     data: { password: hashedPassword }
                 })
-                console.log(`Migrated user ${user.id} password to bcrypt hash`)
+                // console.log(`Migrated user ${user.id} password to bcrypt hash`)
             } catch (e) {
                 console.error("Failed to migrate password:", e)
             }
@@ -87,21 +95,42 @@ export async function login(prevState: any, formData: FormData) {
             return { error: "Please verify your email address before logging in." }
         }
 
+        // Check if account is disabled/locked
+        if (user.isLocked) {
+            return { error: "Your account has been disabled by the administrator." }
+        }
+
+        // Check if Company is Active (for multi-tenant users)
+        if (user.companyId && user.company && !user.company.isActive) {
+            return { error: "Your company account has been deactivated. Please contact support." }
+        }
+
         // Capture Last IP for audit purposes
         try {
             const { headers } = await import("next/headers")
             const headerList = await headers()
             let ip = headerList.get("x-forwarded-for")?.split(',')[0] || headerList.get("x-real-ip") || "unknown"
 
-            // Normalize IPv6 localhost
             if (ip === "::1") ip = "127.0.0.1"
+
+            // Check if IP is blocked
+            const blockedIp = await prisma.securityRule.findFirst({
+                where: {
+                    type: 'IP',
+                    value: ip
+                }
+            })
+
+            if (blockedIp) {
+                return { error: `Access denied. Your IP (${ip}) has been blocked by the administrator.` }
+            }
 
             await prisma.user.update({
                 where: { id: user.id },
                 data: { lastIp: ip }
             })
         } catch (e) {
-            console.error("Failed to update Last IP:", e)
+            console.error("Failed to check/update IP:", e)
         }
 
         // Set session cookie based on "Keep me logged in" preference
@@ -126,10 +155,10 @@ export async function login(prevState: any, formData: FormData) {
         if (keepLoggedIn) {
             const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
             cookieOptions.maxAge = thirtyDays
-            console.log(`User ${user.id} logged in with "Keep me logged in" enabled. Persistent cookie set (30 days).`)
+            // console.log(`User ${user.id} logged in with "Keep me logged in" enabled. Persistent cookie set (30 days).`)
         } else {
             // No maxAge = session cookie (expires when browser closes)
-            console.log(`User ${user.id} logged in without "Keep me logged in". Session cookie set.`)
+            // console.log(`User ${user.id} logged in without "Keep me logged in". Session cookie set.`)
         }
 
         // Set the session cookie
@@ -137,6 +166,14 @@ export async function login(prevState: any, formData: FormData) {
 
         // Also store a flag to indicate if this is a persistent session
         cookieStore.set('persistent_session', keepLoggedIn ? 'true' : 'false', cookieOptions)
+
+        // Log Login
+        await logActivity(
+            'LOGIN',
+            'AUTH',
+            { ip: user.lastIp, username: user.username },
+            user.id
+        )
 
         // Check if user has a PIN
         if (user.pin) {
@@ -167,7 +204,18 @@ export async function logout() {
     cookieStore.delete('persistent_session')
     cookieStore.delete('current_user_id')
 
-    console.log("User logged out. All session cookies cleared.")
+    // console.log("User logged out. All session cookies cleared.")
+
+    // Log Logout (if we can identify user from cookie before deleting)
+    const userId = cookieStore.get('session_user_id')?.value
+    if (userId) {
+        await logActivity(
+            'LOGOUT',
+            'AUTH',
+            {},
+            userId
+        )
+    }
 
     redirect('/')
 }

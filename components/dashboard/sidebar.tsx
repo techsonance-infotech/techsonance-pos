@@ -20,18 +20,21 @@ import {
     LayoutGrid,
     Key,
     Users,
-    BarChart3
+    BarChart3,
+    MessageSquare,
+    LifeBuoy
 } from "lucide-react"
 
 const baseSidebarItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
     { icon: LayoutGrid, label: "Tables", href: "/dashboard/tables" },
     { icon: ShoppingCart, label: "New Order", href: "/dashboard/new-order" },
     { icon: Clock, label: "Recent Orders", href: "/dashboard/recent-orders" },
     { icon: PauseCircle, label: "Hold Orders", href: "/dashboard/hold-orders" },
-    { icon: Menu, label: "Menu Management", href: "/dashboard/menu" },
+    { icon: Menu, label: "Menu Management", href: "/dashboard/menu", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
     { icon: Store, label: "Stores", href: "/dashboard/stores" },
-    { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER'] },
+    { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
+    { icon: LifeBuoy, label: "Help & Support", href: "/dashboard/support" },
     { icon: Bell, label: "Notifications", href: "/dashboard/notifications" },
     { icon: Settings, label: "More Options", href: "/dashboard/settings" },
 ]
@@ -39,7 +42,7 @@ const baseSidebarItems = [
 const EMPTY_MODULES: string[] = []
 
 // Added storeTableMode, businessName, logoUrl to props
-export function Sidebar({ userRole, disabledModules, storeTableMode = true, businessName = "CafePOS", logoUrl }: { userRole?: string, disabledModules?: string[], storeTableMode?: boolean, businessName?: string, logoUrl?: string }) {
+export function Sidebar({ userRole, disabledModules, storeTableMode = true, businessName = "", logoUrl }: { userRole?: string, disabledModules?: string[], storeTableMode?: boolean, businessName?: string, logoUrl?: string }) {
     const [collapsed, setCollapsed] = useState(false)
     const pathname = usePathname()
     const [items, setItems] = useState(baseSidebarItems)
@@ -54,10 +57,39 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
         return null
     }
 
+    const [effectiveRole, setEffectiveRole] = useState(userRole)
+
+    // Hydrate Role from Offline Cache if needed
+    useEffect(() => {
+        if (!userRole || userRole === 'OFFLINE_ACCESS') {
+            const loadCachedProfile = async () => {
+                try {
+                    const { getPOSService } = await import("@/lib/pos-service")
+                    const settings = await getPOSService().getSettings()
+                    const profile = settings.find(s => s.key === 'user_profile')?.value
+                    if (profile && profile.role) {
+                        console.log("Hydrated offline role:", profile.role)
+                        setEffectiveRole(profile.role)
+                    }
+                } catch (e) {
+                    console.error("Failed to hydrate offline profile", e)
+                }
+            }
+            loadCachedProfile()
+        } else {
+            setEffectiveRole(userRole)
+        }
+    }, [userRole])
+
     useEffect(() => {
         // Filter items based on user role AND disabled modules
         const filteredItems = baseSidebarItems.filter(item => {
             // 1. Module Based Blocking for "User" / "Manager"
+            // Exempt MANAGER from module checks to ensure they always have access as requested
+            if (effectiveRole === 'MANAGER') {
+                return true
+            }
+
             // If the user has explicitly disabled this module, hide it
             const moduleId = getModuleId(item)
             if (moduleId && disabledModules && disabledModules.includes(moduleId)) {
@@ -67,13 +99,13 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
             // 2. Strict Role Checks
             // Existing 'roles' array check
             if ('roles' in item && item.roles) {
-                if (!userRole || !item.roles.includes(userRole)) return false
+                if (!effectiveRole || !item.roles.includes(effectiveRole)) return false
             }
 
-            // 3. Special Case: Settings ("More Options")
+            // 3. Special Case: Analytics
             // Only visible to SUPER_ADMIN and BUSINESS_OWNER
-            if (item.href.includes('settings')) {
-                if (userRole !== 'SUPER_ADMIN' && userRole !== 'BUSINESS_OWNER') {
+            if (item.href.includes('analytics')) {
+                if (effectiveRole !== 'SUPER_ADMIN' && effectiveRole !== 'BUSINESS_OWNER' && effectiveRole !== 'MANAGER') {
                     return false
                 }
             }
@@ -87,7 +119,7 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
             return true
         })
         setItems(filteredItems)
-    }, [userRole, disabledModules, storeTableMode])
+    }, [effectiveRole, disabledModules, storeTableMode])
 
     // ... (existing logic)
 

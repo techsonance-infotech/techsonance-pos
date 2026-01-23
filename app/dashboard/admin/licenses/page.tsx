@@ -1,11 +1,10 @@
-import { getAllLicenses, getAllStoresForLicensing, getLicenseStats } from "@/app/actions/license"
+import { getAllLicenses, getAllCompaniesForLicensing, getLicenseStats } from "@/app/actions/license"
 import { LicenseForm } from "@/components/admin/license-form"
 import { LicenseStats } from "@/components/admin/license-stats"
 import { LicenseList } from "@/components/admin/license-list"
-import { MultiAccountActivation } from "@/components/admin/multi-account-activation"
 import { getUserProfile } from "@/app/actions/user"
 import { redirect } from "next/navigation"
-import { Shield, Home, ChevronRight, Key } from "lucide-react"
+import { Shield, Home, ChevronRight, Key, Building } from "lucide-react"
 import Link from "next/link"
 
 export const dynamic = 'force-dynamic'
@@ -16,9 +15,9 @@ export default async function AdminLicensesPage() {
         redirect('/dashboard')
     }
 
-    const [licenses, availableStores, stats] = await Promise.all([
+    const [licenses, companies, stats] = await Promise.all([
         getAllLicenses(),
-        getAllStoresForLicensing(),
+        getAllCompaniesForLicensing(),
         getLicenseStats()
     ])
 
@@ -45,10 +44,12 @@ export default async function AdminLicensesPage() {
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-gray-900">License Management</h1>
-                        <p className="text-gray-500 mt-1">Generate, manage, and track software licenses</p>
+                        <p className="text-gray-500 mt-1 flex items-center gap-2">
+                            <Building className="h-4 w-4" />
+                            {companies.length} Companies registered
+                        </p>
                     </div>
                 </div>
-                <MultiAccountActivation stores={availableStores} />
             </div>
 
             {/* Stats Dashboard */}
@@ -63,7 +64,7 @@ export default async function AdminLicensesPage() {
             <div className="grid gap-8 lg:grid-cols-3">
                 {/* License Form */}
                 <div className="lg:col-span-1">
-                    <LicenseForm stores={availableStores} />
+                    <LicenseForm companies={companies} />
                 </div>
 
                 {/* License List with Search and Tabs */}
@@ -80,3 +81,4 @@ export default async function AdminLicensesPage() {
         </div>
     )
 }
+

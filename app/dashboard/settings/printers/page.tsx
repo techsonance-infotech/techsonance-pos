@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Home, ArrowLeft, Printer, Save, TestTube, Check, RefreshCw } from "lucide-react"
+import { Home, Printer, Save, TestTube, Check, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -50,7 +50,18 @@ export default function PrinterSettingsPage() {
     const detectPrinters = async () => {
         setDetectingPrinters(true)
         try {
-            // Common thermal printer models as fallback
+            // Check if running in Electron
+            if ((window as any).electron && (window as any).electron.getPrinters) {
+                const systemPrinters = await (window as any).electron.getPrinters()
+                if (systemPrinters && systemPrinters.length > 0) {
+                    const printerNames = systemPrinters.map((p: any) => p.name)
+                    setAvailablePrinters(printerNames)
+                    toast.success(`Found ${printerNames.length} printers`)
+                    return
+                }
+            }
+
+            // Fallback for Web/Dev
             const commonPrinters = [
                 "Default Printer",
                 "Epson TM-T82",
@@ -61,7 +72,7 @@ export default function PrinterSettingsPage() {
             ]
 
             setAvailablePrinters(commonPrinters)
-            toast.info("Showing common printer models")
+            toast.info("Using fallback printer list (Web Mode)")
         } catch (error) {
             console.error("Error detecting printers:", error)
             setAvailablePrinters(["Default Printer"])
@@ -180,9 +191,7 @@ export default function PrinterSettingsPage() {
 
             {/* Header */}
             <div>
-                <Link href="/dashboard/settings" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors mb-4">
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Back to Overview
-                </Link>
+
                 <h1 className="text-3xl font-bold text-gray-900">Printer Settings</h1>
                 <p className="text-gray-500 mt-2 text-lg">Configure thermal printer and receipt formatting</p>
             </div>
@@ -452,6 +461,14 @@ export default function PrinterSettingsPage() {
                             </div>
 
                             <div className="flex items-start gap-3">
+                                <div className="h-2 w-2 rounded-full bg-green-600 mt-1.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-green-800">Margins</p>
+                                    <p className="text-sm text-green-700">Top: {topMargin}mm, Bottom: {bottomMargin}mm</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-3">
                                 <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${autoPrint ? 'bg-green-600' : 'bg-gray-400'}`} />
                                 <div>
                                     <p className="text-sm font-medium text-green-800">Auto-print</p>
@@ -461,7 +478,123 @@ export default function PrinterSettingsPage() {
                         </div>
 
                         <Button
-                            onClick={handleTestPrint}
+                            onClick={async () => {
+                                setTesting(true)
+                                try {
+                                    const { renderToStaticMarkup } = await import('react-dom/server')
+                                    const { ReceiptTemplate } = await import('@/components/pos/receipt-template')
+
+                                    // Mock Order Data for Test Print
+                                    const mockOrder = {
+                                        kotNo: 'TEST-001',
+                                        createdAt: new Date(),
+                                        customerName: 'Test Customer',
+                                        tableName: 'Table 1',
+                                        items: [
+                                            { name: 'Sample Item 1', quantity: 1, unitPrice: 100 },
+                                            { name: 'Sample Item 2', quantity: 2, unitPrice: 150 }
+                                        ],
+                                        subtotal: 400,
+                                        discount: 0,
+                                        discountAmount: 0,
+                                        taxAmount: 20,
+                                        totalAmount: 420,
+                                        paymentMode: 'CASH'
+                                    }
+
+                                    const mockBusinessDetails = {
+                                        name: 'Test Business',
+                                        address: '123 Test St, City',
+                                        phone: '9876543210',
+                                        email: 'test@example.com',
+                                        taxRate: '5',
+                                        taxName: 'GST',
+                                        showTaxBreakdown: true,
+                                        enableDiscount: false
+                                    }
+
+                                    // Use CURRENT form values for immediate feedback
+                                    const currentSettings = {
+                                        printerName,
+                                        paperWidth,
+                                        fontSize,
+                                        topMargin,
+                                        bottomMargin
+                                    }
+
+                                    const html = renderToStaticMarkup(
+                                        <ReceiptTemplate
+                                            order={mockOrder}
+                                            businessDetails={mockBusinessDetails}
+                                            storeDetails={null}
+                                            printerSettings={currentSettings}
+                                        />
+                                    )
+
+                                    if ((window as any).electron && (window as any).electron.isDesktop) {
+                                        const printOptions = {
+                                            printerName: printerName,
+                                            margins: {
+                                                marginType: 'custom',
+                                                top: parseInt(topMargin || '0'),
+                                                bottom: parseInt(bottomMargin || '0'),
+                                                left: 0,
+                                                right: 0
+                                            }
+                                        }
+
+                                        const result = await (window as any).electron.printReceipt(html, printOptions)
+
+                                        if (result.success) {
+                                            toast.success("Test print sent successfully!")
+                                        } else {
+                                            toast.error("Failed to print: " + result.error)
+                                        }
+                                    } else {
+                                        // Web Fallback
+                                        const printWindow = window.open('', '_blank')
+                                        if (printWindow) {
+                                            printWindow.document.write(`
+                                                <html>
+                                                    <head>
+                                                        <title>Test Print</title>
+                                                        <style>
+                                                            @page { 
+                                                                size: ${paperWidth}mm auto;
+                                                                margin: 0;
+                                                            }
+                                                            body { 
+                                                                margin: 0;
+                                                                width: ${paperWidth}mm;
+                                                            }
+                                                        </style>
+                                                    </head>
+                                                    <body>
+                                                        ${html}
+                                                    </body>
+                                                </html>
+                                            `)
+                                            printWindow.document.close()
+
+                                            // Wait for content to load slightly
+                                            setTimeout(() => {
+                                                printWindow.focus()
+                                                printWindow.print()
+                                                // auto-close check? usually better to let user close
+                                            }, 250)
+
+                                            toast.success("Opened print dialog")
+                                        } else {
+                                            toast.error("Popup blocked. Please allow popups for test print.")
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error("Test print error:", error)
+                                    toast.error("An error occurred during test print")
+                                } finally {
+                                    setTesting(false)
+                                }
+                            }}
                             disabled={testing}
                             className="w-full mt-6 bg-green-600 hover:bg-green-700 h-12"
                         >

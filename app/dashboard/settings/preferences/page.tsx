@@ -17,8 +17,8 @@ export default function AppPreferencesPage() {
     const [saving, setSaving] = useState(false)
 
     const [theme, setTheme] = useState("light")
-    const [currencyCode, setCurrencyCode] = useState("USD")
-    const [dateFormat, setDateFormat] = useState("MM/DD/YYYY")
+    const [currencyCode, setCurrencyCode] = useState("INR")
+    const [dateFormat, setDateFormat] = useState("DD/MM/YYYY")
 
     useEffect(() => {
         loadPreferences()
@@ -95,9 +95,6 @@ export default function AppPreferencesPage() {
 
             {/* Header */}
             <div>
-                <Link href="/dashboard/settings" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors mb-4">
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Back to Overview
-                </Link>
                 <h1 className="text-3xl font-bold text-gray-900">App Preferences</h1>
                 <p className="text-gray-500 mt-2 text-lg">Customize your application experience</p>
             </div>

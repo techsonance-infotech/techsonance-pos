@@ -8,38 +8,67 @@ import { unstable_cache, revalidateTag } from "next/cache"
 
 // Internal DB fetcher
 async function fetchUser(userId: string) {
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-            id: true,
-            username: true,
-            role: true,
-            // Multi-tenant context
-            companyId: true,
-            company: {
-                select: {
-                    id: true,
-                    name: true,
-                    slug: true,
-                    logo: true
-                }
-            },
-            defaultStoreId: true,
-            defaultStore: true,
-            // Security fields
-            disabledModules: true,
-            stores: {
-                select: {
-                    id: true,
-                    name: true,
-                    location: true,
-                    tableMode: true,
-                    companyId: true
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                contactNo: true,
+                role: true,
+                // Multi-tenant context
+                companyId: true,
+                company: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        logo: true
+                    }
+                },
+                defaultStoreId: true,
+                defaultStore: true,
+                // Security fields
+                disabledModules: true,
+                stores: {
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true,
+                        tableMode: true,
+                        companyId: true
+                    }
                 }
             }
+        })
+
+        // For Business Owners and Managers, ensure we return ALL stores in their company
+        if (user && (user.role === 'BUSINESS_OWNER' || user.role === 'SUPER_ADMIN' || user.role === 'MANAGER') && user.companyId) {
+            try {
+                const allStores = await prisma.store.findMany({
+                    where: { companyId: user.companyId },
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true,
+                        tableMode: true,
+                        companyId: true
+                    }
+                })
+                return { ...user, stores: allStores }
+            } catch (e) {
+                console.warn("[fetchUser] Failed to fetch company stores:", e)
+                return user // Return user without extra stores if fetch fails
+            }
         }
-    })
-    return user
+
+        return user
+
+    } catch (error) {
+        console.warn(`[fetchUser] Failed to fetch user ${userId} (Offline?):`, error)
+        return null
+    }
 }
 
 // Direct DB call (No Cache for Critical User State)
@@ -51,39 +80,58 @@ export const getUserProfile = cache(async () => {
     const cookieStore = await cookies()
     const userId = cookieStore.get('session_user_id')?.value
 
+    // console.log(`[getUserProfile] userId from cookie: ${userId}`)
+
+    // console.log(`[getUserProfile] userId from cookie: ${userId}`)
+
     if (!userId) {
+        console.log("[getUserProfile] No userId in cookie")
         return null
     }
 
-    // Use cached fetcher, passing userId as argument which forms part of the cache key automatically in newer Next.js? 
-    // Actually unstable_cache 2nd arg is keyParts. 
-    // To properly cache per user, we need to wrap the fetcher uniquely or rely on arguments.
-    // unstable_cache(fn, keyParts, options)(...args)
-    // So we need to define the cached function outside.
-
-    // Correct usage:
     const user = await getCachedUser(userId)
+    // console.log(`[getUserProfile] user found in DB: ${!!user}, role: ${user?.role}`)
 
     if (!user) {
         return null
     }
 
-    const notifications = await prisma.notification.findMany({
-        where: {
-            userId: userId,
-            isRead: false
-        },
-        orderBy: { createdAt: 'desc' }
-    })
+    let notifications: any[] = []
+    try {
+        notifications = await prisma.notification.findMany({
+            where: {
+                userId: userId,
+                isRead: false
+            },
+            orderBy: { createdAt: 'desc' }
+        })
+    } catch (e) {
+        console.warn("[getUserProfile] Failed to fetch notifications (Offline?)")
+    }
 
     return { ...user, notifications }
 })
 
 export async function getStoreStaff() {
     try {
+        const currentUser = await getUserProfile()
+        if (!currentUser?.companyId) {
+            // If no company, maybe return empty or just throw
+            // But if SUPER_ADMIN? They might see all. 
+            // The prompt says "only show that user will be visible", implies strict isolation.
+            // If Platform Admin, maybe they see all? 
+            // Let's assume strict company isolation even for safety.
+            // Actually, if currentUser has no company, they can't see company staff.
+            return []
+        }
+
         const staff = await prisma.user.findMany({
             where: {
-                isApproved: true
+                companyId: currentUser.companyId, // Filter by Company
+                isApproved: true,
+                role: {
+                    not: 'SUPER_ADMIN' // Exclude Super Admin role
+                }
             },
             select: {
                 id: true,
@@ -94,6 +142,7 @@ export async function getStoreStaff() {
                 pin: true,
                 isLocked: true,
                 createdAt: true,
+                disabledModules: true,
                 stores: {
                     select: {
                         id: true,
@@ -106,8 +155,38 @@ export async function getStoreStaff() {
             }
         })
         return staff
+        return staff
     } catch (error) {
         console.error("Failed to fetch staff:", error)
+        return []
+    }
+}
+
+export async function getCompanyStores() {
+    try {
+        const currentUser = await getUserProfile()
+        if (!currentUser?.companyId) {
+            console.log(`[getCompanyStores] User ${currentUser?.id} has no companyId. Role: ${currentUser?.role}`)
+            return []
+        }
+
+        const stores = await prisma.store.findMany({
+            where: {
+                companyId: currentUser.companyId
+            },
+            select: {
+                id: true,
+                name: true,
+                location: true
+            },
+            orderBy: {
+                name: 'asc'
+            }
+        })
+        console.log(`[getCompanyStores] Fetched ${stores.length} stores for company ${currentUser.companyId}`)
+        return stores
+    } catch (error) {
+        console.error("Failed to fetch stores:", error)
         return []
     }
 }

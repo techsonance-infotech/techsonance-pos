@@ -3,12 +3,13 @@
 // Force HMR Update
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building, Trash2
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building, Trash2, MessageSquare
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
 import systemInfo from "@/config/system-info.json"
 import SettingsLoading from "./loading"
+import { getPOSService } from "@/lib/pos-service"
 
 type SettingCardProps = {
     icon: any
@@ -58,9 +59,19 @@ export default function SettingsPage() {
             .then(user => {
                 if (user) setUserRole(user.role)
             })
-            .catch(error => {
+            .catch(async (error) => {
                 // Offline - show default settings without admin options
                 console.warn("Settings page: Failed to get user profile (offline?)", error)
+                try {
+                    const posService = getPOSService()
+                    const settings = await posService.getSettings()
+                    const profileSetting = settings.find((s: any) => s.key === 'user_profile')
+                    if (profileSetting && profileSetting.value) {
+                        setUserRole(profileSetting.value.role)
+                    }
+                } catch (e) {
+                    console.error("Failed to load cached role", e)
+                }
             })
             .finally(() => {
                 setIsLoading(false)
@@ -88,14 +99,17 @@ export default function SettingsPage() {
 
             {/* Settings Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <SettingCard
-                    icon={Building2}
-                    title="Business Settings"
-                    description="Logo, Name, Address"
-                    colorClass="text-orange-600"
-                    iconBgClass="bg-orange-50"
-                    href="/dashboard/settings/business"
-                />
+                {(userRole === 'SUPER_ADMIN' || userRole === 'BUSINESS_OWNER') && (
+                    <SettingCard
+                        icon={Building2}
+                        title="Business Settings"
+                        description="Logo, Name, Address"
+                        colorClass="text-orange-600"
+                        iconBgClass="bg-orange-50"
+                        href="/dashboard/settings/business"
+                    />
+                )}
+
                 {userRole === 'SUPER_ADMIN' && (
                     <SettingCard
                         icon={Key}
@@ -104,6 +118,39 @@ export default function SettingsPage() {
                         colorClass="text-red-600"
                         iconBgClass="bg-red-50"
                         href="/dashboard/admin/licenses"
+                    />
+                )}
+
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={MessageSquare}
+                        title="License Requests"
+                        description="View and respond to license requests"
+                        colorClass="text-purple-600"
+                        iconBgClass="bg-purple-50"
+                        href="/dashboard/admin/license-requests"
+                    />
+                )}
+
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={Mail}
+                        title="Send Notifications"
+                        description="Broadcast messages to companies"
+                        colorClass="text-pink-600"
+                        iconBgClass="bg-pink-50"
+                        href="/dashboard/admin/notifications/send"
+                    />
+                )}
+
+                {userRole === 'BUSINESS_OWNER' && (
+                    <SettingCard
+                        icon={MessageSquare}
+                        title="License Support"
+                        description="Request and manage your license"
+                        colorClass="text-purple-600"
+                        iconBgClass="bg-purple-50"
+                        href="/dashboard/license-chat"
                     />
                 )}
 
@@ -169,14 +216,16 @@ export default function SettingsPage() {
                     href="/dashboard/settings/printers"
                 />
 
-                <SettingCard
-                    icon={Users}
-                    title="Staff Management"
-                    description="Manage staff and permissions"
-                    colorClass="text-purple-600"
-                    iconBgClass="bg-purple-50"
-                    href="/dashboard/settings/staff"
-                />
+                {(userRole === 'SUPER_ADMIN' || userRole === 'BUSINESS_OWNER' || userRole === 'MANAGER') && (
+                    <SettingCard
+                        icon={Users}
+                        title="Staff Management"
+                        description="Manage staff and permissions"
+                        colorClass="text-purple-600"
+                        iconBgClass="bg-purple-50"
+                        href="/dashboard/settings/staff"
+                    />
+                )}
 
                 <SettingCard
                     icon={Settings}
@@ -195,6 +244,17 @@ export default function SettingsPage() {
                     iconBgClass="bg-cyan-50"
                     href="/dashboard/settings/about"
                 />
+
+                {(userRole === 'SUPER_ADMIN' || userRole === 'BUSINESS_OWNER' || userRole === 'MANAGER') && (
+                    <SettingCard
+                        icon={FileText}
+                        title="Activity Logs"
+                        description="View system logs and audit trail"
+                        colorClass="text-slate-600"
+                        iconBgClass="bg-slate-50"
+                        href="/dashboard/settings/logs"
+                    />
+                )}
             </div>
 
             {/* System Information Panel */}

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electron', {
     saveCategoriesBulk: (categories: any[]) => ipcRenderer.invoke('db-save-categories-bulk', categories),
     saveSettingsBulk: (settings: any[]) => ipcRenderer.invoke('db-save-settings-bulk', settings),
     getSettings: () => ipcRenderer.invoke('db-get-settings'),
+    getTables: () => ipcRenderer.invoke('db-get-tables'),
 
     // Sync API
     getPendingOrders: () => ipcRenderer.invoke('sync-orders'),
@@ -18,7 +19,8 @@ contextBridge.exposeInMainWorld('electron', {
 
     // System API
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
-    printReceipt: (html: string) => ipcRenderer.invoke('print-receipt', html),
+    getPrinters: () => ipcRenderer.invoke('get-printers'),
+    printReceipt: (html: string, options?: any) => ipcRenderer.invoke('print-receipt', html, options),
     isDesktop: true
 });
 
@@ -26,7 +28,8 @@ declare global {
     interface Window {
         electron?: {
             isDesktop: boolean;
-            printReceipt: (html: string) => Promise<boolean>;
+            getPrinters: () => Promise<any[]>;
+            printReceipt: (html: string, options?: any) => Promise<{ success: boolean; error?: string }>;
         }
     }
 }

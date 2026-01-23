@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { getUserProfile } from "./user"
-import { SecurityRuleType } from "@prisma/client"
+import { SecurityRuleType } from "@/types/enums"
 
 async function checkSuperAdmin() {
     const user = await getUserProfile()

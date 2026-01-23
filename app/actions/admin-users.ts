@@ -1,9 +1,14 @@
 'use server'
 
-import { prisma } from "@/lib/prisma"
+import { prisma, isPostgres } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { Role } from "@prisma/client"
+import { Role } from "@/types/enums"
 import { getUserProfile } from "./user"
+import bcrypt from 'bcryptjs'
+import { generateVerificationToken, hashToken } from "@/app/actions/verify-email"
+import { sendVerificationEmail } from "@/lib/email"
+
+const TOKEN_EXPIRY_MINUTES = 30
 
 // Check for Super Admin or Business Owner access
 async function checkAdmin() {
@@ -12,13 +17,19 @@ async function checkAdmin() {
 }
 
 export async function createUser(data: any) {
-    if (!await checkAdmin()) return { error: "Unauthorized" }
+    const currentUser = await getUserProfile()
+    if (!currentUser || (currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'BUSINESS_OWNER')) return { error: "Unauthorized" }
 
-    const { username, email, password, role, contactNo } = data
+    const { username, email, password, role, contactNo, disabledModules } = data
 
     // Basic validation
     if (!username || !email || !password) {
         return { error: "Missing required fields" }
+    }
+
+    // Role Validation: Business Owner cannot create Super Admin
+    if (currentUser.role === 'BUSINESS_OWNER' && role === 'SUPER_ADMIN') {
+        return { error: "Cannot create Super Admin account" }
     }
 
     try {
@@ -36,20 +47,44 @@ export async function createUser(data: any) {
             return { error: "Username or Email already exists" }
         }
 
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10)
+
+        // Generate verification token
+        const token = await generateVerificationToken()
+        const hashedToken = await hashToken(token)
+        const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000)
+
         await prisma.user.create({
             data: {
                 username,
                 email,
-                password, // Note: In production, hash this!
+                password: hashedPassword,
                 role: role as Role || 'USER',
                 contactNo,
-                isApproved: true, // Admin created users are auto-approved
-                isLocked: false
+                isApproved: true, // Auto-approved since created by Admin
+                isLocked: false,
+                isVerified: false, // Requires email verification
+                verificationToken: hashedToken,
+                verificationExpiresAt: expiresAt,
+                companyId: currentUser.companyId,
+                defaultStoreId: data.storeId || currentUser.defaultStoreId,
+                // Postgres supports Arrays, SQLite uses CSV String
+                disabledModules: isPostgres
+                    ? (disabledModules || []) // Array
+                    : (Array.isArray(disabledModules) ? disabledModules.join(',') : (disabledModules || "")), // CSV
+                stores: data.storeId ? {
+                    connect: { id: data.storeId }
+                } : undefined
             }
         })
 
+        // Send verification email
+        await sendVerificationEmail(email, token)
+
         revalidatePath('/dashboard/admin/users')
-        return { success: true }
+        revalidatePath('/dashboard/settings/staff')
+        return { success: true, message: "Staff created. Verification email sent." }
     } catch (e: any) {
         console.error("Create User Error:", e)
         return { error: e.message || "Failed to create user" }
@@ -59,9 +94,17 @@ export async function createUser(data: any) {
 export async function updateUser(userId: string, data: any) {
     if (!await checkAdmin()) return { error: "Unauthorized" }
 
-    const { username, email, role, contactNo } = data
+    const { username, email, role, contactNo, disabledModules } = data
+    console.log(`[updateUser] Updating user ${userId} with data:`, JSON.stringify(data))
 
     try {
+        // Fetch current user state to check for email change
+        const currentUser = await prisma.user.findUnique({
+            where: { id: userId }
+        })
+
+        if (!currentUser) return { error: "User not found" }
+
         // Check if email/username changes conflict with others
         const existing = await prisma.user.findFirst({
             where: {
@@ -78,23 +121,70 @@ export async function updateUser(userId: string, data: any) {
         })
 
         if (existing) {
+            console.log(`[updateUser] Conflict found with user ${existing.id}`)
             return { error: "Username or Email already in use by another user" }
+        }
+
+        const isEmailChanged = email && email !== currentUser.email
+        let updateData: any = {
+            username,
+            role: role as Role,
+            contactNo,
+            // Postgres supports Arrays, SQLite uses CSV String
+            disabledModules: isPostgres
+                ? disabledModules // Keep as array (Postgres)
+                : (Array.isArray(disabledModules) ? disabledModules.join(',') : (disabledModules || "")) // Convert to CSV (SQLite)
+        }
+
+        let verificationTokenStr = null
+
+        if (isEmailChanged) {
+            updateData.email = email
+            updateData.isVerified = false // Revoke verification
+
+            // Generate new token
+            const token = await generateVerificationToken()
+            const hashedToken = await hashToken(token)
+            const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000)
+
+            updateData.verificationToken = hashedToken
+            updateData.verificationExpiresAt = expiresAt
+
+            verificationTokenStr = token // Store unhashed token to send email
+            updateData.email = email
+        }
+
+        // Store Assignment Logic
+        if (data.storeId) {
+            updateData.defaultStoreId = data.storeId
+            updateData.stores = {
+                set: [], // Clear existing assignments (assuming single store for now)
+                connect: { id: data.storeId }
+            }
         }
 
         await prisma.user.update({
             where: { id: userId },
-            data: {
-                username,
-                email,
-                role: role as Role,
-                contactNo
-            }
+            data: updateData
         })
 
+        // Send email if changed
+        if (isEmailChanged && verificationTokenStr) {
+            await sendVerificationEmail(email, verificationTokenStr)
+        }
+
         revalidatePath('/dashboard/admin/users')
-        return { success: true }
+        revalidatePath('/dashboard/settings/staff')
+
+        return {
+            success: true,
+            message: isEmailChanged
+                ? "User updated. Email changed, verification email sent."
+                : "User updated successfully"
+        }
     } catch (e: any) {
-        return { error: "Failed to update user" }
+        console.error("[updateUser] Failed to update user:", e)
+        return { error: "Failed to update user: " + e.message }
     }
 }
 
@@ -141,13 +231,34 @@ export async function resetPassword(userId: string, newPassword: string) {
     if (!newPassword || newPassword.length < 6) return { error: "Password must be at least 6 chars" }
 
     try {
+        const hashedPassword = await bcrypt.hash(newPassword, 10)
         await prisma.user.update({
             where: { id: userId },
-            data: { password: newPassword } // Hash in production
+            data: { password: hashedPassword }
         })
         revalidatePath('/dashboard/admin/users')
         return { success: true }
     } catch (e) {
         return { error: "Failed to reset password" }
+    }
+}
+
+export async function approveUser(userId: string) {
+    if (!await checkAdmin()) return { error: "Unauthorized" }
+
+    try {
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                isApproved: true,
+                isVerified: true, // Manual approval implies verification
+                verificationToken: null, // Clear token
+                verificationExpiresAt: null
+            }
+        })
+        revalidatePath('/dashboard/admin/users')
+        return { success: true }
+    } catch (e) {
+        return { error: "Failed to approve user" }
     }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { reactivateMyStoreLicense } from "@/app/actions/license"
+import { activateLicense } from "@/app/actions/license"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,7 +18,7 @@ export function ReactivateForm() {
         setLoading(true)
 
         try {
-            const result = await reactivateMyStoreLicense(key)
+            const result = await activateLicense(key)
             if (result.error) {
                 toast.error(result.error)
             } else {

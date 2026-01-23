@@ -13,8 +13,8 @@ export interface LocalOrder {
     tableId?: string;
     tableName?: string;
     createdAt: number; // Timestamp
-    status: 'PENDING_SYNC' | 'SYNCED' | 'FAILED';
-    originalStatus: 'HELD' | 'COMPLETED'; // The actual order status to use when syncing
+    status: 'PENDING_SYNC' | 'SYNCED' | 'FAILED' | 'CANCELLED';
+    originalStatus: 'HELD' | 'COMPLETED' | 'CANCELLED'; // The actual order status to use when syncing
     syncedAt?: number;
     error?: string; // For failed sync attempts
 }
@@ -49,6 +49,8 @@ export interface LocalTable {
     capacity?: number;
     status: string; // 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'
     orderId?: string;
+    heldOrderId?: string;
+    heldOrderCreatedAt?: string;
 }
 
 export class POSDatabase extends Dexie {
@@ -59,7 +61,7 @@ export class POSDatabase extends Dexie {
     posTables!: Table<LocalTable>; // Renamed to avoid conflict with Dexie.tables
 
     constructor() {
-        super('TechSonancePOS');
+        super('SyncServePOS');
 
         // Schema versioning - v3: Added tables
         this.version(3).stores({

@@ -5,6 +5,7 @@ import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 import { getUserProfile } from "./user"
+import { logActivity } from "@/lib/logger"
 
 const SETTINGS_KEYS = [
     'business_name',
@@ -18,7 +19,9 @@ const SETTINGS_KEYS = [
     'show_tax_breakdown',
     'enable_discount',
     'default_discount',
-    'discount_type'
+    'discount_type',
+    'min_order_for_discount',
+    'max_discount'
 ] as const
 
 // Internal DB Fetcher
@@ -36,7 +39,7 @@ async function fetchBusinessSettings() {
     }, {} as Record<string, string>)
 
     return {
-        businessName: settingsMap.business_name || 'CafePOS',
+        businessName: settingsMap.business_name || '',
         logoUrl: settingsMap.business_logo || '', // Default empty or placeholder
         address: settingsMap.business_address || '',
         phone: settingsMap.business_phone || '',
@@ -47,13 +50,30 @@ async function fetchBusinessSettings() {
         showTaxBreakdown: settingsMap.show_tax_breakdown === 'true',
         enableDiscount: settingsMap.enable_discount === 'true',
         defaultDiscount: settingsMap.default_discount || '0',
-        discountType: settingsMap.discount_type || 'FIXED' // 'FIXED' | 'PERCENTAGE'
+        discountType: settingsMap.discount_type || 'FIXED', // 'FIXED' | 'PERCENTAGE'
+        minOrderForDiscount: settingsMap.min_order_for_discount || '0',
+        maxDiscount: settingsMap.max_discount || '0'
     }
 }
 
 // Export without cache for now - cache was causing stale data issues
 export async function getBusinessSettings() {
-    return fetchBusinessSettings()
+    const settings = await fetchBusinessSettings()
+
+    // Check if user is authenticated to see full details
+    const user = await getUserProfile()
+    if (!user) {
+        // Return only public info
+        return {
+            businessName: settings.businessName,
+            logoUrl: settings.logoUrl,
+            phone: settings.phone, // Often needed for support on login
+            address: settings.address // Often needed for location confirmation
+            // Omit sensitive config like tax/discount logic from public view
+        }
+    }
+
+    return settings
 }
 
 /**
@@ -116,8 +136,8 @@ export async function getCompanyBusinessSettings() {
                         businessName: company.name,
                         logoUrl: company.logo || '',
                         address: company.address || '',
-                        phone: company.phone || '',
-                        email: company.email || '',
+                        phone: company.phone || user.contactNo || '',
+                        email: company.email || user.email || '',
                         slug: company.slug,
                         // Include global tax & discount settings
                         gstNo: globalSettings.gstNo,
@@ -126,7 +146,9 @@ export async function getCompanyBusinessSettings() {
                         showTaxBreakdown: globalSettings.showTaxBreakdown,
                         enableDiscount: globalSettings.enableDiscount,
                         defaultDiscount: globalSettings.defaultDiscount,
-                        discountType: globalSettings.discountType
+                        discountType: globalSettings.discountType,
+                        minOrderForDiscount: globalSettings.minOrderForDiscount,
+                        maxDiscount: globalSettings.maxDiscount
                     }
                 }
             }
@@ -138,8 +160,8 @@ export async function getCompanyBusinessSettings() {
             businessName: globalSettings.businessName,
             logoUrl: globalSettings.logoUrl,
             address: globalSettings.address,
-            phone: globalSettings.phone,
-            email: globalSettings.email,
+            phone: globalSettings.phone || user.contactNo || '',
+            email: globalSettings.email || user.email || '',
             gstNo: globalSettings.gstNo,
             // Tax & Discount
             taxRate: globalSettings.taxRate,
@@ -147,7 +169,9 @@ export async function getCompanyBusinessSettings() {
             showTaxBreakdown: globalSettings.showTaxBreakdown,
             enableDiscount: globalSettings.enableDiscount,
             defaultDiscount: globalSettings.defaultDiscount,
-            discountType: globalSettings.discountType
+            discountType: globalSettings.discountType,
+            minOrderForDiscount: globalSettings.minOrderForDiscount,
+            maxDiscount: globalSettings.maxDiscount
         }
 
         // Fetch full company data if user has a company (Redundant check? Logic above returns early if company exists... 
@@ -178,6 +202,8 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             enable_discount: formData.get('enableDiscount') as string,
             default_discount: formData.get('defaultDiscount') as string,
             discount_type: formData.get('discountType') as string,
+            min_order_for_discount: formData.get('minOrderForDiscount') as string,
+            max_discount: formData.get('maxDiscount') as string,
         }
 
         // 2. Prepare Business Details
@@ -231,6 +257,15 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
         revalidatePath('/dashboard/settings/taxes')
         revalidatePath('/dashboard')
         revalidatePath('/dashboard/new-order')
+
+        // Log Activity
+        await logActivity(
+            'UPDATE_SETTINGS',
+            'SETTINGS',
+            { globalUpdates, businessUpdates },
+            user?.id
+        )
+
         return { success: true, message: "Settings updated successfully" }
     } catch (error) {
         console.error("Failed to update settings:", error)
@@ -274,6 +309,14 @@ export async function uploadLogo(formData: FormData) {
             revalidatePath('/dashboard')
             revalidatePath('/dashboard/new-order')
             revalidatePath('/dashboard/recent-orders')
+
+            await logActivity(
+                'UPLOAD_LOGO',
+                'SETTINGS',
+                { url, companyId: user.companyId },
+                user.id
+            )
+
             return { success: true, url }
         }
 
@@ -287,6 +330,14 @@ export async function uploadLogo(formData: FormData) {
             ; (revalidateTag as any)('business-settings', 'max')
         revalidatePath('/')
         revalidatePath('/dashboard')
+
+        await logActivity(
+            'UPLOAD_LOGO',
+            'SETTINGS',
+            { url },
+            user?.id
+        )
+
         return { success: true, url }
     } catch (error) {
         console.error("Logo upload failed:", error)

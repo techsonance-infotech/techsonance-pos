@@ -11,11 +11,13 @@ contextBridge.exposeInMainWorld('electron', {
     saveCategoriesBulk: (categories) => ipcRenderer.invoke('db-save-categories-bulk', categories),
     saveSettingsBulk: (settings) => ipcRenderer.invoke('db-save-settings-bulk', settings),
     getSettings: () => ipcRenderer.invoke('db-get-settings'),
+    getTables: () => ipcRenderer.invoke('db-get-tables'),
     // Sync API
     getPendingOrders: () => ipcRenderer.invoke('sync-orders'),
     markOrdersSynced: (ids) => ipcRenderer.invoke('db-mark-synced', ids),
     // System API
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
-    printReceipt: (html) => ipcRenderer.invoke('print-receipt', html),
+    getPrinters: () => ipcRenderer.invoke('get-printers'),
+    printReceipt: (html, options) => ipcRenderer.invoke('print-receipt', html, options),
     isDesktop: true
 });

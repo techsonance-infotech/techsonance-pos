@@ -89,7 +89,7 @@ export async function sendPasswordResetOTP(
                                 This is an automated email from SyncServe POS. Please do not reply.
                             </p>
                             <p style="margin: 0; color: #f97316; font-size: 12px; text-align: center; font-weight: 600;">
-                                Powered by TechSonance InfoTech LLP
+                                Powered by SyncServe
                             </p>
                         </td>
                     </tr>
@@ -176,7 +176,7 @@ export async function sendPasswordResetSuccess(email: string): Promise<boolean> 
                                 This is an automated email from SyncServe POS. Please do not reply.
                             </p>
                             <p style="margin: 0; color: #f97316; font-size: 12px; text-align: center; font-weight: 600;">
-                                Powered by TechSonance InfoTech LLP
+                                Powered by SyncServe
                             </p>
                         </td>
                     </tr>
@@ -278,7 +278,7 @@ export async function sendVerificationEmail(email: string, token: string): Promi
                                 This is an automated email from SyncServe POS. Please do not reply.
                             </p>
                             <p style="margin: 0; color: #f97316; font-size: 12px; text-align: center; font-weight: 600;">
-                                Powered by TechSonance InfoTech LLP
+                                Powered by SyncServe
                             </p>
                         </td>
                     </tr>
