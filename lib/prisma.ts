@@ -1,5 +1,3 @@
-import { PrismaClient as SqliteClient } from '@prisma/client'
-import { PrismaClient as PostgresClient } from '@prisma/client-postgres'
 import { withAccelerate } from '@prisma/extension-accelerate'
 
 // Helper to safely get env var without quotes
@@ -13,7 +11,6 @@ const dbUrl = getEnv('DATABASE_URL')
 const sqliteUrl = getEnv('SQLITE_DATABASE_URL')
 
 // Check if we should use PostgreSQL (web mode) or SQLite (desktop mode)
-// Check if we should use PostgreSQL (web mode) or SQLite (desktop mode)
 export const isPostgres = dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')
 export const useSqlite = sqliteUrl.startsWith('file:') && !isPostgres
 
@@ -23,25 +20,21 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createPrismaClient() {
-    // console.log(`[Prisma] Creating client. isPostgres: ${isPostgres}, useSqlite: ${useSqlite}`)
     if (isPostgres) {
-        // console.log(`[Prisma] Initializing PostgreSQL client with URL: ${dbUrl.substring(0, 20)}...`)
+        // Dynamic import to avoid loading SQLite bindings in Vercel
+        const { PrismaClient: PostgresClient } = require('@prisma/client-postgres')
         return new PostgresClient({
             datasourceUrl: dbUrl,
             log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
         })
-    } else if (useSqlite) {
-        // console.log(`[Prisma] Initializing SQLite client with URL: ${sqliteUrl}`)
-        return new SqliteClient({
-            datasourceUrl: sqliteUrl,
-            log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-        }).$extends(withAccelerate())
     } else {
-        // console.log(`[Prisma] Initializing Fallback SQLite client with URL: ${dbUrl || sqliteUrl}`)
-        return new SqliteClient({
-            datasourceUrl: dbUrl || sqliteUrl,
+        // SQLite mode
+        const { PrismaClient: SqliteClient } = require('@prisma/client')
+        const client = new SqliteClient({
+            datasourceUrl: useSqlite ? sqliteUrl : (dbUrl || sqliteUrl),
             log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-        }).$extends(withAccelerate())
+        })
+        return client.$extends(withAccelerate())
     }
 }
 
