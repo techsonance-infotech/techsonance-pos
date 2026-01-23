@@ -4,6 +4,9 @@ import { useState, useEffect } from "react"
 import { Home, ArrowLeft, Users, Plus, Edit, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
+import { getUserProfile } from "@/app/actions/user"
+import { toast } from "sonner"
 import { getStoreStaff } from "@/app/actions/user"
 import { StaffModal } from "@/components/admin/staff-modal"
 import { StaffDetailModal } from "@/components/admin/staff-detail-modal"
@@ -22,17 +25,38 @@ export default function StaffSettingsPage() {
     // Detail Modal State
     const [detailModalOpen, setDetailModalOpen] = useState(false)
     const [detailUser, setDetailUser] = useState<any>(null)
+    const router = useRouter()
+
+    // Store Data
+    const [stores, setStores] = useState<any[]>([])
 
     useEffect(() => {
-        loadData()
+        // Enforce RBAC
+        getUserProfile().then(user => {
+            if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER' && user.role !== 'MANAGER')) {
+                toast.error("Unauthorized Access")
+                router.push('/dashboard/settings')
+            } else {
+                loadData()
+            }
+        })
     }, [])
 
     const loadData = async () => {
         setLoading(true)
         try {
-            const data = await getStoreStaff()
-            setStaff(data)
+            const { getCompanyStores } = await import("@/app/actions/user")
+            console.log("Client: Fetching staff and stores...")
+            const [staffData, storesData] = await Promise.all([
+                getStoreStaff(),
+                getCompanyStores()
+            ])
+            console.log("Client: Staff data received:", staffData?.length)
+            console.log("Client: Stores data received:", storesData)
+            setStaff(staffData)
+            setStores(storesData)
         } catch (error) {
+            console.error("Client: Load failed", error)
             // Offline - staff management not available offline, just show empty
             console.warn("Staff page: Server fetch failed (offline?)", error)
             setStaff([])
@@ -118,9 +142,7 @@ export default function StaffSettingsPage() {
 
             {/* Back Link */}
             <div>
-                <Link href="/dashboard/settings" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors mb-4">
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Back to Overview
-                </Link>
+
                 <h1 className="text-3xl font-bold text-gray-900">Staff Management</h1>
                 <p className="text-gray-500 mt-2 text-lg">Manage staff members and their roles</p>
             </div>
@@ -130,7 +152,7 @@ export default function StaffSettingsPage() {
                 {/* Left: Staff List */}
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
                     <div className="flex items-center gap-4 mb-8">
-                        <div className="h-12 w-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                        <div className="h-12 w-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
                             <Users className="h-6 w-6" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900">Staff List</h2>
@@ -141,7 +163,7 @@ export default function StaffSettingsPage() {
                             <div className="py-12 text-center">
                                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                                 <p className="text-gray-400 mb-4">No staff members found.</p>
-                                <Button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-700">
+                                <Button onClick={handleCreate} className="bg-orange-600 hover:bg-orange-700 text-white">
                                     <Plus className="h-4 w-4 mr-2" />
                                     Add Your First Staff Member
                                 </Button>
@@ -151,10 +173,10 @@ export default function StaffSettingsPage() {
                                 <div
                                     key={member.id}
                                     onClick={() => handleRowClick(member)}
-                                    className="flex items-center justify-between p-4 rounded-xl bg-gray-50/50 hover:bg-gray-100/80 transition-all border border-transparent hover:border-purple-200 cursor-pointer group"
+                                    className="flex items-center justify-between p-4 rounded-xl bg-gray-50/50 hover:bg-gray-100/80 transition-all border border-transparent hover:border-orange-200 cursor-pointer group"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white font-semibold">
+                                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-semibold">
                                             {member.username?.charAt(0).toUpperCase() || 'U'}
                                         </div>
                                         <div>
@@ -183,7 +205,7 @@ export default function StaffSettingsPage() {
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={(e) => handleEdit(member, e)}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Button>
@@ -197,7 +219,7 @@ export default function StaffSettingsPage() {
                     {/* Full-width Add Button at Bottom */}
                     <Button
                         onClick={handleCreate}
-                        className="w-full mt-8 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold h-14 text-lg shadow-lg shadow-purple-200 transition-all hover:shadow-xl hover:shadow-purple-300"
+                        className="w-full mt-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold h-14 text-lg shadow-lg shadow-orange-200 transition-all hover:shadow-xl hover:shadow-orange-300"
                     >
                         <Plus className="h-5 w-5 mr-2" />
                         Add New Staff Member
@@ -205,33 +227,33 @@ export default function StaffSettingsPage() {
                 </div>
 
                 {/* Right: Overview Panel */}
-                <div className="bg-purple-50 rounded-2xl border border-purple-100 p-8 h-full min-h-[300px]">
-                    <h3 className="text-purple-900 font-bold mb-6 text-lg">Staff Overview</h3>
+                <div className="bg-orange-50 rounded-2xl border border-orange-100 p-8 h-full min-h-[300px]">
+                    <h3 className="text-orange-900 font-bold mb-6 text-lg">Staff Overview</h3>
 
                     <div className="space-y-5">
-                        <div className="flex gap-3 text-purple-800 items-start">
-                            <div className="h-1.5 w-1.5 rounded-full bg-purple-600 mt-2 shrink-0" />
+                        <div className="flex gap-3 text-orange-800 items-start">
+                            <div className="h-1.5 w-1.5 rounded-full bg-orange-600 mt-2 shrink-0" />
                             <p className="text-sm font-medium leading-relaxed">
                                 Total Staff: <span className="font-bold">{totalStaff}</span>
                             </p>
                         </div>
 
-                        <div className="flex gap-3 text-purple-800 items-start">
-                            <div className="h-1.5 w-1.5 rounded-full bg-purple-600 mt-2 shrink-0" />
+                        <div className="flex gap-3 text-orange-800 items-start">
+                            <div className="h-1.5 w-1.5 rounded-full bg-orange-600 mt-2 shrink-0" />
                             <p className="text-sm font-medium leading-relaxed">
                                 Active: <span className="font-bold">{activeStaff}</span>
                             </p>
                         </div>
 
-                        <div className="flex gap-3 text-purple-800 items-start">
-                            <div className="h-1.5 w-1.5 rounded-full bg-purple-600 mt-2 shrink-0" />
+                        <div className="flex gap-3 text-orange-800 items-start">
+                            <div className="h-1.5 w-1.5 rounded-full bg-orange-600 mt-2 shrink-0" />
                             <p className="text-sm font-medium leading-relaxed">
                                 Inactive: <span className="font-bold">{inactiveStaff}</span>
                             </p>
                         </div>
 
-                        <div className="flex gap-3 text-purple-800 items-start">
-                            <div className="h-1.5 w-1.5 rounded-full bg-purple-600 mt-2 shrink-0" />
+                        <div className="flex gap-3 text-orange-800 items-start">
+                            <div className="h-1.5 w-1.5 rounded-full bg-orange-600 mt-2 shrink-0" />
                             <p className="text-sm font-medium leading-relaxed">
                                 Roles: <span className="font-bold">{roleBreakdownText || 'None'}</span>
                             </p>
@@ -249,6 +271,7 @@ export default function StaffSettingsPage() {
                 }}
                 mode={staffModalMode}
                 user={selectedStaff}
+                stores={stores}
                 onSuccess={() => loadData()}
             />
 

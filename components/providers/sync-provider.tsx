@@ -7,6 +7,7 @@ import { db, LocalOrder } from '@/lib/db' // Still used? Helper hooks maybe? Acc
 import { getPOSService } from '@/lib/pos-service'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import { toast } from 'sonner'
+import { useBootstrap } from './bootstrap-provider'
 
 interface SyncContextType {
     isSyncing: boolean
@@ -29,6 +30,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     const [isSyncing, setIsSyncing] = useState(false)
     const [pendingCount, setPendingCount] = useState(0)
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
+    const { forceSync } = useBootstrap()
 
     // Check for pending orders
     const checkPending = useCallback(async () => {
@@ -77,6 +79,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
             toast.success(`Synced ${result.syncedIds.length} orders successfully`, { id: toastId })
 
+            // Trigger bi-directional sync (Pull latest data from server)
+            console.log("Triggering post-sync refresh...")
+            await forceSync()
+
             if (result.failedIds.length > 0) {
                 toast.error(`Failed to sync ${result.failedIds.length} orders`, { id: 'sync-failed-toast' })
             }
@@ -90,7 +96,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         } finally {
             setIsSyncing(false)
         }
-    }, [isOnline, isSyncing, checkPending])
+    }, [isOnline, isSyncing, checkPending, forceSync])
 
     // Monitor DB for changes (Polling for now, strictly Dexie `useLiveQuery` is better but this works)
     useEffect(() => {

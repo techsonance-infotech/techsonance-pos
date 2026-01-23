@@ -16,9 +16,9 @@ export async function getAppPreferences() {
 
         const prefs: any = {
             theme: 'light',
-            currencyCode: 'USD',
-            currencySymbol: '$',
-            dateFormat: 'MM/DD/YYYY'
+            currencyCode: 'INR',
+            currencySymbol: '₹',
+            dateFormat: 'DD/MM/YYYY'
         }
 
         settings.forEach((setting: any) => {
@@ -27,13 +27,13 @@ export async function getAppPreferences() {
                     prefs.theme = setting.value || 'light'
                     break
                 case 'currency_code':
-                    prefs.currencyCode = setting.value || 'USD'
+                    prefs.currencyCode = setting.value || 'INR'
                     break
                 case 'currency_symbol':
-                    prefs.currencySymbol = setting.value || '$'
+                    prefs.currencySymbol = setting.value || '₹'
                     break
                 case 'date_format':
-                    prefs.dateFormat = setting.value || 'MM/DD/YYYY'
+                    prefs.dateFormat = setting.value || 'DD/MM/YYYY'
                     break
             }
         })
@@ -43,9 +43,9 @@ export async function getAppPreferences() {
         console.error("Failed to fetch app preferences:", error)
         return {
             theme: 'light',
-            currencyCode: 'USD',
-            currencySymbol: '$',
-            dateFormat: 'MM/DD/YYYY'
+            currencyCode: 'INR',
+            currencySymbol: '₹',
+            dateFormat: 'DD/MM/YYYY'
         }
     }
 }
@@ -92,17 +92,17 @@ export async function getCurrency() {
             }
         })
 
-        let code = 'USD'
-        let symbol = '$'
+        let code = 'INR'
+        let symbol = '₹'
 
         settings.forEach((setting: any) => {
-            if (setting.key === 'currency_code') code = setting.value || 'USD'
-            if (setting.key === 'currency_symbol') symbol = setting.value || '$'
+            if (setting.key === 'currency_code') code = setting.value || 'INR'
+            if (setting.key === 'currency_symbol') symbol = setting.value || '₹'
         })
 
         return { code, symbol }
     } catch (error) {
-        return { code: 'USD', symbol: '$' }
+        return { code: 'INR', symbol: '₹' }
     }
 }
 
@@ -111,9 +111,9 @@ export async function getDateFormat() {
         const setting = await prisma.systemConfig.findUnique({
             where: { key: 'date_format' }
         })
-        return setting?.value || 'MM/DD/YYYY'
+        return setting?.value || 'DD/MM/YYYY'
     } catch (error) {
-        return 'MM/DD/YYYY'
+        return 'DD/MM/YYYY'
     }
 }
 

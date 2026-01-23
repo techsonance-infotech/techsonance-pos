@@ -1,4 +1,5 @@
-import { PrismaClient, Role } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
+import { Role } from '../types/enums'
 
 const prisma = new PrismaClient()
 

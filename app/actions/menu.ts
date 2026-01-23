@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache"
 import { getUserProfile } from "./user"
+import { logActivity } from "@/lib/logger"
 
 async function getCurrentStore() {
     const user = await getUserProfile()
@@ -86,6 +87,18 @@ export async function saveCategory(data: any) {
 
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        // Log Activity
+        const user = await getUserProfile()
+        if (user) {
+            await logActivity(
+                id ? 'UPDATE_CATEGORY' : 'CREATE_CATEGORY',
+                'MENU',
+                { id, name, storeId },
+                user.id
+            )
+        }
+
         return { success: true }
     } catch (error) {
         console.error("Failed to save category:", error)
@@ -95,13 +108,35 @@ export async function saveCategory(data: any) {
 
 export async function deleteCategory(id: string) {
     try {
-        await prisma.category.delete({ where: { id } })
-
         const storeId = await getCurrentStore()
+        if (!storeId) return { error: "Unauthorized" }
+
+        // Use deleteMany to secure by storeId
+        const result = await prisma.category.deleteMany({
+            where: {
+                id,
+                storeId
+            }
+        })
+
+        if (result.count === 0) return { error: "Category not found or access denied" }
+
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
 
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
+
+        // Log Activity
+        const user = await getUserProfile()
+        if (user) {
+            await logActivity(
+                'DELETE_CATEGORY',
+                'MENU',
+                { id, storeId },
+                user.id
+            )
+        }
+
         return { success: true }
     } catch (error) {
         console.error("Failed to delete category:", error)
@@ -134,11 +169,19 @@ export async function updateCategoryOrder(items: { id: string, sortOrder: number
 
 export async function toggleCategoryStatus(id: string, isActive: boolean) {
     try {
-        await prisma.category.update({ where: { id }, data: { isActive } })
+        const storeId = await getCurrentStore()
+        if (!storeId) return { error: "Unauthorized" }
+
+        const result = await prisma.category.updateMany({
+            where: { id, storeId },
+            data: { isActive }
+        })
+
+        if (result.count === 0) return { error: "Category not found or access denied" }
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
 
-        const storeId = await getCurrentStore()
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
@@ -228,6 +271,18 @@ export async function saveProduct(data: any) {
 
         const storeId = await getCurrentStore()
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
+
+        // Log Activity
+        const user = await getUserProfile()
+        if (user) {
+            await logActivity(
+                id ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT',
+                'MENU',
+                { id: product?.id, name, categoryId },
+                user.id
+            )
+        }
+
         return { success: true, product }
     } catch (error) {
         console.error("Failed to save product:", error)
@@ -260,11 +315,22 @@ export async function updateProductOrder(items: { id: string, sortOrder: number 
 // Reuse existing toggle/delete
 export async function toggleProductStatus(id: string, isAvailable: boolean) {
     try {
-        await prisma.product.update({ where: { id }, data: { isAvailable } })
+        const storeId = await getCurrentStore()
+        if (!storeId) return { error: "Unauthorized" }
+
+        const result = await prisma.product.updateMany({
+            where: {
+                id,
+                category: { storeId }
+            },
+            data: { isAvailable }
+        })
+
+        if (result.count === 0) return { error: "Product not found or access denied" }
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
 
-        const storeId = await getCurrentStore()
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {
@@ -275,12 +341,34 @@ export async function toggleProductStatus(id: string, isAvailable: boolean) {
 
 export async function deleteProduct(id: string) {
     try {
-        await prisma.product.delete({ where: { id } })
+        const storeId = await getCurrentStore()
+        if (!storeId) return { error: "Unauthorized" }
+
+        const result = await prisma.product.deleteMany({
+            where: {
+                id,
+                category: { storeId }
+            }
+        })
+
+        if (result.count === 0) return { error: "Product not found or access denied" }
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
 
-        const storeId = await getCurrentStore()
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
+
+        // Log Activity
+        const user = await getUserProfile()
+        if (user) {
+            await logActivity(
+                'DELETE_PRODUCT',
+                'MENU',
+                { id, storeId },
+                user.id
+            )
+        }
+
         return { success: true }
     } catch (error) {
         console.error("Failed to delete product:", error)
@@ -325,11 +413,23 @@ export async function saveAddon(data: any) {
 
 export async function deleteAddon(id: string) {
     try {
-        await prisma.addon.delete({ where: { id } })
+        const storeId = await getCurrentStore()
+        if (!storeId) return { error: "Unauthorized" }
+
+        const result = await prisma.addon.deleteMany({
+            where: {
+                id,
+                product: {
+                    category: { storeId }
+                }
+            }
+        })
+
+        if (result.count === 0) return { error: "Addon not found or access denied" }
+
         revalidatePath("/dashboard/menu")
         revalidatePath("/dashboard/new-order")
 
-        const storeId = await getCurrentStore()
         if (storeId) (revalidateTag as any)(`store-menu-${storeId}`, 'max')
         return { success: true }
     } catch (error) {

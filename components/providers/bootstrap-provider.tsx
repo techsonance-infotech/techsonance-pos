@@ -75,6 +75,13 @@ export function BootstrapProvider({ children }: { children: React.ReactNode }) {
 
             await posService.saveSettingsBulk(settings)
 
+            // Cache User Profile for Offline Access
+            if (user) {
+                await posService.saveSettingsBulk([
+                    { key: 'user_profile', value: user }
+                ])
+            }
+
             // 3. Sync Categories
             const categories: LocalCategory[] = data.categories.map((c: any) => ({
                 id: c.id,
@@ -189,7 +196,7 @@ export function BootstrapProvider({ children }: { children: React.ReactNode }) {
 
             console.log("Bootstrap Sync Complete")
             setIsBootstrapped(true)
-            toast.success("Offline Data Ready", { icon: "✅" })
+            toast.success("Offline Data Ready", { icon: "✅", id: 'bootstrap-success' })
         } catch (error) {
             // Check if it's a network error (offline)
             const isNetworkError = error instanceof TypeError && error.message.includes('Failed to fetch')

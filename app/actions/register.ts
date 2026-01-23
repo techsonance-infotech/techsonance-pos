@@ -1,8 +1,16 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
+import bcrypt from 'bcryptjs'
+
+
+import { generateVerificationToken, hashToken } from "@/app/actions/verify-email"
+import { sendVerificationEmail } from "@/lib/email"
+
+const TOKEN_EXPIRY_MINUTES = 30
 
 export async function registerUser(prevState: any, formData: FormData) {
+    const businessName = formData.get("businessName") as string
     const username = formData.get("username") as string
     const email = formData.get("email") as string
     const contactNo = formData.get("contactNo") as string
@@ -10,8 +18,13 @@ export async function registerUser(prevState: any, formData: FormData) {
     const confirmPassword = formData.get("confirmPassword") as string
 
     // Basic required field validation
-    if (!username || !email || !password || !confirmPassword) {
+    if (!businessName || !username || !email || !password || !confirmPassword) {
         return { error: "All fields are required" }
+    }
+
+    // Business Name validation
+    if (businessName.trim().length < 3) {
+        return { error: "Business Name must be at least 3 characters" }
     }
 
     // Username validation (alphanumeric and underscore only, 3-20 chars)
@@ -76,20 +89,89 @@ export async function registerUser(prevState: any, formData: FormData) {
             return { error: "Email already registered. Please use a different email." }
         }
 
-        // Create user with isApproved: false
-        await prisma.user.create({
-            data: {
-                username,
-                email,
-                contactNo: contactNo || null,
-                password, // Note: In production, hash this password
-                role: 'USER',
-                isApproved: false,
-                isLocked: false
-            }
+        // Hash password before saving
+        const hashedPassword = await bcrypt.hash(password, 10)
+
+        // Generate verification token
+        const token = await generateVerificationToken()
+        const hashedToken = await hashToken(token)
+        const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000)
+
+        // Generate slug from business name or username + random
+        const baseSlug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-')
+        const slug = `${baseSlug}-${Math.floor(Math.random() * 10000)}`
+
+        // Create User, Company, and Store in a transaction
+        await prisma.$transaction(async (tx: any) => {
+            // 1. Create Default Company
+            const company = await tx.company.create({
+                data: {
+                    name: businessName,
+                    slug: slug,
+                    isActive: true
+                }
+            })
+
+            // 2. Create Default Store
+            const store = await tx.store.create({
+                data: {
+                    name: 'Main Outlet',
+                    location: 'Main Location',
+                    companyId: company.id,
+                    tableMode: true
+                }
+            })
+
+            // 3. Create User linked to Company and Store
+            await tx.user.create({
+                data: {
+                    username,
+                    email,
+                    contactNo: contactNo || null,
+                    password: hashedPassword,
+                    role: 'BUSINESS_OWNER', // upgraded to owner since they are creating the tenant
+                    companyId: company.id,
+                    defaultStoreId: store.id,
+                    stores: {
+                        connect: { id: store.id }
+                    },
+                    isApproved: false, // Wait for email verification
+                    isLocked: false,
+                    isVerified: false,
+                    verificationToken: hashedToken,
+                    verificationExpiresAt: expiresAt
+                }
+            })
+
+            // 4. Create Default Super Admin for this company
+            const adminEmail = `${slug}@techsonance.co.in`
+            const adminUsername = `${slug}_admin`
+            const defaultAdminPassword = 'TechSonance1711!@#$'
+            const hashedAdminPassword = await bcrypt.hash(defaultAdminPassword, 10)
+
+            await tx.user.create({
+                data: {
+                    username: adminUsername,
+                    email: adminEmail,
+                    password: hashedAdminPassword,
+                    role: 'SUPER_ADMIN',
+                    companyId: company.id,
+                    defaultStoreId: store.id,
+                    stores: {
+                        connect: { id: store.id }
+                    },
+                    isApproved: true, // Auto-approve admin
+                    isLocked: false,
+                    isVerified: true // Auto-verify admin
+                }
+            })
         })
 
-        return { success: true, message: "Registration successful! Please wait for admin approval." }
+        // Send verification email
+        await sendVerificationEmail(email, token)
+
+        return { success: true, message: "Registration successful! Please check your email to verify your account." }
+
     } catch (error) {
         console.error("Registration error:", error)
         return { error: "Something went wrong. Please try again." }

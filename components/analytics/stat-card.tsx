@@ -25,23 +25,28 @@ export function StatCard({ title, value, change, icon, trend, subtitle }: StatCa
     }
 
     return (
-        <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
+        <div className="group relative overflow-hidden bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-lg transition-all duration-300">
+            {/* Background Decoration */}
+            <div className="absolute top-0 right-0 -mr-8 -mt-8 h-24 w-24 rounded-full bg-gradient-to-br from-blue-50 to-purple-50 opacity-50 blur-xl group-hover:scale-150 transition-transform duration-500" />
+
+            <div className="relative flex items-start justify-between">
                 <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-                    <h3 className="text-3xl font-bold text-gray-900 mb-2">{value}</h3>
+                    <p className="text-sm font-medium text-gray-500 mb-2">{title}</p>
+                    <h3 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">{value}</h3>
                     {subtitle && (
-                        <p className="text-xs text-gray-400">{subtitle}</p>
+                        <p className="text-sm text-gray-400 font-medium">{subtitle}</p>
                     )}
                     {change !== undefined && change !== null && !isNaN(change) && (
-                        <div className={cn("flex items-center gap-1 text-sm font-medium mt-2", getTrendColor())}>
-                            {getTrendIcon()}
+                        <div className={cn("flex items-center gap-1.5 text-sm font-medium mt-3", getTrendColor())}>
+                            <div className={cn("p-0.5 rounded-full", trend === 'up' ? 'bg-green-100' : trend === 'down' ? 'bg-red-100' : 'bg-gray-100')}>
+                                {getTrendIcon()}
+                            </div>
                             <span>{Math.abs(change).toFixed(1)}%</span>
-                            <span className="text-gray-400 text-xs">vs last period</span>
+                            <span className="text-gray-400 text-xs font-normal">vs last period</span>
                         </div>
                     )}
                 </div>
-                <div className="h-12 w-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/50 flex items-center justify-center text-blue-600 shadow-sm shrink-0 group-hover:scale-110 transition-transform duration-300">
                     {icon}
                 </div>
             </div>

@@ -29,7 +29,7 @@ export async function getPOSInitialData() {
         // Build business details from company settings
         // Now getCompanyBusinessSettings returns merged global tax/discount settings!
         const settings = companySettings.settings ? {
-            businessName: companySettings.settings.businessName || 'CafePOS',
+            businessName: companySettings.settings.businessName || '',
             address: companySettings.settings.address || '',
             phone: companySettings.settings.phone || '',
             email: companySettings.settings.email || '',
@@ -41,7 +41,10 @@ export async function getPOSInitialData() {
             taxName: (companySettings.settings as any).taxName || 'Tax',
             showTaxBreakdown: (companySettings.settings as any).showTaxBreakdown === true,
             enableDiscount: (companySettings.settings as any).enableDiscount === true,
-            defaultDiscount: (companySettings.settings as any).defaultDiscount || '0'
+            defaultDiscount: (companySettings.settings as any).defaultDiscount || '0',
+            discountType: (companySettings.settings as any).discountType || 'FIXED',
+            minOrderForDiscount: (companySettings.settings as any).minOrderForDiscount || '0',
+            maxDiscount: (companySettings.settings as any).maxDiscount || '0'
         } : {}
 
         return {
@@ -75,14 +78,21 @@ export async function getRecentOrdersPageData() {
 
         // Build business details from company settings
         const settings = companySettings.settings ? {
-            businessName: companySettings.settings.businessName || 'CafePOS',
+            businessName: companySettings.settings.businessName || '',
             address: companySettings.settings.address || '',
             phone: companySettings.settings.phone || '',
             email: companySettings.settings.email || '',
             logoUrl: companySettings.settings.logoUrl || '',
-            taxRate: '5',
-            taxName: 'GST',
-            showTaxBreakdown: true
+            // Tax & Discount Settings (mapped)
+            gstNo: (companySettings.settings as any).gstNo || '',
+            taxRate: (companySettings.settings as any).taxRate || '0',
+            taxName: (companySettings.settings as any).taxName || 'Tax',
+            showTaxBreakdown: (companySettings.settings as any).showTaxBreakdown === true,
+            enableDiscount: (companySettings.settings as any).enableDiscount === true,
+            defaultDiscount: (companySettings.settings as any).defaultDiscount || '0',
+            discountType: (companySettings.settings as any).discountType || 'FIXED',
+            minOrderForDiscount: (companySettings.settings as any).minOrderForDiscount || '0',
+            maxDiscount: (companySettings.settings as any).maxDiscount || '0'
         } : {}
 
         return { orders, businessDetails: settings, storeDetails: store }

@@ -247,8 +247,29 @@ else {
             return [];
         }
     });
+    ipcMain.handle('db-get-tables', async () => {
+        try {
+            return dbAsync.getTables();
+        }
+        catch (e) {
+            console.error("IPC Error: db-get-tables", e);
+            return [];
+        }
+    });
+    ipcMain.handle('get-printers', async () => {
+        try {
+            if (mainWindow) {
+                return await mainWindow.webContents.getPrintersAsync();
+            }
+            return [];
+        }
+        catch (e) {
+            console.error("IPC Error: get-printers", e);
+            return [];
+        }
+    });
     // Silent Printing Handler
-    ipcMain.handle('print-receipt', async (event, htmlContent) => {
+    ipcMain.handle('print-receipt', async (event, htmlContent, options = {}) => {
         try {
             const printWindow = new BrowserWindow({
                 show: false,
@@ -261,11 +282,16 @@ else {
             // Wait for content to load
             await new Promise(resolve => setTimeout(resolve, 500));
             // Print silently
-            printWindow.webContents.print({
+            const printOptions = {
                 silent: true,
                 printBackground: false,
-                deviceName: '' // Uses default printer
-            }, (success, errorType) => {
+                deviceName: options.printerName || ''
+            };
+            // Add margin settings if provided
+            if (options.margins) {
+                printOptions.margins = options.margins;
+            }
+            printWindow.webContents.print(printOptions, (success, errorType) => {
                 if (!success)
                     console.error("Print failed:", errorType);
                 printWindow.close();

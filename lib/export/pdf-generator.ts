@@ -18,7 +18,7 @@ export async function generatePDF(options: PDFExportOptions): Promise<void> {
     const {
         title,
         dateRange,
-        companyName = 'TechSonance POS',
+        companyName = 'SyncServe POS',
         storeName,
         data,
         columns,
@@ -26,6 +26,11 @@ export async function generatePDF(options: PDFExportOptions): Promise<void> {
         orientation = 'portrait',
         additionalInfo = []
     } = options
+
+    // Helper to sanitize currency for PDF (replace ₹ with Rs.)
+    const sanitizeCurrency = (str: string) => {
+        return str?.replace(/₹/g, 'Rs. ') || str
+    }
 
     // Create PDF document
     const doc = new jsPDF({
@@ -36,76 +41,133 @@ export async function generatePDF(options: PDFExportOptions): Promise<void> {
 
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
-    let yPosition = 20
+    let yPosition = 15
 
-    // Add company header
-    doc.setFontSize(18)
+    // Brand Colors
+    const BRAND_COLOR = [249, 115, 22] // Orange
+    const TEXT_COLOR = [55, 65, 81] // Gray-700
+    const LIGHT_BG = [249, 250, 251] // Gray-50
+
+    // --- Header Section ---
+    // Add colored header bar
+    doc.setFillColor(BRAND_COLOR[0], BRAND_COLOR[1], BRAND_COLOR[2])
+    doc.rect(0, 0, pageWidth, 4, 'F')
+
+    // Company Name
+    doc.setFontSize(22)
     doc.setFont('helvetica', 'bold')
+    doc.setTextColor(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2])
     doc.text(companyName, pageWidth / 2, yPosition, { align: 'center' })
     yPosition += 8
 
     if (storeName) {
-        doc.setFontSize(10)
+        doc.setFontSize(11)
         doc.setFont('helvetica', 'normal')
+        doc.setTextColor(107, 114, 128) // Gray-500
         doc.text(storeName, pageWidth / 2, yPosition, { align: 'center' })
-        yPosition += 6
+        yPosition += 10
+    } else {
+        yPosition += 5
     }
 
-    // Add report title
+    // Report Title Box
+    doc.setFillColor(LIGHT_BG[0], LIGHT_BG[1], LIGHT_BG[2])
+    doc.setDrawColor(229, 231, 235) // Gray-200
+    doc.roundedRect(14, yPosition, pageWidth - 28, 16, 2, 2, 'FD')
+
     doc.setFontSize(14)
     doc.setFont('helvetica', 'bold')
-    doc.text(title, pageWidth / 2, yPosition, { align: 'center' })
-    yPosition += 8
+    doc.setTextColor(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2])
+    doc.text(title, pageWidth / 2, yPosition + 7, { align: 'center' })
 
-    // Add date range if provided
     if (dateRange) {
         doc.setFontSize(10)
         doc.setFont('helvetica', 'normal')
-        doc.text(`Period: ${dateRange}`, pageWidth / 2, yPosition, { align: 'center' })
-        yPosition += 8
+        doc.setTextColor(107, 114, 128)
+        doc.text(dateRange, pageWidth / 2, yPosition + 12, { align: 'center' })
     }
+    yPosition += 25
 
-    // Add additional info
+    // --- Summary Section ---
     if (additionalInfo.length > 0) {
-        doc.setFontSize(9)
-        additionalInfo.forEach(info => {
-            doc.text(`${info.label}: ${info.value}`, 14, yPosition)
-            yPosition += 5
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2])
+        doc.text("Summary", 14, yPosition)
+        yPosition += 5
+
+        // Create a summary grid
+        // Calculate dynamic width based on number of items (max 3 per row)
+        const itemsPerRow = 3
+        const cardWidth = (pageWidth - 28 - ((itemsPerRow - 1) * 5)) / itemsPerRow
+        const cardHeight = 18
+
+        additionalInfo.forEach((info, index) => {
+            const row = Math.floor(index / itemsPerRow)
+            const col = index % itemsPerRow
+            const x = 14 + (col * (cardWidth + 5))
+            const y = yPosition + (row * (cardHeight + 5))
+
+            // Card Background
+            doc.setFillColor(255, 255, 255)
+            doc.setDrawColor(229, 231, 235)
+            doc.roundedRect(x, y, cardWidth, cardHeight, 1, 1, 'FD')
+
+            // Label
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'normal')
+            doc.setTextColor(107, 114, 128)
+            doc.text(info.label, x + 4, y + 6)
+
+            // Value
+            doc.setFontSize(11)
+            doc.setFont('helvetica', 'bold')
+            doc.setTextColor(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2])
+            doc.text(sanitizeCurrency(info.value), x + 4, y + 13)
         })
-        yPosition += 3
+
+        const rowCount = Math.ceil(additionalInfo.length / itemsPerRow)
+        yPosition += (rowCount * (cardHeight + 5)) + 5
     }
 
-    // Add horizontal line
-    doc.setLineWidth(0.5)
-    doc.line(14, yPosition, pageWidth - 14, yPosition)
-    yPosition += 5
-
-    // Generate table
+    // --- Detail Table ---
     autoTable(doc, {
         startY: yPosition,
         head: [columns.map(col => col.header)],
         body: data.map(row => columns.map(col => {
-            const value = row[col.dataKey]
+            let value = row[col.dataKey]
+            // Sanitize string values that might be currency
+            if (typeof value === 'string') {
+                value = sanitizeCurrency(value)
+            }
             return value !== null && value !== undefined ? String(value) : '-'
         })),
-        theme: 'striped',
+        theme: 'grid', // Cleaner look than striped default
         headStyles: {
-            fillColor: [249, 115, 22], // Orange color matching your brand
-            textColor: 255,
+            fillColor: [255, 255, 255] as [number, number, number],
+            textColor: BRAND_COLOR as [number, number, number],
             fontStyle: 'bold',
-            fontSize: 9
+            fontSize: 9,
+            lineWidth: 0.1,
+            lineColor: [229, 231, 235] as [number, number, number]
         },
         bodyStyles: {
-            fontSize: 8,
-            cellPadding: 3
+            fontSize: 9,
+            cellPadding: 4,
+            textColor: TEXT_COLOR as [number, number, number],
+            lineColor: [243, 244, 246] as [number, number, number]
         },
         alternateRowStyles: {
-            fillColor: [249, 250, 251] // Light gray
+            fillColor: [250, 250, 250]
         },
         columnStyles: columns.reduce((acc, col, index) => {
-            if (col.width) {
-                acc[index] = { cellWidth: col.width }
+            const styles: any = {}
+            if (col.width) styles.cellWidth = col.width
+            // Right align numeric/currency columns vaguely detected by name
+            if (['amount', 'revenue', 'price', 'total', 'sales'].some(k => col.dataKey.toLowerCase().includes(k))) {
+                styles.halign = 'right'
             }
+            acc[index] = styles
             return acc
         }, {} as any),
         margin: { left: 14, right: 14 },
@@ -114,7 +176,11 @@ export async function generatePDF(options: PDFExportOptions): Promise<void> {
             const footerY = pageHeight - 10
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.setTextColor(128, 128, 128)
+            doc.setTextColor(156, 163, 175) // Gray-400
+
+            // Footer line
+            doc.setDrawColor(229, 231, 235)
+            doc.line(14, footerY - 4, pageWidth - 14, footerY - 4)
 
             // Page number
             const pageNum = `Page ${doc.getCurrentPageInfo().pageNumber}`
@@ -122,7 +188,7 @@ export async function generatePDF(options: PDFExportOptions): Promise<void> {
 
             // Generated timestamp
             const timestamp = new Date().toLocaleString('en-IN', {
-                timeZone: 'Asia/Kolkata',
+                timeZone: 'Asia/Kolkata', // Hardcoded as per user locale context
                 dateStyle: 'medium',
                 timeStyle: 'short'
             })

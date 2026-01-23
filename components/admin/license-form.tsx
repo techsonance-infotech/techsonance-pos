@@ -7,29 +7,30 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { useEffect, useState } from "react"
-import { Copy, Check, Sparkles } from "lucide-react"
+import { useState } from "react"
+import { Copy, Check, Sparkles, Building, Users, Store } from "lucide-react"
 import { useRouter } from "next/navigation"
 
-export function LicenseForm({ stores }: {
-    stores: {
-        id: string,
-        name: string,
-        location: string | null,
-        users: { email: string, username: string }[],
-        license: {
-            id: string,
-            type: 'TRIAL' | 'ANNUAL' | 'PERPETUAL',
-            status: 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'PENDING',
-            validUntil: Date | null
-        } | null
-    }[]
-}) {
-    const [copied, setCopied] = useState(false)
+type Company = {
+    id: string
+    name: string
+    slug: string
+    users: { email: string, username: string }[]
+    _count: { stores: number, users: number }
+    license: {
+        id: string
+        type: string
+        status: string
+        validUntil: Date | null
+        maskedKey: string | null
+        createdAt: Date
+    } | null
+}
 
+export function LicenseForm({ companies }: { companies: Company[] }) {
+    const [copied, setCopied] = useState(false)
     const router = useRouter()
 
-    // Basic form state handling
     const [state, action, isPending] = useActionState(async (prev: any, formData: FormData) => {
         const result = await createLicense(formData)
         if (result.error) {
@@ -38,7 +39,6 @@ export function LicenseForm({ stores }: {
         }
         if (result.success) {
             toast.success("License created successfully!")
-            // Trigger server re-fetch so the list updates
             router.refresh()
             return { success: true, key: result.key }
         }
@@ -46,10 +46,11 @@ export function LicenseForm({ stores }: {
     }, null)
 
     const [type, setType] = useState("PERPETUAL")
+    const [selectedCompanyId, setSelectedCompanyId] = useState("")
+    const [trialDays, setTrialDays] = useState("15")
 
     const copyToClipboard = async () => {
         if (!state?.key) return
-
         try {
             await navigator.clipboard.writeText(state.key)
             setCopied(true)
@@ -69,45 +70,55 @@ export function LicenseForm({ stores }: {
                     <Sparkles className="h-5 w-5" />
                     <h3 className="text-lg font-semibold">Generate New License</h3>
                 </div>
-                <p className="text-sm text-orange-100 mt-1">Create a license key for a store</p>
+                <p className="text-sm text-orange-100 mt-1">Create a license key for a company</p>
             </div>
 
             <form action={action} className="space-y-4">
                 <div className="space-y-2">
-                    <Label htmlFor="storeId">Select Store</Label>
-                    <Select name="storeId" required>
+                    <Label htmlFor="companyId">Select Company</Label>
+                    <Select name="companyId" required value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select a store" />
+                            <SelectValue placeholder="Select a company" />
                         </SelectTrigger>
                         <SelectContent>
-                            {stores.map(store => {
-                                const owner = store.users[0]
-                                const hasLicense = !!store.license
-                                const isExpired = store.license?.validUntil && new Date(store.license.validUntil) < new Date()
-                                const isRevoked = store.license?.status === 'REVOKED'
+                            {companies.map(company => {
+                                const owner = company.users[0]
+                                const hasLicense = !!company.license
+                                const isExpired = company.license?.validUntil && new Date(company.license.validUntil) < new Date()
+                                const isRevoked = company.license?.status === 'REVOKED'
 
                                 let statusBadge = ''
-                                if (hasLicense && store.license) {
+                                if (hasLicense && company.license) {
                                     if (isRevoked) statusBadge = '🔴 Revoked'
                                     else if (isExpired) statusBadge = '🟠 Expired'
-                                    else statusBadge = `🔵 ${store.license.type}`
+                                    else statusBadge = `🔵 ${company.license.type}`
                                 } else {
-                                    statusBadge = '✅ No License'
+                                    statusBadge = '✅ No License (Trial)'
                                 }
 
-                                // Requirement: Show User Email (Owner)
-                                const label = owner
-                                    ? `${store.name} (${owner.email}) - ${statusBadge}`
-                                    : `${store.name} (No Owner) - ${statusBadge}`
-
                                 return (
-                                    <SelectItem key={store.id} value={store.id}>
-                                        {label}
+                                    <SelectItem key={company.id} value={company.id}>
+                                        <div className="flex items-center gap-2">
+                                            <Building className="h-4 w-4 text-gray-400" />
+                                            <span className="font-medium">{company.name}</span>
+                                            <span className="text-xs text-gray-400">({company.slug})</span>
+                                            <span className="text-xs">{statusBadge}</span>
+                                        </div>
                                     </SelectItem>
                                 )
                             })}
                         </SelectContent>
                     </Select>
+
+                    {/* Company Details Preview */}
+                    <div className="text-xs text-gray-500 flex items-center gap-4 mt-1">
+                        <span className="flex items-center gap-1">
+                            <Store className="h-3 w-3" /> Stores
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" /> Users
+                        </span>
+                    </div>
                 </div>
 
                 <div className="space-y-2">
@@ -124,10 +135,31 @@ export function LicenseForm({ stores }: {
                     </Select>
                 </div>
 
-                {type !== 'PERPETUAL' && (
+                {type === 'TRIAL' && (
                     <div className="space-y-2">
-                        <Label htmlFor="expiryDate">Expiry Date</Label>
-                        <Input type="date" name="expiryDate" required />
+                        <Label htmlFor="trialDays">Trial Days</Label>
+                        <Input
+                            type="number"
+                            name="trialDays"
+                            min="1"
+                            value={trialDays}
+                            onChange={(e) => setTrialDays(e.target.value)}
+                            placeholder="e.g. 15"
+                            required
+                        />
+                    </div>
+                )}
+
+                {/* Expiry Date Preview */}
+                {type !== 'PERPETUAL' && (
+                    <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 border border-blue-100">
+                        <span className="font-semibold block mb-1">Calculated Expiry Date:</span>
+                        <ExpiryPreview
+                            companies={companies}
+                            selectedCompanyId={selectedCompanyId}
+                            type={type}
+                            trialDays={trialDays}
+                        />
                     </div>
                 )}
 
@@ -167,15 +199,58 @@ export function LicenseForm({ stores }: {
                             )}
                         </Button>
                     </div>
-                    <code className="block mt-2 break-all rounded-lg bg-white p-3 text-xs border border-green-200 font-mono text-gray-700 shadow-inner">
+                    <code className="block mt-2 break-all rounded-lg bg-white p-3 text-lg border border-green-200 font-mono text-gray-700 shadow-inner tracking-widest text-center">
                         {state.key}
                     </code>
                     <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
                         <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        Provide this key to the Business Owner to activate their license.
+                        Provide this key to any user in the company to activate their license.
                     </p>
                 </div>
             )}
+        </div>
+    )
+}
+
+function ExpiryPreview({
+    companies,
+    selectedCompanyId,
+    type,
+    trialDays
+}: {
+    companies: Company[],
+    selectedCompanyId: string,
+    type: string,
+    trialDays: string
+}) {
+    if (!selectedCompanyId) return <span className="text-gray-500 italic">Select a company to see expiry date...</span>
+
+    const company = companies.find(c => c.id === selectedCompanyId)
+    if (!company) return <span className="text-gray-500">Company not found</span>
+
+    // Use current date as the start date for new licenses
+    const startDate = new Date()
+    let expiryDate = new Date(startDate)
+
+    if (type === 'ANNUAL') {
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1)
+    } else if (type === 'TRIAL') {
+        const days = parseInt(trialDays) || 0
+        expiryDate.setDate(expiryDate.getDate() + days)
+    } else {
+        return null
+    }
+
+    return (
+        <div className="space-y-1">
+            <div className="flex justify-between">
+                <span>Start Date:</span>
+                <span className="font-medium">{startDate.toLocaleDateString()}</span>
+            </div>
+            <div className="flex justify-between font-bold text-blue-700">
+                <span>Valid Until:</span>
+                <span>{expiryDate.toLocaleDateString()}</span>
+            </div>
         </div>
     )
 }

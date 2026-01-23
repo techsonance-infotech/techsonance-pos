@@ -109,7 +109,10 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
     const range = maxValue - minValue || 1
 
     const points = validData.map((item: any, index: number) => {
-        const x = (index / (validData.length - 1)) * 100
+        const x = validData.length > 1
+            ? (index / (validData.length - 1)) * 100
+            : 50 // Center single point
+
         const y = 100 - ((item.value - minValue) / range) * 80
         return `${x},${y}`
     }).join(' ')
@@ -152,7 +155,10 @@ export function LineChart({ data, height = 300, color = '#10B981', valuePrefix =
 
                     {/* Points */}
                     {validData.map((item: any, index: number) => {
-                        const x = (index / (validData.length - 1)) * 100
+                        const x = validData.length > 1
+                            ? (index / (validData.length - 1)) * 100
+                            : 50 // Center single point
+
                         const y = 100 - ((item.value - minValue) / range) * 80
 
                         return (

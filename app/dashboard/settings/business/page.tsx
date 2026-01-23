@@ -2,9 +2,31 @@ import { getBusinessSettings, getCompanyBusinessSettings } from "@/app/actions/s
 import { SettingsForm } from "./settings-form"
 import { Building2, Home, ChevronRight, Building } from "lucide-react"
 import Link from "next/link"
+import { getUserProfile } from "@/app/actions/user"
+import { redirect } from "next/navigation"
 
 export default async function BusinessSettingsPage() {
-    let settings: any = {}
+    const user = await getUserProfile()
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'BUSINESS_OWNER')) {
+        redirect('/dashboard/settings')
+    }
+
+    const defaultSettings = {
+        businessName: '',
+        logoUrl: '',
+        address: '',
+        phone: '',
+        email: '',
+        gstNo: '',
+        taxRate: '5',
+        taxName: 'GST',
+        showTaxBreakdown: false,
+        enableDiscount: false,
+        defaultDiscount: '0',
+        discountType: 'FIXED'
+    }
+
+    let settings: any = defaultSettings
     let hasCompany = false
 
     try {
@@ -15,12 +37,16 @@ export default async function BusinessSettingsPage() {
         if (companyData.settings) {
             settings = companyData.settings
         } else {
-            // Fallback to global settings
-            settings = await getBusinessSettings()
+            // Fallback to global settings if no company specific settings found
+            const globalSettings = await getBusinessSettings()
+            if (globalSettings) {
+                settings = { ...defaultSettings, ...globalSettings }
+            }
         }
     } catch (error) {
         // Server action failed - likely offline. Client form will handle with defaults.
         console.warn("BusinessSettingsPage: Failed to fetch settings (offline?)", error)
+        // settings already has defaults
     }
 
     return (

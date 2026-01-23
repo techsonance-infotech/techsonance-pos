@@ -21,7 +21,14 @@ export type RecentOrder = {
     createdAt: Date
 }
 
+import { getUserProfile } from "./user"
+
 export async function getDashboardStats(storeId: string): Promise<DashboardStats> {
+    const user = await getUserProfile()
+    if (!user || user.defaultStoreId !== storeId) {
+        throw new Error("Unauthorized Access")
+    }
+
     const todayStart = startOfDay(new Date())
     const todayEnd = endOfDay(new Date())
 
@@ -73,6 +80,11 @@ export async function getDashboardStats(storeId: string): Promise<DashboardStats
 }
 
 export async function getRecentOrders(storeId: string): Promise<RecentOrder[]> {
+    const user = await getUserProfile()
+    if (!user || user.defaultStoreId !== storeId) {
+        throw new Error("Unauthorized Access")
+    }
+
     const orders = await prisma.order.findMany({
         where: { storeId },
         orderBy: { createdAt: 'desc' },

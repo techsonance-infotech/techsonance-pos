@@ -33,9 +33,17 @@ interface ReceiptProps {
         discountAmount?: number
         paymentMode?: string
     }
+    printerSettings?: {
+        paperWidth?: string | number
+        type?: string
+        fontSize?: string
+        footerText?: string
+        enableQrCode?: boolean
+        cutType?: string
+    } | null
 }
 
-export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails, storeDetails }, ref) => {
+export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails, storeDetails, printerSettings }, ref) => {
     // Calculate defaults if not provided (fallback logic)
     const calculatedSubtotal = order.items.reduce((sum, item) => {
         const itemTotal = item.unitPrice * item.quantity;
@@ -45,31 +53,44 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
 
     const subtotal = order.subtotal ?? calculatedSubtotal;
 
-    // Improved Discount Logic: Only apply if enabled
-    const isDiscountEnabled = businessDetails?.enableDiscount === true;
-    let discountAmount = order.discountAmount ?? 0;
+    // --- STRICT BUSINESS LOGIC ENFORCEMENT ---
 
-    if (isDiscountEnabled && !discountAmount && order.discount) {
-        // If order.discount is just a number string '10', treat as fixed amount.
-        discountAmount = parseFloat(order.discount.toString());
-    } else if (!isDiscountEnabled) {
-        discountAmount = 0;
+    // 1. Discount Logic
+    const isDiscountEnabled = businessDetails?.enableDiscount === true
+    const minOrderForDiscount = parseFloat((businessDetails as any)?.minOrderForDiscount || '0')
+    const maxDiscountVal = parseFloat((businessDetails as any)?.maxDiscount || '0')
+
+    let discountAmount = order.discountAmount ?? 0
+
+    // Auto-Correct: If subtotal < minOrder, Discount MUST be 0
+    if (subtotal < minOrderForDiscount) {
+        discountAmount = 0
     }
 
-    // Improved Tax Logic: Only calculate if enabled
-    let taxAmount = order.taxAmount ?? 0;
-    const taxRate = businessDetails?.taxRate ? parseFloat(businessDetails.taxRate.toString()) : 0;
-    const isTaxEnabled = businessDetails?.showTaxBreakdown === true;
-
-    // Recalculate tax ONLY if enabled and missing
-    if (isTaxEnabled && !order.taxAmount && taxRate > 0) {
-        taxAmount = (subtotal * taxRate) / 100
-    } else if (!isTaxEnabled) {
-        // Force tax to 0 if disabled, just in case
-        taxAmount = 0;
+    // Auto-Correct: Cap at Max Discount (if max > 0)
+    if (maxDiscountVal > 0 && discountAmount > maxDiscountVal) {
+        discountAmount = maxDiscountVal
     }
 
-    const finalTotal = subtotal + taxAmount - discountAmount;
+    // If disabled, zero it out for calculation correctness (per user request to "not be visible" implies not applying)
+    if (!isDiscountEnabled) {
+        discountAmount = 0
+    }
+
+    // 2. Tax Logic
+    const isTaxEnabled = businessDetails?.showTaxBreakdown === true
+    const taxRate = businessDetails?.taxRate ? parseFloat(businessDetails.taxRate.toString()) : 0
+    let taxAmount = order.taxAmount ?? 0
+
+    // If disabled, zero it out? User said "not visible when... disabled". 
+    // Usually tax is statutory, but if they disable tax breakdown, they might just want flat total.
+    // However, strictly hiding the ROW is different from changing the TOTAL.
+    // But the user said "same logic... for bill printing". In NewOrder, if tax is disabled, tax is 0.
+    if (!isTaxEnabled) {
+        taxAmount = 0
+    }
+
+    const finalTotal = subtotal + taxAmount - discountAmount
 
     // Date Format: DD/MM/YYYY
     const formatDate = (date: Date | string) => {
@@ -84,8 +105,17 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
         }
     };
 
+    // Printer Settings Logic
+    const paperWidth = printerSettings?.paperWidth ? parseInt(printerSettings.paperWidth.toString()) : 80
+    // Adjust container width: 80mm -> 78mm usable, 58mm -> 56mm usable
+    const containerWidth = `${paperWidth - 2}mm`
+
+    // Font Scaling based on settings or width
+    const isSmallPaper = paperWidth <= 58
+    const fontSizeClass = isSmallPaper || printerSettings?.fontSize === 'small' ? 'text-[10px]' : 'text-xs'
+
     return (
-        <div ref={ref} className="hidden print:block bg-white text-black font-mono text-xs leading-tight" style={{ width: '80mm', padding: '10px', boxSizing: 'border-box' }}>
+        <div ref={ref} className={cn("hidden print:block bg-white text-black font-mono leading-tight", fontSizeClass)} style={{ width: containerWidth, padding: '4px', margin: '0 auto', boxSizing: 'border-box' }}>
             {/* Header */}
             <div className="text-center mb-2 border-b border-black pb-2 border-dashed flex flex-col items-center justify-center">
 
@@ -99,7 +129,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     />
                 )}
 
-                <h1 className="text-xl font-bold uppercase tracking-wider mb-1">{storeDetails?.name || businessDetails?.name || 'TechSonance'}</h1>
+                <h1 className="text-xl font-bold uppercase tracking-wider mb-1">{storeDetails?.name || businessDetails?.name || 'SyncServe'}</h1>
 
                 {storeDetails?.location ? (
                     <p className="whitespace-pre-wrap px-2 font-medium mb-1">{storeDetails.location}</p>
@@ -143,10 +173,10 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
 
             {/* Items Header */}
             <div className="border-b border-black border-dashed mb-1 pb-1 flex font-bold uppercase text-[11px]">
-                <div style={{ width: '45%' }}>Item</div>
+                <div style={{ width: '40%' }}>Item</div>
                 <div style={{ width: '15%', textAlign: 'center' }}>Qty</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Price</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Amt</div>
+                <div style={{ width: '22%', textAlign: 'right' }}>Price</div>
+                <div style={{ width: '23%', textAlign: 'right' }}>Amt</div>
             </div>
 
             {/* Items List */}
@@ -156,20 +186,20 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     return (
                         <div key={index}>
                             <div className="flex text-[11px]">
-                                <div style={{ width: '45%' }} className="truncate font-medium">{item.name}</div>
+                                <div style={{ width: '40%' }} className="truncate font-medium">{item.name}</div>
                                 <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
-                                <div style={{ width: '20%', textAlign: 'right' }}>{item.unitPrice}</div>
-                                <div style={{ width: '20%', textAlign: 'right', fontWeight: 'bold' }}>
+                                <div style={{ width: '22%', textAlign: 'right' }}>{item.unitPrice}</div>
+                                <div style={{ width: '23%', textAlign: 'right', fontWeight: 'bold' }}>
                                     {itemTotal.toFixed(2)}
                                 </div>
                             </div>
                             {/* Addons */}
                             {item.addons && item.addons.length > 0 && item.addons.map((addon: any, idx: number) => (
                                 <div key={idx} className="flex text-[10px] text-gray-600" style={{ paddingLeft: '8px' }}>
-                                    <div style={{ width: '45%' }}>+ {addon.addon.name}</div>
+                                    <div style={{ width: '40%' }}>+ {addon.addon.name}</div>
                                     <div style={{ width: '15%', textAlign: 'center' }}>{addon.quantity}</div>
-                                    <div style={{ width: '20%', textAlign: 'right' }}>{addon.addon.price}</div>
-                                    <div style={{ width: '20%', textAlign: 'right' }}>
+                                    <div style={{ width: '22%', textAlign: 'right' }}>{addon.addon.price}</div>
+                                    <div style={{ width: '23%', textAlign: 'right' }}>
                                         {(addon.addon.price * addon.quantity).toFixed(2)}
                                     </div>
                                 </div>
@@ -186,43 +216,83 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     <span>{subtotal.toFixed(2)}</span>
                 </div>
 
-                {/* Discount */}
+                {/* Discount - Strict Visibility */}
                 {isDiscountEnabled && discountAmount > 0 && (
-                    <div className="flex justify-between">
-                        <span>
-                            Discount
-                            {order.discount ? ` (${order.discount})` : ''}:
-                        </span>
-                        <span>- {discountAmount.toFixed(2)}</span>
-                    </div>
+                    <>
+                        <div className="flex justify-between">
+                            <span>
+                                Discount
+                                {order.discount ? ` (${order.discount})` : ''}:
+                            </span>
+                            <span>- {discountAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-dashed border-gray-400 pt-1 mt-1 mb-1">
+                            <span className="font-semibold">Taxable Amount:</span>
+                            <span className="font-semibold">{(subtotal - discountAmount).toFixed(2)}</span>
+                        </div>
+                    </>
                 )}
 
-                {/* Tax - show only if enabled */}
-                {isTaxEnabled && (
-                    <div className="flex justify-between">
-                        <span>
-                            {businessDetails?.taxName || 'Tax'}
-                            {taxRate > 0 ? ` (${taxRate}%)` : ''}
-                        </span>
-                        <span>{taxAmount.toFixed(2)}</span>
-                    </div>
+                {/* Tax Breakdown - Strict Visibility */}
+                {isTaxEnabled && taxAmount > 0 && (
+                    <>
+                        {businessDetails?.taxName && businessDetails.taxName.toLowerCase().includes('gst') ? (
+                            <>
+                                <div className="flex justify-between">
+                                    <span>CGST ({(taxRate / 2).toFixed(1)}%):</span>
+                                    <span>{(taxAmount / 2).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>SGST ({(taxRate / 2).toFixed(1)}%):</span>
+                                    <span>{(taxAmount / 2).toFixed(2)}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex justify-between">
+                                <span>
+                                    {businessDetails?.taxName || 'Tax'}
+                                    ({taxRate}%):
+                                </span>
+                                <span>{taxAmount.toFixed(2)}</span>
+                            </div>
+                        )}
+                    </>
                 )}
 
-                <div className="flex justify-between border-b border-dashed border-black pb-1 mb-1">
+                <div className="flex justify-between border-b border-dashed border-black pb-1 mb-1 mt-1">
                     <span>Payment Mode:</span>
                     <span>{order.paymentMode || 'CASH'}</span>
                 </div>
 
                 <div className="flex justify-between font-bold text-base pt-1">
                     <span>Total:</span>
-                    <span>₹{finalTotal.toFixed(2)}</span>
+                    <span>₹{Math.round(finalTotal).toFixed(2)}</span>
                 </div>
             </div>
 
             {/* Footer */}
             <div className="text-center mt-4 border-t border-black border-dashed pt-2">
-                <p className="font-bold">Thank you for visiting!</p>
-                <p className="text-[10px] mt-1">Powered by TechSonance POS</p>
+                {printerSettings?.footerText ? (
+                    <p className="font-bold whitespace-pre-wrap mb-1">{printerSettings.footerText}</p>
+                ) : (
+                    <p className="font-bold mb-1">Thank you for visiting!</p>
+                )}
+
+                {printerSettings?.enableQrCode && (
+                    <div className="flex justify-center my-2">
+                        {/* Placeholder for QR Code - in real app would use a QR lib */}
+                        <div className="border border-black p-1">
+                            <div className="text-[9px] uppercase tracking-tighter">Scan to Pay</div>
+                        </div>
+                    </div>
+                )}
+
+                <p className="text-[10px] text-gray-500">Powered by SyncServe POS</p>
+
+                {/* Cut Marker for simulation usually handled by printer but good for visual debugging */}
+                {printerSettings?.cutType === 'partial' && (
+                    <div className="border-b-4 border-dotted border-gray-300 w-full mt-4 print:hidden" title="Partial Cut Marker" />
+                )}
             </div>
         </div>
     )

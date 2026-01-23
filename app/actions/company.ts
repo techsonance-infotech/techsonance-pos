@@ -148,6 +148,10 @@ export async function createCompany(data: CompanyFormData) {
             return { error: `Admin account ${adminEmail} or username ${adminUsername} already exists` }
         }
 
+        // Hash the default password
+        const { hash } = await import('bcryptjs')
+        const hashedPassword = await hash(defaultPassword, 10)
+
         // Create company and admin in a transaction
         const result = await prisma.$transaction(async (tx: typeof prisma) => {
             // Create company
@@ -177,7 +181,7 @@ export async function createCompany(data: CompanyFormData) {
                 data: {
                     username: adminUsername,
                     email: adminEmail,
-                    password: defaultPassword,
+                    password: hashedPassword,
                     role: 'SUPER_ADMIN',
                     isApproved: true,
                     companyId: company.id,

@@ -22,7 +22,12 @@ const PRINTER_SETTINGS_KEYS = [
     'footer_text'
 ]
 
+import { getUserProfile } from "./user"
+
 export async function getPrinterSettings() {
+    const user = await getUserProfile()
+    if (!user) return null
+
     try {
         const settings = await prisma.systemConfig.findMany({
             where: {
@@ -74,6 +79,9 @@ export async function updatePrinterSettings(data: {
     enableQrCode: boolean
     footerText: string
 }) {
+    const user = await getUserProfile()
+    if (!user) return { success: false, error: "Unauthorized" }
+
     try {
         const updates = [
             { key: 'printer_name', value: data.printerName },
@@ -111,6 +119,9 @@ export async function updatePrinterSettings(data: {
 }
 
 export async function testPrint() {
+    const user = await getUserProfile()
+    if (!user) return { success: false, error: "Unauthorized" }
+
     try {
         // Get current printer settings
         const settings = await getPrinterSettings()

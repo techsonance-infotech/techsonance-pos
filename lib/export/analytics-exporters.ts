@@ -113,7 +113,9 @@ export async function exportCategoryReport(
             storeName,
             fileName: `${fileName}.pdf`,
             additionalInfo: [
-                { label: 'Total Revenue', value: formatCurrency(data.totalRevenue, currency) }
+                { label: 'Total Revenue', value: formatCurrency(data.totalRevenue, currency) },
+                { label: 'Total Orders', value: String(data.categories.reduce((acc: number, cat: any) => acc + cat.orders, 0)) },
+                { label: 'Total Items Sold', value: String(data.categories.reduce((acc: number, cat: any) => acc + cat.quantity, 0)) }
             ],
             columns: [
                 { header: 'Category', dataKey: 'name', width: 50 },
@@ -266,6 +268,10 @@ export async function exportTopItemsReport(
             companyName,
             storeName,
             fileName: `${fileName}.pdf`,
+            additionalInfo: [
+                { label: 'Total Items', value: String(data.items.length) },
+                { label: 'Total Revenue', value: formatCurrency(data.items.reduce((acc: number, item: any) => acc + item.revenue, 0), currency) }
+            ],
             columns: [
                 { header: 'Rank', dataKey: 'rank', width: 20 },
                 { header: 'Item', dataKey: 'name', width: 50 },
@@ -350,7 +356,8 @@ export async function exportPaymentAnalysis(
             storeName,
             fileName: `${fileName}.pdf`,
             additionalInfo: [
-                { label: 'Total Amount', value: formatCurrency(data.totalAmount, currency) }
+                { label: 'Total Amount', value: formatCurrency(data.totalAmount, currency) },
+                { label: 'Total Transactions', value: String(data.methods.reduce((acc: number, m: any) => acc + m.count, 0)) }
             ],
             columns: [
                 { header: 'Payment Method', dataKey: 'method', width: 50 },
