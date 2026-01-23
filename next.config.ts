@@ -34,6 +34,15 @@ const nextConfig: NextConfig = {
         ],
       },
     ]
+
+  },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals.push('_http_common', 'encoding');
+      // Ensure Prisma binary is handled correctly in serverless
+      config.optimization.minimize = false;
+    }
+    return config;
   },
 };
 
