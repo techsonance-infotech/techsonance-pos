@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/@prisma/client-postgres"
+  // output   = "../node_modules/@prisma/client" // Using default for Vercel support
   binaryTargets = ["native", "windows", "debian-openssl-3.0.x", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
 }
 

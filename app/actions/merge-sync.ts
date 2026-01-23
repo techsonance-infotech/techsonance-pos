@@ -3,7 +3,7 @@
 // Import standard client (SQLite)
 import { prisma as localPrisma } from "@/lib/prisma"
 // Import custom client (Postgres)
-import { PrismaClient as PostgresClient, Role, OrderStatus, PaymentMode, TableStatus, LicenseStatus, LicenseType, SecurityRuleType } from '@prisma/client-postgres'
+import { PrismaClient as PostgresClient, Role, OrderStatus, PaymentMode, TableStatus, LicenseStatus, LicenseType, SecurityRuleType } from '@prisma/client'
 import { getUserProfile } from "./user"
 
 /**

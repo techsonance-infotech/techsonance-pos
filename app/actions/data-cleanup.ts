@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma as localPrisma } from "@/lib/prisma"
-import { PrismaClient as PostgresClient } from "@prisma/client-postgres"
+import { PrismaClient as PostgresClient } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { getUserProfile } from "./user"
 import path from "path"
