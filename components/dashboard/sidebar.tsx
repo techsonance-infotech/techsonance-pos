@@ -22,21 +22,30 @@ import {
     Users,
     BarChart3,
     MessageSquare,
-    LifeBuoy
+    LifeBuoy,
+    Box,
+    Sparkles
 } from "lucide-react"
 
 const baseSidebarItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
-    { icon: LayoutGrid, label: "Tables", href: "/dashboard/tables" },
-    { icon: ShoppingCart, label: "New Order", href: "/dashboard/new-order" },
-    { icon: Clock, label: "Recent Orders", href: "/dashboard/recent-orders" },
-    { icon: PauseCircle, label: "Hold Orders", href: "/dashboard/hold-orders" },
+    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER'] },
+    { icon: LayoutGrid, label: "Tables", href: "/dashboard/tables", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
+    { icon: ShoppingCart, label: "New Order", href: "/dashboard/new-order", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
+    { icon: Clock, label: "Recent Orders", href: "/dashboard/recent-orders", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
+    { icon: PauseCircle, label: "Hold Orders", href: "/dashboard/hold-orders", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
     { icon: Menu, label: "Menu Management", href: "/dashboard/menu", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
-    { icon: Store, label: "Stores", href: "/dashboard/stores" },
+    { icon: Box, label: "Inventory", href: "/dashboard/inventory", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
+    { icon: Store, label: "Stores", href: "/dashboard/stores", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER'] },
     { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
-    { icon: LifeBuoy, label: "Help & Support", href: "/dashboard/support" },
-    { icon: Bell, label: "Notifications", href: "/dashboard/notifications" },
-    { icon: Settings, label: "More Options", href: "/dashboard/settings" },
+    // AI Insights - Manager+
+    { icon: Sparkles, label: "AI Insights", href: "/dashboard/ai-insights", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
+    // Admin / Audit
+    // Admin / Audit (Removed)
+    // { icon: Key, label: "Admin Panel", href: "/dashboard/admin/users", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER'] },
+
+    { icon: LifeBuoy, label: "Help & Support", href: "/dashboard/support", roles: ['BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
+    { icon: Bell, label: "Notifications", href: "/dashboard/notifications", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER', 'CASHIER', 'USER'] },
+    { icon: Settings, label: "Settings", href: "/dashboard/settings", roles: ['SUPER_ADMIN', 'BUSINESS_OWNER', 'MANAGER'] },
 ]
 
 const EMPTY_MODULES: string[] = []
@@ -185,7 +194,7 @@ export function Sidebar({ userRole, disabledModules, storeTableMode = true, busi
                 })}
             </nav>
 
-            <div className="absolute bottom-8 w-full px-4 text-center">
+            <div className="border-t border-gray-200 px-4 py-4">
                 <button
                     onClick={async () => {
                         sessionStorage.removeItem('pin_verified')

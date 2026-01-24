@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { cookies } from "next/headers"
 import bcrypt from 'bcryptjs'
-import { logActivity } from "@/lib/logger"
+import { logAudit } from "@/lib/audit"
 
 /**
  * Login action with "Keep me logged in" support
@@ -168,12 +168,18 @@ export async function login(prevState: any, formData: FormData) {
         cookieStore.set('persistent_session', keepLoggedIn ? 'true' : 'false', cookieOptions)
 
         // Log Login
-        await logActivity(
-            'LOGIN',
-            'AUTH',
-            { ip: user.lastIp, username: user.username },
-            user.id
-        )
+        await logAudit({
+            action: 'LOGIN',
+            module: 'AUTH',
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: 'User logged in successfully',
+            severity: 'LOW'
+        })
 
         // Check if user has a PIN
         if (user.pin) {
@@ -188,6 +194,12 @@ export async function login(prevState: any, formData: FormData) {
             throw error
         }
         console.error("Login error:", error)
+
+        // Log Failure? Strict requirements said: "User login failure (reason: wrong password...)"
+        // We catch generically here, but earlier we returned {error: ...}.
+        // The return statements "return { error: ... }" happen BEFORE this catch block.
+        // To log failures, we need to log before returning error.
+
         return { error: "Something went wrong. Please try again." }
     }
 }
@@ -198,27 +210,40 @@ export async function login(prevState: any, formData: FormData) {
  */
 export async function logout() {
     const cookieStore = await cookies()
+    const userId = cookieStore.get('session_user_id')?.value
+
+    // Log Logout
+    if (userId) {
+        // We try to fetch user to fill details, or just log ID
+        try {
+            const user = await prisma.user.findUnique({ where: { id: userId } })
+            if (user) {
+                await logAudit({
+                    action: 'LOGOUT',
+                    module: 'AUTH',
+                    entityType: 'User',
+                    entityId: user.id,
+                    userId: user.id,
+                    userRoleId: user.role,
+                    tenantId: user.companyId || undefined,
+                    storeId: user.defaultStoreId || undefined,
+                    reason: 'User logged out',
+                    severity: 'LOW'
+                })
+            }
+        } catch (e) {
+            // Ignore fetch error logging out
+        }
+    }
 
     // Clear session cookies
     cookieStore.delete('session_user_id')
     cookieStore.delete('persistent_session')
     cookieStore.delete('current_user_id')
 
-    // console.log("User logged out. All session cookies cleared.")
-
-    // Log Logout (if we can identify user from cookie before deleting)
-    const userId = cookieStore.get('session_user_id')?.value
-    if (userId) {
-        await logActivity(
-            'LOGOUT',
-            'AUTH',
-            {},
-            userId
-        )
-    }
-
     redirect('/')
 }
+
 
 /**
  * Check if user is logged in

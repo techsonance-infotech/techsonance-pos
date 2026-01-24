@@ -3,7 +3,7 @@
 // Force HMR Update
 import { useState, useEffect } from "react"
 import {
-    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building, Trash2, MessageSquare
+    Home, Printer, Users, Settings, Receipt, HeartHandshake, Phone, Mail, FileText, Key, Building2, Info, Database, Building, Trash2, MessageSquare, LifeBuoy
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getUserProfile } from "@/app/actions/user"
@@ -173,6 +173,17 @@ export default function SettingsPage() {
                         colorClass="text-teal-600"
                         iconBgClass="bg-teal-50"
                         href="/dashboard/admin/companies"
+                    />
+                )}
+
+                {userRole === 'SUPER_ADMIN' && (
+                    <SettingCard
+                        icon={LifeBuoy}
+                        title="Support Management"
+                        description="View and manage support tickets"
+                        colorClass="text-cyan-600"
+                        iconBgClass="bg-cyan-50"
+                        href="/dashboard/admin/support"
                     />
                 )}
 

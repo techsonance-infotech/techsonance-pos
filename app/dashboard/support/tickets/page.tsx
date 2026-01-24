@@ -61,6 +61,7 @@ export default function TicketListPage() {
                 <FilterButton active={filterStatus === 'ALL'} onClick={() => setFilterStatus('ALL')}>All</FilterButton>
                 <FilterButton active={filterStatus === 'OPEN'} onClick={() => setFilterStatus('OPEN')}>Open</FilterButton>
                 <FilterButton active={filterStatus === 'IN_PROGRESS'} onClick={() => setFilterStatus('IN_PROGRESS')}>In Progress</FilterButton>
+                <FilterButton active={filterStatus === 'WAITING_FOR_CUSTOMER'} onClick={() => setFilterStatus('WAITING_FOR_CUSTOMER')}>Waiting</FilterButton>
                 <FilterButton active={filterStatus === 'RESOLVED'} onClick={() => setFilterStatus('RESOLVED')}>Resolved</FilterButton>
             </div>
 
@@ -86,8 +87,8 @@ export default function TicketListPage() {
                                 <div className="flex items-start justify-between">
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{ticket.ticketId}</span>
-                                            <span className="font-medium text-gray-900">{ticket.title}</span>
+                                            <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{ticket.ticketNumber}</span>
+                                            <span className="font-medium text-gray-900">{ticket.subject}</span>
                                         </div>
                                         <div className="text-sm text-gray-500 flex items-center gap-3">
                                             <span>{format(new Date(ticket.createdAt), 'MMM d, yyyy h:mm a')}</span>
@@ -111,8 +112,8 @@ function FilterButton({ active, children, onClick }: any) {
         <button
             onClick={onClick}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${active
-                    ? 'bg-orange-100 text-orange-700 border-orange-200 border'
-                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-orange-100 text-orange-700 border-orange-200 border'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                 }`}
         >
             {children}
@@ -124,6 +125,7 @@ function StatusBadge({ status }: { status: string }) {
     const styles: any = {
         OPEN: "bg-blue-100 text-blue-700",
         IN_PROGRESS: "bg-amber-100 text-amber-700",
+        WAITING_FOR_CUSTOMER: "bg-purple-100 text-purple-700",
         RESOLVED: "bg-green-100 text-green-700",
         CLOSED: "bg-gray-100 text-gray-700"
     }

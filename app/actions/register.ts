@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs'
 
 import { generateVerificationToken, hashToken } from "@/app/actions/verify-email"
 import { sendVerificationEmail } from "@/lib/email"
+import { logAudit } from "@/lib/audit"
 
 const TOKEN_EXPIRY_MINUTES = 30
 
@@ -169,6 +170,23 @@ export async function registerUser(prevState: any, formData: FormData) {
 
         // Send verification email
         await sendVerificationEmail(email, token)
+
+        // Log Audit (We don't have the user object effectively here as we used raw queries or tx, 
+        // but we know username/email. Ideally we should have captured the created user ID from tx.)
+        // Refactoring to capture ID is risky without changing structure. 
+        // We will log "SYSTEM" action or attempt to find the user.
+        // Actually, we can just log using email as entityId.
+
+        await logAudit({
+            action: 'CREATE',
+            module: 'AUTH',
+            entityType: 'Company',
+            entityId: businessName, // Using name for now
+            userId: 'SYSTEM_REGISTRATION',
+            // We don't have a real userId yet (it's unverified).
+            reason: `New Company Registration: ${businessName} (${email})`,
+            severity: 'HIGH'
+        })
 
         return { success: true, message: "Registration successful! Please check your email to verify your account." }
 

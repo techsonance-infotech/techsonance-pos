@@ -7,6 +7,7 @@ import { getUserProfile } from "./user"
 import bcrypt from 'bcryptjs'
 import { generateVerificationToken, hashToken } from "@/app/actions/verify-email"
 import { sendVerificationEmail } from "@/lib/email"
+import { logAudit } from "@/lib/audit"
 
 const TOKEN_EXPIRY_MINUTES = 30
 
@@ -81,6 +82,21 @@ export async function createUser(data: any) {
 
         // Send verification email
         await sendVerificationEmail(email, token)
+
+        await logAudit({
+            action: 'CREATE',
+            module: 'USER',
+            entityType: 'User',
+            entityId: email, // No ID returned from create() wrapper easily unless we capture it. 
+            // Wait, create() returns the object. Code above kept it in `await prisma.user.create`.
+            // Let's assume we can't easily get ID without refactoring. We'll use email as ID reference.
+            userId: currentUser.id,
+            userRoleId: currentUser.role,
+            tenantId: currentUser.companyId || undefined,
+            storeId: currentUser.defaultStoreId || undefined,
+            reason: `Created staff user ${username} (${role})`,
+            severity: 'MEDIUM'
+        })
 
         revalidatePath('/dashboard/admin/users')
         revalidatePath('/dashboard/settings/staff')
@@ -173,6 +189,23 @@ export async function updateUser(userId: string, data: any) {
             await sendVerificationEmail(email, verificationTokenStr)
         }
 
+        const adminUser = await getUserProfile() // Refetch just in case
+        if (adminUser) {
+            await logAudit({
+                action: 'UPDATE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: adminUser.id,
+                userRoleId: adminUser.role,
+                tenantId: adminUser.companyId || undefined,
+                storeId: adminUser.defaultStoreId || undefined,
+                reason: `Updated user ${username}`,
+                after: updateData,
+                severity: 'LOW'
+            })
+        }
+
         revalidatePath('/dashboard/admin/users')
         revalidatePath('/dashboard/settings/staff')
 
@@ -202,6 +235,23 @@ export async function deleteUser(userId: string) {
             where: { id: userId },
             data: { isLocked: true }
         })
+
+        const adminUser = await getUserProfile()
+        if (adminUser) {
+            await logAudit({
+                action: 'UPDATE', // It's a lock, effectively a delete/ban
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: adminUser.id,
+                userRoleId: adminUser.role,
+                tenantId: adminUser.companyId || undefined,
+                storeId: adminUser.defaultStoreId || undefined,
+                reason: 'User account disabled (Locked)',
+                severity: 'HIGH'
+            })
+        }
+
         revalidatePath('/dashboard/admin/users')
         return { success: true }
     } catch (e) {
@@ -217,6 +267,23 @@ export async function enableUser(userId: string) {
             where: { id: userId },
             data: { isLocked: false }
         })
+
+        const adminUser = await getUserProfile()
+        if (adminUser) {
+            await logAudit({
+                action: 'UPDATE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: adminUser.id,
+                userRoleId: adminUser.role,
+                tenantId: adminUser.companyId || undefined,
+                storeId: adminUser.defaultStoreId || undefined,
+                reason: 'User account enabled (Unlocked)',
+                severity: 'MEDIUM'
+            })
+        }
+
         revalidatePath('/dashboard/admin/users')
         revalidatePath('/dashboard/settings/staff')
         return { success: true }
@@ -236,6 +303,23 @@ export async function resetPassword(userId: string, newPassword: string) {
             where: { id: userId },
             data: { password: hashedPassword }
         })
+
+        const adminUser = await getUserProfile()
+        if (adminUser) {
+            await logAudit({
+                action: 'UPDATE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: adminUser.id,
+                userRoleId: adminUser.role,
+                tenantId: adminUser.companyId || undefined,
+                storeId: adminUser.defaultStoreId || undefined,
+                reason: 'Password reset by admin',
+                severity: 'HIGH'
+            })
+        }
+
         revalidatePath('/dashboard/admin/users')
         return { success: true }
     } catch (e) {
@@ -256,6 +340,20 @@ export async function approveUser(userId: string) {
                 verificationExpiresAt: null
             }
         })
+        if (currentUser) {
+            await logAudit({
+                action: 'APPROVE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: currentUser.id,
+                userRoleId: currentUser.role,
+                tenantId: currentUser.companyId || undefined,
+                storeId: currentUser.defaultStoreId || undefined,
+                reason: 'User approved by admin (admin-users)',
+                severity: 'MEDIUM'
+            })
+        }
         revalidatePath('/dashboard/admin/users')
         return { success: true }
     } catch (e) {

@@ -15,7 +15,7 @@ export default function CreateTicketPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [formData, setFormData] = useState({
-        title: "",
+        subject: "",
         category: "",
         priority: "MEDIUM",
         description: "",
@@ -23,7 +23,7 @@ export default function CreateTicketPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!formData.title || !formData.category || !formData.description) {
+        if (!formData.subject || !formData.category || !formData.description) {
             toast.error("Please fill in all required fields")
             return
         }
@@ -77,8 +77,8 @@ export default function CreateTicketPage() {
                         <label className="text-sm font-medium">Issue Title <span className="text-red-500">*</span></label>
                         <Input
                             placeholder="Brief summary of the issue..."
-                            value={formData.title}
-                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                            value={formData.subject}
+                            onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                         />
                     </div>
 
@@ -93,12 +93,13 @@ export default function CreateTicketPage() {
                                     <SelectValue placeholder="Select Category" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="Billing">Billing & Invoices</SelectItem>
-                                    <SelectItem value="Technical">Technical Issue</SelectItem>
-                                    <SelectItem value="Inventory">Inventory Management</SelectItem>
-                                    <SelectItem value="Reports">Reports & Analytics</SelectItem>
-                                    <SelectItem value="Feature">Feature Request</SelectItem>
-                                    <SelectItem value="Other">Other</SelectItem>
+                                    <SelectItem value="BILLING">Billing & Invoices</SelectItem>
+                                    <SelectItem value="HARDWARE">Hardware Issue</SelectItem>
+                                    <SelectItem value="INVENTORY">Inventory Management</SelectItem>
+                                    <SelectItem value="KDS">Kitchen Display</SelectItem>
+                                    <SelectItem value="LOGIN">Login Issue</SelectItem>
+                                    <SelectItem value="PRINTER">Printer Issue</SelectItem>
+                                    <SelectItem value="OTHER">Other</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

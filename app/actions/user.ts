@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
+import { logAudit } from "@/lib/audit"
 
 import { cache } from 'react'
 import { unstable_cache, revalidateTag } from "next/cache"
@@ -194,10 +195,26 @@ export async function getCompanyStores() {
 
 export async function approveUser(userId: string) {
     try {
+        const currentUser = await getUserProfile()
         await prisma.user.update({
             where: { id: userId },
             data: { isApproved: true }
         })
+
+        if (currentUser) {
+            await logAudit({
+                action: 'APPROVE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: currentUser.id,
+                userRoleId: currentUser.role,
+                tenantId: currentUser.companyId || undefined,
+                storeId: currentUser.defaultStoreId || undefined,
+                reason: 'User approved by admin',
+                severity: 'MEDIUM'
+            })
+        }
         return { success: true }
     } catch (error) {
         console.error("Failed to approve user:", error)
@@ -207,9 +224,25 @@ export async function approveUser(userId: string) {
 
 export async function rejectUser(userId: string) {
     try {
+        const currentUser = await getUserProfile()
         await prisma.user.delete({
             where: { id: userId }
         })
+
+        if (currentUser) {
+            await logAudit({
+                action: 'DELETE',
+                module: 'USER',
+                entityType: 'User',
+                entityId: userId,
+                userId: currentUser.id,
+                userRoleId: currentUser.role,
+                tenantId: currentUser.companyId || undefined,
+                storeId: currentUser.defaultStoreId || undefined,
+                reason: 'User rejected/deleted by admin',
+                severity: 'HIGH'
+            })
+        }
         return { success: true }
     } catch (error) {
         console.error("Failed to reject user:", error)

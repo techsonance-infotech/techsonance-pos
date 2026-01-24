@@ -31,8 +31,10 @@ export async function pushLogToCloud(logEntry: any) {
 
     try {
         const client = await clientPromise;
-        const db = client.db('pos_logs'); // Default DB
-        await db.collection('activity_logs').insertOne({
+        // Use the DB from URI if present, or fallback to 'pos_logs'
+        // client.db() with no args uses the one in connection string
+        const db = client.db();
+        await db.collection('audit_logs').insertOne({
             ...logEntry,
             syncedAt: new Date()
         });

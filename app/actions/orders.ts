@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_cache } from "next/cache"
 import { getUserProfile } from "./user"
 import { createNotification } from "@/app/actions/notifications"
+import { logAudit } from "@/lib/audit"
 
-// Hold Order (Create or Update if we had an ID)
 // Hold Order (Create or Update if we had an ID)
 export async function saveOrder(orderData: any) {
     const user = await getUserProfile()
@@ -32,14 +32,6 @@ export async function saveOrder(orderData: any) {
         let orderOperation
 
         if (orderData.id) {
-            // Check existence first if needed, but update will throw if not found usually, 
-            // but we want to be safe or just let it fail. 
-            // However, we need existing order for notification context if we want "Order Updated" vs "Created".
-            // Since we are inside transaction, we can't easily "read then write" dependent logic unless interactive transaction,
-            // or we accept we might not have old data for notification diffs. 
-            // For simplicity/perf, we'll just upsert or update. 
-            // Let's stick to update for existing ID.
-
             orderOperation = prisma.order.update({
                 where: { id: orderData.id },
                 data: {
@@ -52,10 +44,21 @@ export async function saveOrder(orderData: any) {
                     tableName: orderData.tableName || null,
                     paymentMode: orderData.paymentMode || 'CASH',
                     discountAmount: orderData.discountAmount || 0,
-                    taxAmount: orderData.taxAmount || 0
+                    taxAmount: orderData.taxAmount || 0,
+                    // We typically don't change shiftId on update, as it belongs to creator?
+                    // Unless we track "Updater's Shift"? For now keep original.
                 }
             })
         } else {
+            // Find Active Shift for User
+            const activeShift = await prisma.shift.findFirst({
+                where: {
+                    userId: user.id,
+                    storeId: user.defaultStoreId,
+                    status: 'OPEN'
+                }
+            })
+
             const kotNo = orderData.kotNo || `KOT${Date.now().toString().slice(-6)}`
             orderOperation = prisma.order.create({
                 data: {
@@ -70,39 +73,57 @@ export async function saveOrder(orderData: any) {
                     userId: user.id,
                     storeId: user.defaultStoreId,
                     discountAmount: orderData.discountAmount || 0,
-                    taxAmount: orderData.taxAmount || 0
+                    taxAmount: orderData.taxAmount || 0,
+                    shiftId: activeShift?.id, // Link to shift if exists
+
+                    // AI Data Collection: If not held, it's accepted by system/kitchen
+                    kitchenAcceptedAt: orderStatus !== 'HELD' ? new Date() : null
                 }
             })
         }
 
         // Execute Transaction
-        // We put table update first or second doesn't matter much, but let's do them in transaction.
         const operations: any[] = [orderOperation]
         if (tableUpdatePromise) operations.push(tableUpdatePromise)
 
         const results = await prisma.$transaction(operations)
         const savedOrder = results[0]
 
-        // Notifications happen AFTER transaction to avoid slowing it down (fire and forget mostly, or await after)
-        // We can await them to ensure delivery before returning success.
+        // Notifications
         await createNotification(
             user.id,
             orderStatus === 'COMPLETED' ? "Order Completed" : (orderData.id ? "Order Updated" : "Order Held"),
             `Order ${savedOrder.kotNo} ${orderStatus === 'COMPLETED' ? 'completed' : (orderData.id ? 'updated' : 'held')} for ₹${orderData.totalAmount}. Table: ${orderData.tableName || 'N/A'}`
         )
 
-        // Log Activity
-        const { logActivity } = await import("@/lib/logger")
-        await logActivity(
-            orderData.id ? (orderStatus === 'HELD' ? 'UPDATE_HOLD' : 'UPDATE_ORDER') : (orderStatus === 'HELD' ? 'HOLD_ORDER' : 'CREATE_ORDER'),
-            'POS',
-            `Order ${savedOrder.kotNo} saved with status ${orderStatus}. Total: ${orderData.totalAmount}`,
-            user.id
-        )
+        // Log Audit
+        const actionType = orderData.id
+            ? (orderStatus === 'HELD' ? 'UPDATE_HOLD' : 'UPDATE_ORDER')
+            : (orderStatus === 'HELD' ? 'HOLD_ORDER' : 'CREATE_ORDER')
+
+        const isCompletion = orderStatus === 'COMPLETED'
+
+        await logAudit({
+            action: orderData.id ? 'UPDATE' : 'CREATE',
+            module: 'POS',
+            entityType: 'Order',
+            entityId: savedOrder.id,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: `Order ${savedOrder.kotNo} ${isCompletion ? 'completed' : 'saved'} with status ${orderStatus}. Total: ₹${orderData.totalAmount}`,
+            severity: isCompletion ? 'MEDIUM' : 'LOW',
+            after: {
+                status: orderStatus,
+                total: orderData.totalAmount,
+                kotNo: savedOrder.kotNo,
+                itemsCount: Array.isArray(orderData.items) ? orderData.items.length : 0
+            }
+        })
 
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
-        // Also revalidate tables since status changed
         if (tableId) revalidatePath('/dashboard/tables')
 
         return {
@@ -215,7 +236,7 @@ export async function getRecentOrders() {
     return getCachedRecentOrders()
 }
 
-// Convert Completed Order to Held (for editing)
+// Convert Completed Order to Held
 export async function convertOrderToHeld(orderId: string) {
     const user = await getUserProfile()
     if (!user?.defaultStoreId) {
@@ -223,7 +244,6 @@ export async function convertOrderToHeld(orderId: string) {
     }
 
     try {
-        // Verify order exists and belongs to user's store
         const order = await prisma.order.findFirst({
             where: {
                 id: orderId,
@@ -236,18 +256,32 @@ export async function convertOrderToHeld(orderId: string) {
             return { error: "Order not found or already held" }
         }
 
-        // Update status to HELD
         await prisma.order.update({
             where: { id: orderId },
             data: { status: 'HELD' }
         })
 
-        // Notify
         await createNotification(
             user.id,
             "Order Converted to Held",
             `Order ${order.kotNo} converted to held status for editing.`
         )
+
+        // Log Audit
+        await logAudit({
+            action: 'UPDATE',
+            module: 'POS',
+            entityType: 'Order',
+            entityId: orderId,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: `Order ${order.kotNo} reopened (converted to HELD)`,
+            severity: 'MEDIUM',
+            before: { status: 'COMPLETED' },
+            after: { status: 'HELD' }
+        })
 
         revalidatePath('/dashboard/recent-orders')
         revalidatePath('/dashboard/hold-orders')
@@ -262,20 +296,33 @@ export async function convertOrderToHeld(orderId: string) {
 // Delete Order
 export async function deleteOrder(orderId: string) {
     try {
-        // Technically should verify store access here too, but ID is unique enough for now.
-        // Adding where clause constraint is safer though.
         const user = await getUserProfile()
         if (!user?.defaultStoreId) return { error: "Unauthorized" }
+
+        const orderToDelete = await prisma.order.findUnique({
+            where: { id: orderId, storeId: user.defaultStoreId }
+        })
 
         await prisma.order.delete({
             where: {
                 id: orderId,
-                storeId: user.defaultStoreId // Strict isolation
+                storeId: user.defaultStoreId
             }
         })
 
-        const { logActivity } = await import("@/lib/logger")
-        await logActivity('DELETE_ORDER', 'POS', `Deleted order ${orderId}`, user.id)
+        await logAudit({
+            action: 'DELETE',
+            module: 'POS',
+            entityType: 'Order',
+            entityId: orderId,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: `Deleted order ${orderToDelete?.kotNo || orderId}`,
+            severity: 'HIGH',
+            before: orderToDelete
+        })
 
         revalidatePath('/dashboard/hold-orders')
         return { success: true }
@@ -293,7 +340,7 @@ export async function getOrder(orderId: string) {
         const order = await prisma.order.findUnique({
             where: {
                 id: orderId,
-                storeId: user.defaultStoreId // Strict isolation
+                storeId: user.defaultStoreId
             }
         })
         return order
@@ -346,7 +393,7 @@ export async function cancelOrder(orderId: string) {
         const order = await prisma.order.findUnique({
             where: {
                 id: orderId,
-                storeId: user.defaultStoreId // Strict isolation
+                storeId: user.defaultStoreId
             }
         })
 
@@ -354,13 +401,11 @@ export async function cancelOrder(orderId: string) {
 
         const operations: any[] = []
 
-        // 1. Update Order Status
         operations.push(prisma.order.update({
             where: { id: orderId },
             data: { status: 'CANCELLED' }
         }))
 
-        // 2. Release Table if assigned
         if (order.tableId) {
             operations.push(prisma.table.update({
                 where: { id: order.tableId },
@@ -377,6 +422,22 @@ export async function cancelOrder(orderId: string) {
             `Order ${order.kotNo} was cancelled. Table released.`
         )
 
+        // Log Audit
+        await logAudit({
+            action: 'UPDATE',
+            module: 'POS',
+            entityType: 'Order',
+            entityId: orderId,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: `Order ${order.kotNo} cancelled`,
+            severity: 'HIGH',
+            before: { status: order.status },
+            after: { status: 'CANCELLED' }
+        })
+
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
         revalidatePath('/dashboard/tables')
@@ -385,5 +446,44 @@ export async function cancelOrder(orderId: string) {
     } catch (error) {
         console.error("Cancel Order Error:", error)
         return { error: "Failed to cancel order" }
+    }
+}
+
+
+// Submit Feedback (AI Phase 1)
+export async function submitFeedback(data: { orderId: string, rating: number, comment?: string }) {
+    try {
+        // Validation (Basic)
+        if (!data.orderId || !data.rating) return { error: "Missing required fields" }
+
+        // Create Feedback
+        const feedback = await prisma.feedback.create({
+            data: {
+                orderId: data.orderId,
+                rating: data.rating,
+                comment: data.comment
+            }
+        })
+
+        // Log Audit (Anonymous or System, usually triggered by guest)
+        // We'll use a placeholder user ID or check if session exists (unlikely for QR).
+        await logAudit({
+            action: 'CREATE',
+            module: 'AI', // Feedback feeds AI
+            entityType: 'Feedback',
+            entityId: feedback.id,
+            userId: 'GUEST',
+            // userRoleId: 'CUSTOMER',
+            branchId: undefined, // Ideally fetch order to get storeId, but for speed skipping extra fetch if not strict.
+            // Actually, let's look up order for context if possible? 
+            // For now, minimal log to avoid latency.
+            reason: `Customer Rating: ${data.rating}/5`,
+            severity: 'LOW'
+        })
+
+        return { success: true }
+    } catch (error) {
+        console.error("Submit Feedback Error:", error)
+        return { error: "Failed to submit feedback" }
     }
 }

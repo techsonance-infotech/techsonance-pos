@@ -62,7 +62,7 @@ export default function TicketDetailsPage() {
                 <span className="text-gray-300">/</span>
                 <span className="hover:text-orange-600 cursor-pointer" onClick={() => router.push('/dashboard/support/tickets')}>My Tickets</span>
                 <span className="text-gray-300">/</span>
-                <span className="font-medium text-orange-600">{ticket.ticketId}</span>
+                <span className="font-medium text-orange-600">{ticket.ticketNumber}</span>
             </div>
 
             {/* Header */}
@@ -71,12 +71,12 @@ export default function TicketDetailsPage() {
                     <Button variant="ghost" size="sm" onClick={() => router.back()}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
-                    <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{ticket.ticketId}</span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {ticket.status}
+                    <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{ticket.ticketNumber}</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-700' : ticket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-700' : ticket.status === 'WAITING_FOR_CUSTOMER' ? 'bg-purple-100 text-purple-700' : ticket.status === 'RESOLVED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                        {ticket.status.replace(/_/g, ' ')}
                     </span>
                 </div>
-                <h1 className="text-2xl font-bold text-gray-900 ml-10">{ticket.title}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 ml-10">{ticket.subject}</h1>
             </div>
 
             {/* Chat Area */}
@@ -92,13 +92,13 @@ export default function TicketDetailsPage() {
                             <span className="text-xs text-gray-400">{format(new Date(ticket.createdAt), 'MMM d, h:mm a')}</span>
                         </div>
                         <div className="bg-white p-3 rounded-tr-xl rounded-b-xl border shadow-sm text-sm text-gray-700 whitespace-pre-wrap">
-                            {ticket.description}
+                            {ticket.messages?.[0]?.message || 'No description provided'}
                         </div>
                     </div>
                 </div>
 
                 {/* Messages */}
-                {ticket.messages.map((msg: any) => {
+                {ticket.messages?.slice(1).map((msg: any) => {
                     const isSupport = msg.sender?.role === 'SUPER_ADMIN' || !msg.senderId
                     return (
                         <div key={msg.id} className={`flex gap-3 ${isSupport ? 'flex-row-reverse' : ''}`}>

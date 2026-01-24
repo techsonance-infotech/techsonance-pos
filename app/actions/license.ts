@@ -5,6 +5,7 @@ import { generateWindowsStyleKey, hashLicenseKey } from "@/lib/licensing"
 import { revalidatePath } from "next/cache"
 import { LicenseType } from "@/types/enums"
 import { getUserProfile } from "@/app/actions/user"
+import { logAudit } from "@/lib/audit"
 
 // Check if user is Super Admin
 async function checkSuperAdmin() {
@@ -130,6 +131,25 @@ export async function createLicense(formData: FormData) {
         return { error: "Database error creating license" }
     }
 
+    // Capture logged in super admin details for audit
+    const admin = await getUserProfile()
+
+    if (admin) {
+        await logAudit({
+            action: existing ? 'UPDATE' : 'CREATE',
+            module: 'AUTH', // or LICENSING
+            entityType: 'License',
+            entityId: existing ? existing.id : displayKey, // Use key if new ID not easily avail (actually we can't get ID easily from tx create/update without returning)
+            // Wait, we didn't return ID. We only have displayKey.
+            // We'll use displayKey as ID ref.
+            userId: admin.id,
+            userRoleId: admin.role,
+            tenantId: undefined, // System level action usually
+            reason: `${existing ? 'Renewed' : 'Created'} License for Company ${companyId} (${type})`,
+            severity: 'HIGH'
+        })
+    }
+
     revalidatePath('/dashboard/admin/licenses')
     return { success: true, key: displayKey }
 }
@@ -231,6 +251,18 @@ export async function revokeLicense(licenseId: string) {
                 revokedBy: user.id
             }
         })
+        await logAudit({
+            action: 'UPDATE', // REVOKE
+            module: 'AUTH',
+            entityType: 'License',
+            entityId: licenseId,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: undefined,
+            reason: 'Revoked License',
+            severity: 'HIGH'
+        })
+
         revalidatePath('/dashboard/admin/licenses')
         return { success: true }
     } catch (e) {
@@ -272,6 +304,18 @@ export async function extendTrialLicense(licenseId: string, days: number) {
                 extendedCount: { increment: 1 }
             }
         })
+        await logAudit({
+            action: 'UPDATE',
+            module: 'AUTH',
+            entityType: 'License',
+            entityId: licenseId,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: undefined,
+            reason: `Extended License by ${days} days`,
+            severity: 'MEDIUM'
+        })
+
         revalidatePath('/dashboard/admin/licenses')
         return { success: true, newExpiry }
     } catch (e) {
@@ -378,7 +422,23 @@ export async function verifySessionLicense(userId: string) {
 
     // Check expiry for non-perpetual licenses
     if (license.validUntil && new Date(license.validUntil) < new Date()) {
-        return { valid: false, error: "License has expired. Please renew your license." }
+        const expiryDate = new Date(license.validUntil)
+        const now = new Date()
+        const diffTime = Math.abs(now.getTime() - expiryDate.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        const GRACE_PERIOD_DAYS = 3
+
+        if (diffDays <= GRACE_PERIOD_DAYS) {
+            return {
+                valid: true,
+                warning: "Your license has expired. You are in a grace period of 3 days. Please renew immediately.",
+                daysOverdue: diffDays,
+                gracePeriodRemaining: GRACE_PERIOD_DAYS - diffDays + 1
+            }
+        }
+
+        return { valid: false, error: "License has expired. Grace period ended. Please renew your license." }
     }
 
     return { valid: true, license }
@@ -437,6 +497,19 @@ export async function activateLicense(key: string) {
             data: { status: 'ACTIVE' }
         })
     }
+
+    await logAudit({
+        action: 'UPDATE', // ACTIVATE
+        module: 'AUTH',
+        entityType: 'License',
+        entityId: license.id,
+        userId: user.id,
+        userRoleId: user.role,
+        tenantId: user.companyId!,
+        storeId: user.defaultStoreId || undefined,
+        reason: 'Activated License Key',
+        severity: 'HIGH'
+    })
 
     revalidatePath('/dashboard')
     return { success: true, message: "License activated successfully!" }

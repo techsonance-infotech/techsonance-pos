@@ -19,6 +19,7 @@ import NewOrderLoading from "./loading"
 import { db } from "@/lib/db"
 import { useNetworkStatus } from "@/hooks/use-network-status"
 import { getPOSService } from "@/lib/pos-service"
+import { SplitBillModal } from "../pos/split-bill-modal"
 
 type CartItem = {
     cartId?: string
@@ -59,6 +60,7 @@ export function NewOrderClient() {
     const [paymentMode, setPaymentMode] = useState<string>('CASH')
     const [storeDetails, setStoreDetails] = useState<any>(null)
     const [printerConfig, setPrinterConfig] = useState<any>(null)
+    const [isSplitModalOpen, setSplitModalOpen] = useState(false)
 
     // Print handler using react-to-print (Web)
     const handleWebPrint = useReactToPrint({
@@ -784,10 +786,27 @@ export function NewOrderClient() {
                                     <Trash2 className="h-4 w-4" /> Clear Order
                                 </button>
                             </div>
+
+                            <div className="mt-2">
+                                <button
+                                    onClick={() => setSplitModalOpen(true)}
+                                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200 shadow-sm active:scale-95 transition-all"
+                                >
+                                    Split Bill
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Modals */}
+            <SplitBillModal
+                isOpen={isSplitModalOpen}
+                onClose={() => setSplitModalOpen(false)}
+                totalAmount={total}
+                currencySymbol={currency.symbol}
+            />
 
             {/* Cart Item Lookup for Modal State Sync */}
             {(() => {
@@ -797,6 +816,7 @@ export function NewOrderClient() {
                         isOpen={!!selectedProduct}
                         onClose={() => setSelectedProduct(null)}
                         product={selectedProduct}
+
                         addons={selectedProduct?.addons || []}
                         onAddToBill={handleAddToBill}
                         initialQuantity={existingCartItem?.quantity}
