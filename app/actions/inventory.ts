@@ -5,33 +5,50 @@ import { getUserProfile } from "./user"
 import { revalidatePath } from "next/cache"
 import { logAudit } from "@/lib/audit"
 
-export async function getInventoryItems() {
+export async function getInventoryItems(
+    search?: string,
+    page: number = 1,
+    limit: number = 50
+) {
     const user = await getUserProfile()
-    if (!user || !user.companyId) return []
-
-    // Logic: Fetch ingredients and their stock for the user's *current store*
-    // If we want to view ALL stores, we need a filter. For now, default store.
+    if (!user || !user.companyId) return { items: [], total: 0, totalPages: 0 }
 
     const storeId = user.defaultStoreId
-    if (!storeId) return []
+    if (!storeId) return { items: [], total: 0, totalPages: 0 }
+
+    const skip = (page - 1) * limit
 
     try {
-        // Fetch all ingredients for the company
-        const ingredients = await prisma.ingredient.findMany({
-            where: { companyId: user.companyId },
-            include: {
-                inventoryItems: {
-                    where: { storeId: storeId }
+        // Build Where Clause
+        const where: any = {
+            companyId: user.companyId
+        }
+
+        if (search) {
+            where.name = { contains: search, mode: 'insensitive' }
+        }
+
+        // Parallel Fetch: Total Count + Data
+        const [total, ingredients] = await Promise.all([
+            prisma.ingredient.count({ where }),
+            prisma.ingredient.findMany({
+                where,
+                include: {
+                    inventoryItems: {
+                        where: { storeId: storeId }
+                    },
+                    supplier: {
+                        select: { name: true }
+                    }
                 },
-                supplier: {
-                    select: { name: true }
-                }
-            },
-            orderBy: { name: 'asc' }
-        })
+                orderBy: { name: 'asc' },
+                skip,
+                take: limit
+            })
+        ])
 
         // Map to a flat structure for the UI
-        return ingredients.map((ing: any) => {
+        const items = ingredients.map((ing: any) => {
             const stock = ing.inventoryItems[0]?.quantity || 0
             return {
                 id: ing.id,
@@ -44,9 +61,16 @@ export async function getInventoryItems() {
                 status: stock <= ing.minStock ? 'LOW_STOCK' : 'OK'
             }
         })
+
+        return {
+            items,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        }
     } catch (error) {
         console.error("Failed to fetch inventory:", error)
-        return []
+        return { items: [], total: 0, totalPages: 0 }
     }
 }
 

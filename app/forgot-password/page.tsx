@@ -1,5 +1,4 @@
 import Image from "next/image"
-import Link from "next/link"
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form"
 
 export const dynamic = 'force-dynamic'
@@ -55,13 +54,6 @@ export default function ForgotPasswordPage() {
                     {/* Forgot Password Form */}
                     <ForgotPasswordForm />
 
-                    {/* Back to login link */}
-                    <div className="text-center text-sm">
-                        Remember your password?{" "}
-                        <Link href="/" className="text-[#d97706] hover:underline font-semibold">
-                            Back to Login
-                        </Link>
-                    </div>
                 </div>
             </div>
         </div>

@@ -1,5 +1,4 @@
 import { RegisterForm } from "@/components/auth/register-form"
-import Link from "next/link"
 import Image from "next/image"
 
 export const dynamic = 'force-dynamic'
@@ -62,14 +61,6 @@ export default async function RegisterPage() {
 
                     {/* Registration Form */}
                     <RegisterForm />
-
-                    {/* Sign in link */}
-                    <div className="text-center text-sm">
-                        Already have an account?{" "}
-                        <Link href="/" className="text-[#d97706] hover:underline font-semibold">
-                            Sign in
-                        </Link>
-                    </div>
                 </div>
             </div>
         </div>

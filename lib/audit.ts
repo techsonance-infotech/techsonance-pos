@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma, isPostgres } from "@/lib/prisma"
 import { pushLogToCloud } from "@/lib/mongo-logger"
 import { headers } from "next/headers"
 
@@ -44,67 +44,83 @@ export async function logAudit(entry: AuditLogEntry) {
             })
         }
 
-        // 2. Prepare Data
-        const logData = {
-            action: entry.action,
-            module: entry.module,
-            entityType: entry.entityType,
-            entityId: entry.entityId,
-            userId: entry.userId,
-            userRoleId: entry.userRoleId,
-            storeId: entry.storeId,
-            tenantId: entry.tenantId,
-            beforeData: entry.before ? JSON.stringify(entry.before) : null,
-            afterData: entry.after ? JSON.stringify(entry.after) : null,
-            changedFields: changedFields.length > 0 ? JSON.stringify(changedFields) : null,
-            reason: entry.reason,
-            severity: entry.severity || 'LOW',
-            status: entry.status || 'SUCCESS',
-            ipAddress: ip,
-            userAgent: userAgent,
-            isSynced: false
-        }
+        let savedLog: any = null
 
-        // 3. Save to Local DB (SQLite)
-        const savedLog = await prisma.auditLog.create({
-            data: logData
-        })
+        // 2. Handle differently based on database type
+        if (isPostgres) {
+            // WEB MODE: Write DIRECTLY to MongoDB (No local SQL write)
+            // We skip prisma.activityLog.create completely
 
-        // 4. Async Sync to Cloud (Fire and Forget)
-        // We don't await this to keep response fast, unless strictly required.
-        // But Next.js Server Actions usually finish before async tasks in background are guaranteed (?)
-        // Actually, in Server Actions, Vercel/Next might kill the process. 
-        // For local persistent server it's fine.
-        // Ideally use a queue. For now, we await it but with a timeout or just try-catch.
+            try {
+                const cloudData = {
+                    action: entry.action,
+                    module: entry.module,
+                    entityType: entry.entityType,
+                    entityId: entry.entityId,
+                    userId: entry.userId,
+                    userRoleId: entry.userRoleId,
+                    storeId: entry.storeId,
+                    tenantId: entry.tenantId,
+                    reason: entry.reason,
+                    severity: entry.severity || 'LOW',
+                    status: entry.status || 'SUCCESS',
+                    before: entry.before,
+                    after: entry.after,
+                    changedFields,
+                    ipAddress: ip,
+                    userAgent: userAgent,
+                    notes: "Direct MongoDB Write"
+                }
 
-        try {
-            const synced = await pushLogToCloud({
-                ...logData, // Send the parsed JSON data to mongo, or stringified? 
-                // Mongo supports JSON. Let's send objects if possible or just the raw record.
-                // The mongo-logger takes 'any'. 
-                // Better to send mapped object.
-                before: entry.before, // Send raw object to mongo for easier querying
-                after: entry.after,
-                id: savedLog.id,
-                localCreatedAt: savedLog.createdAt
+                // Just push to cloud
+                const result = await pushLogToCloud(cloudData)
+
+                // Return a mock object so callers don't crash if they expect a returned log
+                // (though most callers ignore the return value)
+                return result ? { ...cloudData, id: 'mongo-id', createdAt: new Date() } : null
+
+            } catch (e) {
+                console.warn("[Audit] Cloud sync failed:", e)
+                return null
+            }
+
+        } else {
+            // DESKTOP MODE (SQLite): Write to Local AuditLog
+            const auditData = {
+                action: entry.action,
+                module: entry.module,
+                entityType: entry.entityType,
+                entityId: entry.entityId,
+                userId: entry.userId,
+                userRoleId: entry.userRoleId,
+                storeId: entry.storeId,
+                tenantId: entry.tenantId,
+                beforeData: entry.before ? JSON.stringify(entry.before) : null,
+                afterData: entry.after ? JSON.stringify(entry.after) : null,
+                changedFields: changedFields.length > 0 ? JSON.stringify(changedFields) : null,
+                reason: entry.reason,
+                severity: entry.severity || 'LOW',
+                status: entry.status || 'SUCCESS',
+                ipAddress: ip,
+                userAgent: userAgent,
+                isSynced: false
+            }
+
+            savedLog = await prisma.auditLog.create({
+                data: auditData
             })
 
-            if (synced) {
-                await prisma.auditLog.update({
-                    where: { id: savedLog.id },
-                    data: { isSynced: true }
-                })
-            }
-        } catch (e) {
-            // Cloud sync failed, cron will pick it up later (to be implemented)
-            console.warn("Real-time audit sync failed", e)
+            return savedLog
         }
 
-        return savedLog
+        // Note: The previous "Cloud Sync" block is now handled inside the isPostgres check above
+        // or skipped for SQLite (as per previous agreement to not sync from desktop)
+
 
     } catch (error) {
         console.error("Critical: Failed to log audit entry", error)
-        // Fallback? Don't crash main app flow for logging usually, unless strict compliance.
+        // Don't crash main app flow for logging
         return null
     }
 }
+

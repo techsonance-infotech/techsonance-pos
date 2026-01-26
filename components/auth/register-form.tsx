@@ -6,10 +6,10 @@ import { registerUser } from "@/app/actions/register"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
-import { Check, X, Eye, EyeOff } from "lucide-react"
+import { Check, X, Eye, EyeOff, Loader2 } from "lucide-react"
 
 function SubmitButton({ disabled }: { disabled?: boolean }) {
     const { pending } = useFormStatus()
@@ -19,8 +19,29 @@ function SubmitButton({ disabled }: { disabled?: boolean }) {
             className="w-full h-12 bg-[#f97316] hover:bg-[#ea580c] text-white text-md font-semibold rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={pending || disabled}
         >
-            {pending ? "Creating Account..." : "Create Account"}
+            {pending ? (
+                <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating Account...
+                </span>
+            ) : "Create Account"}
         </Button>
+    )
+}
+
+// Loading overlay component
+function FormPendingOverlay() {
+    const { pending } = useFormStatus()
+    if (!pending) return null
+
+    return (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-xl z-50 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-10 w-10 animate-spin text-orange-500" />
+            <div className="text-center">
+                <p className="text-base font-semibold text-gray-800">Creating your account...</p>
+                <p className="text-xs text-gray-500 mt-1">Setting up company, store & sending verification email</p>
+            </div>
+        </div>
     )
 }
 
@@ -47,6 +68,8 @@ export function RegisterForm() {
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+    const [isRedirecting, setIsRedirecting] = useState(false)
+    const [redirectType, setRedirectType] = useState<'success' | 'nav'>('success')
 
     // Validation state
     const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -101,15 +124,55 @@ export function RegisterForm() {
             toast.error(state.error)
         }
         if (state?.success) {
+            // Clear form on success
+            setBusinessName('')
+            setUsername('')
+            setEmail('')
+            setContactNo('')
+            setPassword('')
+            setConfirmPassword('')
+            setTouched({})
+            setRedirectType('success')
+            setIsRedirecting(true)
+
             toast.success(state.message || "Registration successful!")
             setTimeout(() => {
                 router.push('/')
-            }, 2000)
+            }, 2500)
         }
     }, [state, router])
 
+    // Show full-screen success overlay during redirect (only for success)
+    if (isRedirecting && redirectType === 'success') {
+        return (
+            <div className="flex flex-col items-center justify-center py-16 gap-6">
+                <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+                    <Check className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Successful! 🎉</h2>
+                    <p className="text-gray-600">Please check your email to verify your account.</p>
+                </div>
+                <div className="flex items-center gap-2 text-orange-600">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm font-medium">Redirecting to login...</span>
+                </div>
+            </div>
+        )
+    }
+
     return (
-        <form action={formAction} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form action={formAction} className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+            <FormPendingOverlay />
+
+            {/* Navigation Redirect Overlay */}
+            {isRedirecting && redirectType === 'nav' && (
+                <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                    <p className="text-sm font-medium text-gray-700">Redirecting...</p>
+                </div>
+            )}
+
             {/* Business Name Field */}
             <div className="grid gap-2">
                 <Label htmlFor="businessName" className="text-[#333] font-medium text-sm">Business Name</Label>
@@ -187,7 +250,7 @@ export function RegisterForm() {
             </div>
 
             {/* Password Field */}
-            <div className="grid gap-2">
+            <div className="flex flex-col gap-2">
                 <Label htmlFor="password" className="text-[#333] font-medium text-sm">Password</Label>
                 <div className="relative">
                     <Input
@@ -209,19 +272,22 @@ export function RegisterForm() {
                         {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                 </div>
-                {password && (
-                    <div className="grid grid-cols-2 gap-1 mt-1">
-                        <PasswordRequirement met={hasMinLength} text="8+ chars" />
-                        <PasswordRequirement met={hasUppercase} text="Uppercase" />
-                        <PasswordRequirement met={hasLowercase} text="Lowercase" />
-                        <PasswordRequirement met={hasNumber} text="Number" />
-                        <PasswordRequirement met={hasSpecial} text="Special" />
-                    </div>
-                )}
+                {/* Fixed height container for requirements */}
+                <div className="min-h-[52px]">
+                    {password && (
+                        <div className="grid grid-cols-2 gap-1">
+                            <PasswordRequirement met={hasMinLength} text="8+ chars" />
+                            <PasswordRequirement met={hasUppercase} text="Uppercase" />
+                            <PasswordRequirement met={hasLowercase} text="Lowercase" />
+                            <PasswordRequirement met={hasNumber} text="Number" />
+                            <PasswordRequirement met={hasSpecial} text="Special" />
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Confirm Password Field */}
-            <div className="grid gap-2">
+            <div className="flex flex-col gap-2">
                 <Label htmlFor="confirmPassword" className="text-[#333] font-medium text-sm">Confirm Password</Label>
                 <div className="relative">
                     <Input
@@ -243,19 +309,39 @@ export function RegisterForm() {
                         {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                 </div>
-                {touched.confirmPassword && confirmPassword && !passwordsMatch && (
-                    <p className="text-xs text-red-500">Passwords do not match</p>
-                )}
-                {confirmPassword && passwordsMatch && (
-                    <p className="text-xs text-green-600 flex items-center gap-1">
-                        <Check className="h-3 w-3" /> Match
-                    </p>
-                )}
+                {/* Fixed height container for validation message */}
+                <div className="min-h-[52px] flex items-start">
+                    {touched.confirmPassword && confirmPassword && !passwordsMatch && (
+                        <p className="text-xs text-red-500">Passwords do not match</p>
+                    )}
+                    {confirmPassword && passwordsMatch && (
+                        <p className="text-xs text-green-600 flex items-center gap-1">
+                            <Check className="h-3 w-3" /> Passwords match
+                        </p>
+                    )}
+                </div>
             </div>
 
             {/* Submit Button */}
             <div className="md:col-span-2 mt-2">
                 <SubmitButton disabled={!isFormValid} />
+            </div>
+
+            {/* Sign in link */}
+            <div className="md:col-span-2 text-center text-sm mt-4">
+                Already have an account?{" "}
+                <button
+                    type="button"
+                    onClick={() => {
+                        setRedirectType('nav')
+                        setIsRedirecting(true)
+                        setTimeout(() => router.push('/'), 500)
+                    }}
+                    className="text-[#d97706] hover:underline font-semibold bg-transparent border-none p-0 cursor-pointer"
+                    disabled={isRedirecting}
+                >
+                    Sign in
+                </button>
             </div>
         </form>
     )

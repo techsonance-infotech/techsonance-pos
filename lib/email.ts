@@ -304,3 +304,127 @@ export async function sendVerificationEmail(email: string, token: string): Promi
         return false
     }
 }
+
+/**
+ * Send New Registration Admin Notification
+ * @param data - Registration data to include in notification
+ */
+export async function sendNewRegistrationAdminNotification(data: {
+    businessName: string
+    username: string
+    email: string
+    contactNo?: string | null
+}): Promise<boolean> {
+    const adminEmail = process.env.ADMIN_EMAIL
+    if (!adminEmail) {
+        console.warn('ADMIN_EMAIL not configured, skipping admin notification')
+        return false
+    }
+
+    const registrationTime = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        dateStyle: 'full',
+        timeStyle: 'short'
+    })
+
+    const emailTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Registration Alert</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 0;">
+                <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 20px; text-align: center; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px 12px 0 0;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">
+                                🎉 New Registration Alert
+                            </h1>
+                            <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
+                                SyncServe POS - Admin Notification
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="margin: 0 0 25px; color: #333; font-size: 16px; line-height: 1.6;">
+                                A new business has registered on SyncServe POS. Here are the details:
+                            </p>
+                            
+                            <!-- Details Box -->
+                            <div style="background-color: #f0fdf4; border-radius: 12px; padding: 25px; margin: 0 0 25px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px; font-weight: 600; width: 40%;">Business Name:</td>
+                                        <td style="padding: 8px 0; color: #111827; font-size: 15px; font-weight: 700;">${data.businessName}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Username:</td>
+                                        <td style="padding: 8px 0; color: #111827; font-size: 15px;">${data.username}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Email:</td>
+                                        <td style="padding: 8px 0; color: #111827; font-size: 15px;"><a href="mailto:${data.email}" style="color: #2563eb;">${data.email}</a></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Contact:</td>
+                                        <td style="padding: 8px 0; color: #111827; font-size: 15px;">${data.contactNo || 'Not provided'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Registered At:</td>
+                                        <td style="padding: 8px 0; color: #111827; font-size: 15px;">${registrationTime}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <!-- Action Hint -->
+                            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px 20px; border-radius: 0 8px 8px 0;">
+                                <p style="margin: 0; color: #1e40af; font-size: 14px;">
+                                    📌 The user will need to verify their email before they can access the dashboard.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px 40px; background-color: #f8fafc; border-radius: 0 0 12px 12px; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 10px; color: #94a3b8; font-size: 12px; text-align: center;">
+                                This is an automated admin notification from SyncServe POS.
+                            </p>
+                            <p style="margin: 0; color: #f97316; font-size: 12px; text-align: center; font-weight: 600;">
+                                Powered by TechSonance InfoTech LLP
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+`
+
+    try {
+        await transporter.sendMail({
+            from: process.env.EMAIL_FROM || 'SyncServe <noreply@syncserve.com>',
+            to: adminEmail,
+            subject: `🎉 New Registration: ${data.businessName} - SyncServe POS`,
+            html: emailTemplate,
+        })
+        console.log(`Admin notification sent to ${adminEmail} for new registration: ${data.businessName}`)
+        return true
+    } catch (error) {
+        console.error('Failed to send admin notification email:', error)
+        return false
+    }
+}
+

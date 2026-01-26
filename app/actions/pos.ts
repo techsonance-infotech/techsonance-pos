@@ -63,15 +63,19 @@ export async function getPOSInitialData() {
 }
 
 // Aggregate function for Recent Orders page
-export async function getRecentOrdersPageData() {
+export async function getRecentOrdersPageData(
+    filter?: { search?: string, status?: string, date?: string, page?: number }
+) {
     const user = await getUserProfile()
     if (!user || !user.defaultStoreId) {
         return null
     }
 
     try {
-        const [orders, companySettings, store] = await Promise.all([
-            getRecentOrders(),
+        const { getFilteredOrders } = await import("./orders")
+
+        const [ordersData, companySettings, store] = await Promise.all([
+            getFilteredOrders({ storeId: user.defaultStoreId, ...filter }),
             getCompanyBusinessSettings(),
             getUserStoreDetails()
         ])
@@ -95,7 +99,14 @@ export async function getRecentOrdersPageData() {
             maxDiscount: (companySettings.settings as any).maxDiscount || '0'
         } : {}
 
-        return { orders, businessDetails: settings, storeDetails: store }
+        return {
+            orders: ordersData.orders,
+            total: ordersData.total,
+            totalPages: ordersData.totalPages,
+            currentPage: ordersData.currentPage,
+            businessDetails: settings,
+            storeDetails: store
+        }
     } catch (error) {
         console.error("Failed to fetch Recent Orders page data", error)
         return null

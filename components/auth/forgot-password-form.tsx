@@ -73,10 +73,10 @@ function StepIndicator({ currentStep }: { currentStep: Step }) {
                     <div key={step.key} className="flex items-center">
                         <div
                             className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${isCompleted
-                                    ? 'bg-green-500 border-green-500 text-white'
-                                    : isActive
-                                        ? 'bg-[#f97316] border-[#f97316] text-white'
-                                        : 'bg-gray-100 border-gray-300 text-gray-400'
+                                ? 'bg-green-500 border-green-500 text-white'
+                                : isActive
+                                    ? 'bg-[#f97316] border-[#f97316] text-white'
+                                    : 'bg-gray-100 border-gray-300 text-gray-400'
                                 }`}
                         >
                             {isCompleted ? (
@@ -109,6 +109,7 @@ export function ForgotPasswordForm() {
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
     const [countdown, setCountdown] = useState(0)
+    const [isRedirecting, setIsRedirecting] = useState(false)
 
     // Action states
     const [sendOtpState, sendOtpAction] = useActionState(sendForgotPasswordOTP, null)
@@ -188,7 +189,15 @@ export function ForgotPasswordForm() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative">
+            {/* Redirect Overlay */}
+            {isRedirecting && step !== 'success' && (
+                <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                    <p className="text-sm font-medium text-gray-700">Redirecting...</p>
+                </div>
+            )}
+
             {/* Header */}
             <div className="grid gap-2">
                 {step !== 'success' && step !== 'email' && (
@@ -234,10 +243,10 @@ export function ForgotPasswordForm() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className={`h-12 bg-white border rounded-lg focus:ring-1 focus:ring-[#f97316] ${email && !isEmailValid
-                                    ? 'border-red-500'
-                                    : email && isEmailValid
-                                        ? 'border-green-500'
-                                        : 'border-[#e5e5e5]'
+                                ? 'border-red-500'
+                                : email && isEmailValid
+                                    ? 'border-green-500'
+                                    : 'border-[#e5e5e5]'
                                 }`}
                         />
                         {email && !isEmailValid && (
@@ -254,6 +263,21 @@ export function ForgotPasswordForm() {
                     <SubmitButton disabled={!isEmailValid}>
                         Send OTP
                     </SubmitButton>
+
+                    <div className="text-center text-sm mt-4">
+                        Remember your password?{" "}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsRedirecting(true)
+                                setTimeout(() => router.push('/'), 500)
+                            }}
+                            className="text-[#d97706] hover:underline font-semibold bg-transparent border-none p-0 cursor-pointer"
+                            disabled={isRedirecting}
+                        >
+                            Back to Login
+                        </button>
+                    </div>
                 </form>
             )}
 
@@ -276,10 +300,10 @@ export function ForgotPasswordForm() {
                             value={otp}
                             onChange={handleOtpChange}
                             className={`h-14 bg-white border rounded-lg text-center text-2xl font-mono tracking-[0.5em] focus:ring-1 focus:ring-[#f97316] ${otp && !isOtpValid
-                                    ? 'border-red-500'
-                                    : otp && isOtpValid
-                                        ? 'border-green-500'
-                                        : 'border-[#e5e5e5]'
+                                ? 'border-red-500'
+                                : otp && isOtpValid
+                                    ? 'border-green-500'
+                                    : 'border-[#e5e5e5]'
                                 }`}
                             maxLength={6}
                         />
@@ -340,10 +364,10 @@ export function ForgotPasswordForm() {
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 className={`h-12 bg-white border rounded-lg pr-12 focus:ring-1 focus:ring-[#f97316] ${newPassword && !isPasswordStrong
-                                        ? 'border-amber-500'
-                                        : newPassword && isPasswordStrong
-                                            ? 'border-green-500'
-                                            : 'border-[#e5e5e5]'
+                                    ? 'border-amber-500'
+                                    : newPassword && isPasswordStrong
+                                        ? 'border-green-500'
+                                        : 'border-[#e5e5e5]'
                                     }`}
                             />
                             <button
@@ -380,10 +404,10 @@ export function ForgotPasswordForm() {
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 className={`h-12 bg-white border rounded-lg pr-12 focus:ring-1 focus:ring-[#f97316] ${confirmPassword && !passwordsMatch
-                                        ? 'border-red-500'
-                                        : confirmPassword && passwordsMatch
-                                            ? 'border-green-500'
-                                            : 'border-[#e5e5e5]'
+                                    ? 'border-red-500'
+                                    : confirmPassword && passwordsMatch
+                                        ? 'border-green-500'
+                                        : 'border-[#e5e5e5]'
                                     }`}
                             />
                             <button
@@ -428,10 +452,19 @@ export function ForgotPasswordForm() {
                         Your password has been reset successfully. You can now login with your new password.
                     </p>
                     <Button
-                        onClick={() => router.push('/')}
+                        onClick={() => {
+                            setIsRedirecting(true)
+                            setTimeout(() => router.push('/'), 500)
+                        }}
+                        disabled={isRedirecting}
                         className="w-full h-12 bg-[#f97316] hover:bg-[#ea580c] text-white text-md font-semibold rounded-lg shadow-md"
                     >
-                        Go to Login
+                        {isRedirecting ? (
+                            <span className="flex items-center gap-2">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Redirecting...
+                            </span>
+                        ) : "Go to Login"}
                     </Button>
                 </div>
             )}

@@ -27,18 +27,42 @@ export async function login(prevState: any, formData: FormData) {
     }
 
     try {
-        // Find user by username or email
-        const user = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { username: identifier },
-                    { email: identifier }
-                ]
-            },
-            include: {
-                company: true // Fetch company details to check status
-            }
-        })
+        // 0. Extract IP first (needed for security check)
+        let ip = "unknown"
+        try {
+            const { headers } = await import("next/headers")
+            const headerList = await headers()
+            ip = headerList.get("x-forwarded-for")?.split(',')[0] || headerList.get("x-real-ip") || "unknown"
+            if (ip === "::1") ip = "127.0.0.1"
+        } catch (e) {
+            console.error("Failed to get IP:", e)
+        }
+
+        // 1. Parallel Lookup: User & Blocked IP (Reduces latency by running DB queries concurrently)
+        const [user, blockedIp] = await Promise.all([
+            prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { username: identifier },
+                        { email: identifier }
+                    ]
+                },
+                include: {
+                    company: true // Fetch company details to check status
+                }
+            }),
+            prisma.securityRule.findFirst({
+                where: {
+                    type: 'IP',
+                    value: ip
+                }
+            })
+        ])
+
+        // 2. Security Check (Fail fast)
+        if (blockedIp) {
+            return { error: `Access denied. Your IP (${ip}) has been blocked by the administrator.` }
+        }
 
         if (!user) {
             return { error: "Invalid credentials" }
@@ -73,13 +97,13 @@ export async function login(prevState: any, formData: FormData) {
 
         // Migrate legacy plain text password to bcrypt hash
         if (needsMigration) {
+            // Await this as it's critical for security
             try {
                 const hashedPassword = await bcrypt.hash(password, 10)
                 await prisma.user.update({
                     where: { id: user.id },
                     data: { password: hashedPassword }
                 })
-                // console.log(`Migrated user ${user.id} password to bcrypt hash`)
             } catch (e) {
                 console.error("Failed to migrate password:", e)
             }
@@ -105,33 +129,27 @@ export async function login(prevState: any, formData: FormData) {
             return { error: "Your company account has been deactivated. Please contact support." }
         }
 
-        // Capture Last IP for audit purposes
-        try {
-            const { headers } = await import("next/headers")
-            const headerList = await headers()
-            let ip = headerList.get("x-forwarded-for")?.split(',')[0] || headerList.get("x-real-ip") || "unknown"
+        // Async Non-blocking Side Effects
+        // 1. Update Last IP
+        prisma.user.update({
+            where: { id: user.id },
+            data: { lastIp: ip }
+        }).catch((err: any) => console.error("Failed to update Last IP:", err))
 
-            if (ip === "::1") ip = "127.0.0.1"
+        // 2. Log Login Audit
+        logAudit({
+            action: 'LOGIN',
+            module: 'AUTH',
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: 'User logged in successfully',
+            severity: 'LOW'
+        }).catch((err: any) => console.error("Failed to log login audit:", err))
 
-            // Check if IP is blocked
-            const blockedIp = await prisma.securityRule.findFirst({
-                where: {
-                    type: 'IP',
-                    value: ip
-                }
-            })
-
-            if (blockedIp) {
-                return { error: `Access denied. Your IP (${ip}) has been blocked by the administrator.` }
-            }
-
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { lastIp: ip }
-            })
-        } catch (e) {
-            console.error("Failed to check/update IP:", e)
-        }
 
         // Set session cookie based on "Keep me logged in" preference
         const cookieStore = await cookies()
@@ -155,10 +173,6 @@ export async function login(prevState: any, formData: FormData) {
         if (keepLoggedIn) {
             const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
             cookieOptions.maxAge = thirtyDays
-            // console.log(`User ${user.id} logged in with "Keep me logged in" enabled. Persistent cookie set (30 days).`)
-        } else {
-            // No maxAge = session cookie (expires when browser closes)
-            // console.log(`User ${user.id} logged in without "Keep me logged in". Session cookie set.`)
         }
 
         // Set the session cookie
@@ -166,20 +180,6 @@ export async function login(prevState: any, formData: FormData) {
 
         // Also store a flag to indicate if this is a persistent session
         cookieStore.set('persistent_session', keepLoggedIn ? 'true' : 'false', cookieOptions)
-
-        // Log Login
-        await logAudit({
-            action: 'LOGIN',
-            module: 'AUTH',
-            entityType: 'User',
-            entityId: user.id,
-            userId: user.id,
-            userRoleId: user.role,
-            tenantId: user.companyId || undefined,
-            storeId: user.defaultStoreId || undefined,
-            reason: 'User logged in successfully',
-            severity: 'LOW'
-        })
 
         // Check if user has a PIN
         if (user.pin) {
@@ -194,11 +194,6 @@ export async function login(prevState: any, formData: FormData) {
             throw error
         }
         console.error("Login error:", error)
-
-        // Log Failure? Strict requirements said: "User login failure (reason: wrong password...)"
-        // We catch generically here, but earlier we returned {error: ...}.
-        // The return statements "return { error: ... }" happen BEFORE this catch block.
-        // To log failures, we need to log before returning error.
 
         return { error: "Something went wrong. Please try again." }
     }
@@ -229,7 +224,7 @@ export async function logout() {
                     storeId: user.defaultStoreId || undefined,
                     reason: 'User logged out',
                     severity: 'LOW'
-                })
+                }).catch((err: any) => console.error("Failed to log logout audit:", err))
             }
         } catch (e) {
             // Ignore fetch error logging out

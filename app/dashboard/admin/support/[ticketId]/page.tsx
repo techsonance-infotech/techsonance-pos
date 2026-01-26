@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
     ArrowLeft, User, Building2, Clock, Tag, AlertCircle, MessageSquare,
@@ -26,8 +26,10 @@ const priorityColors: Record<string, string> = {
     LOW: "bg-gray-200 text-gray-700"
 }
 
-export default function TicketDetailPage({ params }: { params: { ticketId: string } }) {
+export default function TicketDetailPage() {
     const router = useRouter()
+    const params = useParams()
+    const ticketId = params.ticketId as string
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [ticket, setTicket] = useState<any>(null)
     const [loading, setLoading] = useState(true)
@@ -37,12 +39,12 @@ export default function TicketDetailPage({ params }: { params: { ticketId: strin
 
     const loadTicket = async () => {
         setLoading(true)
-        const data = await getTicketDetails(params.ticketId)
+        const data = await getTicketDetails(ticketId)
         if (data) setTicket(data)
         setLoading(false)
     }
 
-    useEffect(() => { loadTicket() }, [params.ticketId])
+    useEffect(() => { loadTicket() }, [ticketId])
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })

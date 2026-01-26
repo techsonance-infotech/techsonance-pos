@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getUserProfile } from "./user"
 import { logAudit } from "@/lib/audit"
 import { revalidatePath } from "next/cache"
+import { notifyTicketCreated, notifyTicketAssigned, notifyTicketReplied, notifyTicketStatusChanged } from "./support-notifications"
 
 // ========== TYPES ==========
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'RESOLVED' | 'CLOSED'
@@ -90,6 +91,10 @@ export async function createTicket(data: {
     })
 
     revalidatePath('/dashboard/support')
+
+    // Notify Super Admins about new ticket
+    notifyTicketCreated(ticket.id).catch(console.error)
+
     return ticket
 }
 
@@ -270,6 +275,10 @@ export async function addTicketMessage(ticketId: string, message: string, option
     })
 
     revalidatePath(`/dashboard/support/tickets/${ticketId}`)
+
+    // Notify about reply
+    notifyTicketReplied(ticketId, user.id).catch(console.error)
+
     return newMessage
 }
 
@@ -312,6 +321,10 @@ export async function updateTicketStatus(ticketId: string, status: TicketStatus)
     })
 
     revalidatePath('/dashboard/admin/support')
+
+    // Notify about status change
+    notifyTicketStatusChanged(ticketId, status).catch(console.error)
+
     return { success: true }
 }
 
@@ -341,6 +354,12 @@ export async function assignTicket(ticketId: string, agentId: string | null) {
     })
 
     revalidatePath('/dashboard/admin/support')
+
+    // Notify assigned agent
+    if (agentId) {
+        notifyTicketAssigned(ticketId, agentId).catch(console.error)
+    }
+
     return { success: true }
 }
 

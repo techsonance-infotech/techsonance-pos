@@ -1,5 +1,6 @@
 import { Lock, ShieldCheck } from "lucide-react"
 import { PinForm } from "@/components/auth/pin-form"
+import { SwitchAccountButton } from "@/components/auth/switch-account-button"
 
 import { cookies } from "next/headers"
 
@@ -54,9 +55,7 @@ export default async function PinPage({
                         const { logout } = await import("@/app/actions/logout")
                         await logout()
                     }}>
-                        <button type="submit" className="text-sm text-stone-500 hover:text-stone-800 hover:underline">
-                            Switch Account
-                        </button>
+                        <SwitchAccountButton />
                     </form>
                 </div>
             </div>

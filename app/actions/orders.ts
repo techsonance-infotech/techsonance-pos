@@ -474,7 +474,7 @@ export async function submitFeedback(data: { orderId: string, rating: number, co
             entityId: feedback.id,
             userId: 'GUEST',
             // userRoleId: 'CUSTOMER',
-            branchId: undefined, // Ideally fetch order to get storeId, but for speed skipping extra fetch if not strict.
+            storeId: undefined, // Ideally fetch order to get storeId, but for speed skipping extra fetch if not strict.
             // Actually, let's look up order for context if possible? 
             // For now, minimal log to avoid latency.
             reason: `Customer Rating: ${data.rating}/5`,
@@ -485,5 +485,85 @@ export async function submitFeedback(data: { orderId: string, rating: number, co
     } catch (error) {
         console.error("Submit Feedback Error:", error)
         return { error: "Failed to submit feedback" }
+    }
+}
+
+// Optimization: Get Filtered Orders (Paginated)
+export async function getFilteredOrders(params: {
+    storeId: string
+    search?: string
+    status?: string
+    date?: string
+    page?: number
+    limit?: number
+}) {
+    const { storeId, search, status, date, page = 1, limit = 20 } = params
+    const skip = (page - 1) * limit
+
+    const where: any = {
+        storeId,
+        // Default to not showing HELD orders in "Recent Orders" unless requested?
+        // Recent Orders typically shows Completed/Cancelled. Held are in "Hold Orders".
+        // If status is specific, use it. If 'ALL', we show COMPLETED/CANCELLED.
+        status: status && status !== 'ALL'
+            ? status
+            : { in: ['COMPLETED', 'CANCELLED'] }
+    }
+
+    if (search) {
+        where.OR = [
+            { kotNo: { contains: search, mode: 'insensitive' } },
+            { customerName: { contains: search, mode: 'insensitive' } },
+            { customerMobile: { contains: search, mode: 'insensitive' } }
+        ]
+    }
+
+    if (date) {
+        // Date String YYYY-MM-DD
+        const start = new Date(date)
+        const end = new Date(date)
+        end.setHours(23, 59, 59, 999)
+        if (!isNaN(start.getTime())) {
+            where.createdAt = {
+                gte: start,
+                lte: end
+            }
+        }
+    }
+
+    try {
+        const [total, orders] = await Promise.all([
+            prisma.order.count({ where }),
+            prisma.order.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit,
+                select: {
+                    id: true,
+                    kotNo: true,
+                    totalAmount: true,
+                    status: true,
+                    customerName: true,
+                    customerMobile: true,
+                    tableName: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    items: true,
+                    taxAmount: true,
+                    discountAmount: true
+                }
+            })
+        ])
+
+        return {
+            orders,
+            total,
+            totalPages: Math.ceil(total / limit),
+            currentPage: page
+        }
+    } catch (error) {
+        console.error("Get Filtered Orders Error:", error)
+        return { orders: [], total: 0, totalPages: 0, currentPage: 1 }
     }
 }

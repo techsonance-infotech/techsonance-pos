@@ -330,6 +330,8 @@ export async function resetPassword(userId: string, newPassword: string) {
 export async function approveUser(userId: string) {
     if (!await checkAdmin()) return { error: "Unauthorized" }
 
+    const currentUser = await getUserProfile()
+
     try {
         await prisma.user.update({
             where: { id: userId },

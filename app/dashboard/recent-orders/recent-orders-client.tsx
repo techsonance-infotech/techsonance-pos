@@ -32,6 +32,12 @@ export function RecentOrdersClient() {
     const { currency } = useCurrency()
     const [searchQuery, setSearchQuery] = useState("")
     const [dateFilter, setDateFilter] = useState("")
+    const [statusFilter, setStatusFilter] = useState("ALL")
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
+
     const [orders, setOrders] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
@@ -42,6 +48,83 @@ export function RecentOrdersClient() {
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
     const printRef = useRef<HTMLDivElement>(null) // Ref for print component
+
+    // ... helper functions ...
+
+    // Debounce Search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (isOnline) loadData()
+        }, 500)
+        return () => clearTimeout(timer)
+    }, [searchQuery, dateFilter, statusFilter, currentPage, isOnline])
+
+    async function loadData() {
+        setLoading(true)
+
+        // Offline First ?? No, Online First for listing to get fresh status
+        if (!isOnline) {
+            console.log("Offline mode: Loading local orders")
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const localOrders = await getPOSService().getRecentOrders()
+                setOrders(localOrders) // Load ALL for client filtering
+            } catch (innerError) {
+                console.error("Failed to load local orders", innerError)
+            } finally {
+                setLoading(false)
+            }
+            return
+        }
+
+        try {
+            // Try fetching from Server (Filtered)
+            const data = await getRecentOrdersPageData({
+                search: searchQuery,
+                status: statusFilter,
+                date: dateFilter,
+                page: currentPage
+            })
+
+            if (data) {
+                setOrders(data.orders)
+                setTotalPages(data.totalPages || 1)
+                setBusinessDetails(data.businessDetails)
+                setStoreDetails(data.storeDetails)
+            }
+        } catch (error) {
+            // Fallback to Offline Data
+            console.log("Offline mode (fallback): Loading local orders")
+            try {
+                const { getPOSService } = await import("@/lib/pos-service")
+                const posService = getPOSService()
+                const localOrders = await posService.getRecentOrders()
+                setOrders(localOrders)
+            } catch (innerError) {
+                console.error("Failed to load local orders", innerError)
+            }
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Filter Logic (Client-side ONLY if Offline)
+    const filteredOrders = isOnline
+        ? orders // Already filtered by server
+        : orders.filter((order: any) => {
+            const matchesSearch =
+                order.kotNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                (order.customerMobile && order.customerMobile.includes(searchQuery))
+
+            // Simple date string match for YYYY-MM-DD
+            const matchesDate = dateFilter ? order.createdAt.toString().startsWith(dateFilter) : true
+
+            // Status Match
+            const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter
+
+            return matchesSearch && matchesDate && matchesStatus
+        })
 
     // Print handler using react-to-print (Web Fallback)
     const handleWebPrint = useReactToPrint({
@@ -63,7 +146,6 @@ export function RecentOrdersClient() {
         }
     })
 
-    // Unified Print Handler
     // Unified Print Handler
     const handlePrint = async (orderToPrint?: any) => {
         // use provided order or fallback to selectedOrder (if viewing details)
@@ -95,75 +177,6 @@ export function RecentOrdersClient() {
                 handleWebPrint() // Fallback knows ref is ready now
             }
         }, 100)
-    }
-
-    // Use getOrder from server actions instead of require
-
-    useEffect(() => {
-        loadData()
-
-        const handleRefresh = () => loadData()
-        window.addEventListener('recentOrdersUpdated', handleRefresh)
-        return () => window.removeEventListener('recentOrdersUpdated', handleRefresh)
-    }, [isOnline, pathname])
-
-    // Open order from URL if present
-    useEffect(() => {
-        if (viewOrderId) {
-            async function fetchOrder() {
-                const order = await getOrder(viewOrderId as string)
-                if (order) {
-                    setSelectedOrder(order)
-                    // Clear param so it doesn't reopen on refresh if user closes it? 
-                    // Or keep it. Let's keep it simple for now. 
-                    // Actually better to remove it from URL shallowly to be clean, but purely optional.
-                }
-            }
-            fetchOrder()
-        }
-    }, [viewOrderId])
-
-    async function loadData() {
-        setLoading(true)
-
-        // Offline First
-        if (!isOnline) {
-            console.log("Offline mode: Loading local orders")
-            try {
-                const { getPOSService } = await import("@/lib/pos-service")
-                const localOrders = await getPOSService().getRecentOrders()
-                setOrders(localOrders)
-            } catch (innerError) {
-                console.error("Failed to load local orders", innerError)
-            } finally {
-                setLoading(false)
-            }
-            return
-        }
-
-        try {
-            // Try fetching from Server first
-            const data = await getRecentOrdersPageData()
-            if (data) {
-                setOrders(data.orders)
-                setBusinessDetails(data.businessDetails)
-                setStoreDetails(data.storeDetails)
-            }
-        } catch (error) {
-            // Fallback to Offline Data
-            console.log("Offline mode: Loading local orders")
-            try {
-                // Dynamically import to avoid server-side issues if any (though client comp is fine)
-                const { getPOSService } = await import("@/lib/pos-service")
-                const posService = getPOSService()
-                const localOrders = await posService.getRecentOrders()
-                setOrders(localOrders)
-            } catch (innerError) {
-                console.error("Failed to load local orders", innerError)
-            }
-        } finally {
-            setLoading(false)
-        }
     }
 
     // Handle Edit Order (Convert to HELD)
@@ -210,26 +223,6 @@ export function RecentOrdersClient() {
         router.push(`/dashboard/new-order?resumeOrderId=${orderId}`)
     }
 
-    const [statusFilter, setStatusFilter] = useState("ALL") // ALL, COMPLETED, CANCELLED
-
-    // Filter Logic
-    const filteredOrders = orders.filter((order: any) => {
-        const matchesSearch =
-            order.kotNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (order.customerName && order.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (order.customerMobile && order.customerMobile.includes(searchQuery))
-
-        // Simple date string match for YYYY-MM-DD
-        const matchesDate = dateFilter ? order.createdAt.toString().startsWith(dateFilter) : true
-
-        // Status Match
-        const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter
-
-        return matchesSearch && matchesDate && matchesStatus
-    })
-
-    if (loading) return <RecentOrdersLoading />
-
     return (
         <>
             <div className="flex-1 space-y-6 no-print">
@@ -247,7 +240,10 @@ export function RecentOrdersClient() {
                         <Input
                             placeholder="Search by KOT No, Customer Name, Mobile..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value)
+                                setCurrentPage(1) // Reset page on search
+                            }}
                             className="pl-10 h-11 bg-white"
                         />
                     </div>
@@ -256,7 +252,10 @@ export function RecentOrdersClient() {
                     <div className="w-full md:w-48">
                         <select
                             value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
+                            onChange={(e) => {
+                                setStatusFilter(e.target.value)
+                                setCurrentPage(1)
+                            }}
                             className="h-11 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                         >
                             <option value="ALL">All Orders</option>
@@ -272,7 +271,10 @@ export function RecentOrdersClient() {
                             <Input
                                 type="date"
                                 value={dateFilter}
-                                onChange={(e) => setDateFilter(e.target.value)}
+                                onChange={(e) => {
+                                    setDateFilter(e.target.value)
+                                    setCurrentPage(1)
+                                }}
                                 className="pl-10 h-11 bg-white min-w-[200px]"
                             />
                         </div>
@@ -405,6 +407,31 @@ export function RecentOrdersClient() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Pagination (Online Only) */}
+                        {isOnline && totalPages > 1 && (
+                            <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-white">
+                                <span className="text-sm text-gray-500">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1 || loading}
+                                        className="px-3 py-1 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages || loading}
+                                        className="px-3 py-1 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

@@ -52,14 +52,27 @@ export function Header({ initialUser }: { initialUser: any | null }) {
         }
     }, [user, initialUser])
 
-    // Load Notifications
+    // Load Notifications (with throttling to prevent spam)
     useEffect(() => {
         async function fetchNotes() {
+            const CACHE_KEY = 'last_notification_fetch'
+            const cachedTime = sessionStorage.getItem(CACHE_KEY)
+            const now = Date.now()
+
+            // If user explicitly opened notifications popup, always fetch fresh data
+            // Otherwise, throttle background fetches to once per 10 seconds
+            if (!showNotifications && cachedTime && (now - Number(cachedTime) < 10000)) {
+                console.log('[Header] Skipping notification fetch (throttled)')
+                return
+            }
+
+            console.log('[Header] Fetching notifications...')
+            sessionStorage.setItem(CACHE_KEY, now.toString())
             const notes = await getNotifications(unreadOnly ? 'unread' : 'all')
             setNotifications(notes)
         }
         fetchNotes()
-    }, [unreadOnly, showNotifications]) // Refresh when filter changes or popup opens
+    }, [unreadOnly, showNotifications])
 
     // Held Orders Count
     const [heldCount, setHeldCount] = useState(0)

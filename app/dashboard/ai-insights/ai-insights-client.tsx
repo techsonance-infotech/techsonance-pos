@@ -7,7 +7,7 @@ import { AlertCircle, TrendingUp, Clock, Sparkles, ShoppingBag, UtensilsCrossed,
 interface AIInsightsClientProps {
     initialInsights: any
     initialTopItems: any[]
-    aiData: {
+    aiData?: {
         forecast: any
         restock: any[]
         menuMatrix: any[]
@@ -16,8 +16,8 @@ interface AIInsightsClientProps {
 }
 
 export function AIInsightsClient({ initialInsights, initialTopItems, aiData }: AIInsightsClientProps) {
-    const { anomalies, kitchenPerformance } = initialInsights
-    const { forecast, restock, menuMatrix } = aiData
+    const { anomalies, kitchenPerformance } = initialInsights || {}
+    const { forecast, restock = [], menuMatrix = [] } = aiData || {}
 
     // Forecast Chart (Simple SVG)
     const renderForecastChart = () => {

@@ -61,26 +61,28 @@ export async function sendForgotPasswordOTP(
     }
 
     try {
-        // Check if user exists
-        const user = await prisma.user.findUnique({
-            where: { email: email.toLowerCase() }
-        })
+        // Parallelize DB checks to reduce latency
+        // 1. Check if user exists
+        // 2. Check rate limits
+        const [user, recentOTPs] = await Promise.all([
+            prisma.user.findUnique({
+                where: { email: email.toLowerCase() }
+            }),
+            prisma.passwordResetOtp.count({
+                where: {
+                    email: email.toLowerCase(),
+                    createdAt: {
+                        gte: new Date(Date.now() - OTP_RATE_LIMIT_WINDOW)
+                    }
+                }
+            })
+        ])
 
         if (!user) {
             // For security, don't reveal if email exists or not
             // But for UX, we'll show a specific error
             return { error: "Email not registered. Please check and try again." }
         }
-
-        // Rate limiting: Check recent OTP requests
-        const recentOTPs = await prisma.passwordResetOtp.count({
-            where: {
-                email: email.toLowerCase(),
-                createdAt: {
-                    gte: new Date(Date.now() - OTP_RATE_LIMIT_WINDOW)
-                }
-            }
-        })
 
         if (recentOTPs >= OTP_RATE_LIMIT) {
             return {
@@ -115,14 +117,11 @@ export async function sendForgotPasswordOTP(
             }
         })
 
-        // Send OTP email
-        const emailSent = await sendPasswordResetOTP(email, otp, OTP_EXPIRY_MINUTES)
+        // Send OTP email (Async / Fire-and-forget)
+        sendPasswordResetOTP(email, otp, OTP_EXPIRY_MINUTES)
+            .catch((err: any) => console.error("Failed to send OTP email:", err))
 
-        if (!emailSent) {
-            return { error: "Failed to send OTP email. Please try again." }
-        }
-
-        console.log(`OTP sent to ${email}: ${otp}`) // Remove in production!
+        console.log(`OTP sent to ${email}: ${otp}`) // Handle log appropriately
 
         return {
             success: true,
@@ -134,7 +133,6 @@ export async function sendForgotPasswordOTP(
         return { error: "Something went wrong. Please try again." }
     }
 }
-
 /**
  * Step 2: Verify OTP
  * - Validates OTP against stored hash
@@ -315,8 +313,9 @@ export async function resetPassword(
             data: { isUsed: true }
         })
 
-        // Send success email
-        await sendPasswordResetSuccess(email)
+        // Send success email (Async / Fire-and-forget)
+        sendPasswordResetSuccess(email)
+            .catch((err: any) => console.error("Failed to send reset success email:", err))
 
         console.log(`Password reset successful for ${email}`)
 

@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 
 
 import { generateVerificationToken, hashToken } from "@/app/actions/verify-email"
-import { sendVerificationEmail } from "@/lib/email"
+import { sendVerificationEmail, sendNewRegistrationAdminNotification } from "@/lib/email"
 import { logAudit } from "@/lib/audit"
 
 const TOKEN_EXPIRY_MINUTES = 30
@@ -72,22 +72,23 @@ export async function registerUser(prevState: any, formData: FormData) {
     }
 
     try {
-        // Check for existing username
-        const existingUsername = await prisma.user.findUnique({
-            where: { username }
+        // Combined check for existing username or email (1 DB call instead of 2)
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { username },
+                    { email }
+                ]
+            }
         })
 
-        if (existingUsername) {
-            return { error: "Username already exists. Please choose a different one." }
-        }
-
-        // Check for existing email
-        const existingEmail = await prisma.user.findUnique({
-            where: { email }
-        })
-
-        if (existingEmail) {
-            return { error: "Email already registered. Please use a different email." }
+        if (existingUser) {
+            if (existingUser.username === username) {
+                return { error: "Username already exists. Please choose a different one." }
+            }
+            if (existingUser.email === email) {
+                return { error: "Email already registered. Please use a different email." }
+            }
         }
 
         // Hash password before saving
@@ -168,30 +169,47 @@ export async function registerUser(prevState: any, formData: FormData) {
             })
         })
 
-        // Send verification email
-        await sendVerificationEmail(email, token)
+        // Non-blocking side effects (Fire & Forget)
+        // 1. Send verification email
+        sendVerificationEmail(email, token).catch(e => console.error("Failed to send verification email:", e))
 
-        // Log Audit (We don't have the user object effectively here as we used raw queries or tx, 
-        // but we know username/email. Ideally we should have captured the created user ID from tx.)
-        // Refactoring to capture ID is risky without changing structure. 
-        // We will log "SYSTEM" action or attempt to find the user.
-        // Actually, we can just log using email as entityId.
+        // 2. Send admin notification
+        sendNewRegistrationAdminNotification({
+            businessName,
+            username,
+            email,
+            contactNo: contactNo || null
+        }).catch(err => console.error('Admin notification failed:', err))
 
-        await logAudit({
+        // 3. Log Audit
+        logAudit({
             action: 'CREATE',
             module: 'AUTH',
             entityType: 'Company',
-            entityId: businessName, // Using name for now
+            entityId: businessName,
             userId: 'SYSTEM_REGISTRATION',
-            // We don't have a real userId yet (it's unverified).
             reason: `New Company Registration: ${businessName} (${email})`,
             severity: 'HIGH'
-        })
+        }).catch(err => console.error('Audit log failed:', err))
 
+        console.log(`Registration successful for ${businessName} (${email})`)
         return { success: true, message: "Registration successful! Please check your email to verify your account." }
 
     } catch (error) {
         console.error("Registration error:", error)
+
+        // Log failed registration attempt (Async)
+        logAudit({
+            action: 'CREATE',
+            module: 'AUTH',
+            entityType: 'Company',
+            entityId: businessName,
+            userId: 'SYSTEM_REGISTRATION',
+            reason: `Registration Failed: ${businessName} (${email}) - ${error instanceof Error ? error.message : 'Unknown error'}`,
+            severity: 'HIGH'
+        }).catch(e => console.error('Failed to log failure audit:', e))
+
         return { error: "Something went wrong. Please try again." }
     }
 }
+

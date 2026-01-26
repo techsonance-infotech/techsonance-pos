@@ -3,7 +3,7 @@
 // Import standard client (SQLite)
 import { prisma as localPrisma } from "@/lib/prisma"
 // Import custom client (Postgres)
-import { PrismaClient as PostgresClient, Role, OrderStatus, PaymentMode, TableStatus, LicenseStatus, LicenseType, SecurityRuleType } from '@prisma/client'
+import { PrismaClient as PostgresClient } from '@prisma/client'
 import { getUserProfile } from "./user"
 
 /**
@@ -91,7 +91,7 @@ export async function syncLocalToRemote() {
                 for (const u of remoteUsers) {
                     try {
                         const localRole = String(u.role)
-                        const localModules = u.disabledModules.join(',')
+                        const localModules = Array.isArray(u.disabledModules) ? u.disabledModules.join(',') : (u.disabledModules ?? '')
                         await localPrisma.user.upsert({
                             where: { id: u.id },
                             create: { ...u, role: localRole, disabledModules: localModules },
@@ -219,7 +219,7 @@ export async function syncLocalToRemote() {
             const users = await localPrisma.user.findMany()
             for (const u of users) {
                 try {
-                    const remoteRole = u.role as Role
+                    const remoteRole = u.role as any
                     // Handle disabledModules - could be array (from remote pull) or string (original local)
                     const remoteDisabledModules = Array.isArray(u.disabledModules)
                         ? u.disabledModules
@@ -276,7 +276,7 @@ export async function syncLocalToRemote() {
             const tables = await localPrisma.table.findMany()
             for (const table of tables) {
                 try {
-                    const remoteStatus = table.status as TableStatus
+                    const remoteStatus = table.status as any
                     await remotePrisma.table.upsert({
                         where: { id: table.id },
                         create: { ...table, status: remoteStatus },
@@ -290,8 +290,8 @@ export async function syncLocalToRemote() {
             const orders = await localPrisma.order.findMany()
             for (const order of orders) {
                 try {
-                    const remoteStatus = order.status as OrderStatus
-                    const remotePaymentMode = order.paymentMode ? (order.paymentMode as PaymentMode) : null
+                    const remoteStatus = order.status as any
+                    const remotePaymentMode = order.paymentMode ? (order.paymentMode as any) : null
                     await remotePrisma.order.upsert({
                         where: { id: order.id },
                         create: { ...order, status: remoteStatus, paymentMode: remotePaymentMode, items: order.items as any },
@@ -385,7 +385,7 @@ export async function syncRemoteToLocal() {
             try {
                 // Convert Remote Enums/Arrays -> Local Strings
                 const localRole = String(u.role) // Enum -> String
-                const localModules = u.disabledModules.join(',') // Array -> CSV String
+                const localModules = Array.isArray(u.disabledModules) ? u.disabledModules.join(',') : (u.disabledModules ?? '') // Array -> CSV String
 
                 await localPrisma.user.upsert({
                     where: { id: u.id },
@@ -475,8 +475,8 @@ export async function syncSQLiteToLocalPostgres() {
         for (const order of orders) {
             try {
                 // Map to Postgres Enums
-                const pgStatus = order.status as OrderStatus
-                const pgPayment = order.paymentMode ? (order.paymentMode as PaymentMode) : null
+                const pgStatus = order.status as any
+                const pgPayment = order.paymentMode ? (order.paymentMode as any) : null
 
                 await targetPrisma.order.upsert({
                     where: { id: order.id },

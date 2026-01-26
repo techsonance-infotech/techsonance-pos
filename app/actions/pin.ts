@@ -62,6 +62,21 @@ export async function verifyPin(prevState: any, formData: FormData) {
         cookieStore.set('session_role', user.role)
         cookieStore.set('session_user_id', user.id)
 
+        // Async Audit Log
+        const { logAudit } = await import("@/lib/audit")
+        logAudit({
+            action: 'LOGIN',
+            module: 'AUTH',
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: 'User verified PIN',
+            severity: 'LOW'
+        }).catch((err: any) => console.error("Failed to log PIN verification:", err))
+
         // Redirect based on Default Store Mode
         if (user.defaultStore?.tableMode === false) {
             redirect("/dashboard/new-order?verified=true")
@@ -109,6 +124,21 @@ export async function createPin(prevState: any, formData: FormData) {
         const cookieStore = await cookies()
         cookieStore.set('session_role', user.role)
         cookieStore.set('session_user_id', user.id)
+
+        // Async Audit Log
+        const { logAudit } = await import("@/lib/audit")
+        logAudit({
+            action: 'UPDATE',
+            module: 'AUTH',
+            entityType: 'User',
+            entityId: user.id,
+            userId: user.id,
+            userRoleId: user.role,
+            tenantId: user.companyId || undefined,
+            storeId: user.defaultStoreId || undefined,
+            reason: 'User created/updated PIN',
+            severity: 'MEDIUM'
+        }).catch((err: any) => console.error("Failed to log PIN creation:", err))
 
         if (user.defaultStore?.tableMode === false) {
             redirect("/dashboard/new-order?verified=true")

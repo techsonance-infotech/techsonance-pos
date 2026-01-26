@@ -34,7 +34,7 @@ export async function getDemandForecast(): Promise<ForecastResult | { error: str
 
         // Fill missing dates with 0
         const historicalMap = new Map<string, number>()
-        dailySales.forEach(d => historicalMap.set(format(new Date(d.date), 'yyyy-MM-dd'), Number(d.total)))
+        dailySales.forEach((d: { date: Date, total: number }) => historicalMap.set(format(new Date(d.date), 'yyyy-MM-dd'), Number(d.total)))
 
         const historicalData = []
         let totalSales = 0

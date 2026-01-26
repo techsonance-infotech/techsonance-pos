@@ -28,7 +28,7 @@ export function CreatePOForm() {
         const load = async () => {
             const [s, i] = await Promise.all([getSuppliers(), getInventoryItems()])
             setSuppliers(s)
-            setIngredients(i)
+            setIngredients(i.items)
         }
         load()
     }, [])

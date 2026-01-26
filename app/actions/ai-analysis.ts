@@ -35,10 +35,10 @@ export async function getSmartInsights() {
             GROUP BY DATE("updatedAt")
         `
 
-        const counts = pastCancellations.map(p => Number(p.count))
+        const counts = pastCancellations.map((p: { date: Date, count: number }) => Number(p.count))
         const values = counts.length > 0 ? counts : [0]
-        const mean = values.reduce((a, b) => a + b, 0) / values.length
-        const stdDev = Math.sqrt(values.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / values.length) || 1
+        const mean = values.reduce((a: number, b: number) => a + b, 0) / values.length
+        const stdDev = Math.sqrt(values.map((x: number) => Math.pow(x - mean, 2)).reduce((a: number, b: number) => a + b, 0) / values.length) || 1
 
         // Today's count
         const todayCancelled = await prisma.order.count({
@@ -82,14 +82,14 @@ export async function getSmartInsights() {
 
         let avgPrepTime = 0
         if (completedOrders.length > 0) {
-            const totalDuration = completedOrders.reduce((sum, order) => {
+            const totalDuration = completedOrders.reduce((sum: number, order: { kitchenStartedAt: Date | null, kitchenReadyAt: Date | null }) => {
                 return sum + (order.kitchenReadyAt!.getTime() - order.kitchenStartedAt!.getTime())
             }, 0)
             avgPrepTime = Math.round((totalDuration / completedOrders.length) / 1000 / 60) // Minutes
         }
 
         return {
-            stockRisks: lowStockItems.map(item => ({
+            stockRisks: lowStockItems.map((item: { id: string, quantity: number, ingredient: { name: string, unit: string } }) => ({
                 id: item.id,
                 name: item.ingredient.name,
                 quantity: item.quantity,

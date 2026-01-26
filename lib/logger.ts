@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, isPostgres } from "@/lib/prisma";
 import { pushLogToCloud } from "./mongo-logger";
 
 export async function logActivity(
@@ -8,58 +8,55 @@ export async function logActivity(
     userId?: string
 ) {
     try {
-        // Safe access to headers (Server Components / Server Actions)
-        // Note: headers() is read-only and async in some next versions, 
-        // but for now we'll skip complex header parsing to avoid runtime errors in non-request contexts
-        // or accept undefined.
-
         let ipAddress = 'unknown';
         let userAgent = 'unknown';
 
-        /* 
-           Extraction logic if needed:
-           import { headers } from "next/headers";
-           const headerList = headers(); 
-           ipAddress = headerList.get("x-forwarded-for") || 'unknown';
-           userAgent = headerList.get("user-agent") || 'unknown';
-        */
+        const detailsStr = typeof details === 'string' ? details : JSON.stringify(details);
 
-        const logData = {
-            action,
-            module,
-            details: typeof details === 'string' ? details : JSON.stringify(details),
-            userId: userId || null,
-            ipAddress,
-            userAgent,
-            isSynced: false
-        };
+        let log: any = null;
 
-        // 1. Write to Local SQLite (Critical)
-        const log = await prisma.activityLog.create({
-            data: logData
-        });
+        if (isPostgres) {
+            // WEB MODE: Write DIRECTLY to MongoDB
+            pushLogToCloud({
+                action,
+                module,
+                details,
+                userId: userId || null,
+                ipAddress,
+                userAgent,
+                createdAt: new Date()
+            }).catch(err => {
+                console.warn("[Logger] Cloud push failed", err);
+            });
 
-        // 2. Fire-and-Forget Push to Cloud
-        // We don't await this to keep UI fast
-        pushLogToCloud(log).then(async (success) => {
-            if (success) {
-                // Update sync status locally if needed
-                await prisma.activityLog.update({
-                    where: { id: log.id },
-                    data: { isSynced: true }
-                });
-            }
-        }).catch(err => {
-            // Cloud push failed, we still have local log with isSynced=false
-            // Can be picked up by a background job later
-            console.warn("Cloud push failed for log", log.id);
-        });
+            // Return dummy object
+            return { id: 'mongo-log', createdAt: new Date() };
 
-        return log;
+        } else {
+            // DESKTOP MODE (SQLite): Write to Local AuditLog
+            const logData = {
+                action,
+                module,
+                entityType: 'Activity',
+                reason: detailsStr,
+                userId: userId || null,
+                ipAddress,
+                userAgent,
+                severity: 'LOW',
+                status: 'SUCCESS',
+                isSynced: false
+            };
+
+            log = await prisma.auditLog.create({
+                data: logData
+            });
+
+            return log;
+        }
 
     } catch (error) {
-        console.error("Logging failed:", error);
-        // Do not throw, logging should not break app flow
+        console.error("[Logger] Activity logging failed:", error);
         return null;
     }
 }
+

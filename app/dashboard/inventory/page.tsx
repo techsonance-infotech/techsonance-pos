@@ -5,8 +5,18 @@ import { Plus } from "lucide-react"
 import Link from "next/link"
 import { StockActionDialog } from "@/components/inventory/stock-action-dialog"
 
-export default async function InventoryPage() {
-    const items = await getInventoryItems()
+import { InventoryControls } from "./inventory-controls"
+
+export default async function InventoryPage({
+    searchParams
+}: {
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+    const params = await searchParams
+    const page = Number(params?.page) || 1
+    const search = (params?.search as string) || ""
+
+    const { items, total, totalPages, currentPage } = await getInventoryItems(search, page)
 
     return (
         <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -42,7 +52,7 @@ export default async function InventoryPage() {
                         <CardTitle className="text-sm font-medium">Total Ingredients</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{items.length}</div>
+                        <div className="text-2xl font-bold">{total}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -51,7 +61,8 @@ export default async function InventoryPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-red-500">
-                            {items.filter((i: any) => i.status === 'LOW_STOCK').length}
+                            {/* Note: This count is only for the Current Page now. To get global low stock count, we'd need a separate query or return it in metadata. For performance, we might skip global low stock count or fetch it separately. For now displaying filtered count or just removing if inaccurate. Let's keep filtered count for now. */}
+                            {items.filter((i: any) => i.status === 'LOW_STOCK').length} (Page)
                         </div>
                     </CardContent>
                 </Card>
@@ -62,7 +73,9 @@ export default async function InventoryPage() {
                     <CardTitle>Stock Overview</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="relative w-full overflow-auto">
+                    <InventoryControls totalPages={totalPages || 1} currentPage={currentPage || 1} />
+
+                    <div className="relative w-full overflow-auto mt-4">
                         <table className="w-full caption-bottom text-sm">
                             <thead className="[&_tr]:border-b">
                                 <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
@@ -105,7 +118,7 @@ export default async function InventoryPage() {
                                 {items.length === 0 && (
                                     <tr>
                                         <td colSpan={6} className="p-4 text-center text-muted-foreground">
-                                            No ingredients found. Add one to get started.
+                                            No ingredients found.
                                         </td>
                                     </tr>
                                 )}

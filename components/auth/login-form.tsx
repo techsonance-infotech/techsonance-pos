@@ -6,8 +6,9 @@ import { useFormStatus } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { login } from "@/app/actions/auth"
+import { useRouter } from "next/navigation"
 
 const initialState = {
     error: "",
@@ -21,14 +22,34 @@ function SubmitButton({ disabled }: { disabled?: boolean }) {
             disabled={pending || disabled}
             className="w-full h-12 bg-[#f97316] hover:bg-[#ea580c] text-white text-md font-semibold rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
         >
-            {pending ? "Logging in..." : "Login"}
+            {pending ? (
+                <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in...
+                </span>
+            ) : "Login"}
         </Button>
     )
 }
 
+// Loading overlay component
+function FormPendingOverlay() {
+    const { pending } = useFormStatus()
+    if (!pending) return null
+
+    return (
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-xl z-50 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+            <p className="text-sm font-medium text-gray-700">Signing you in...</p>
+        </div>
+    )
+}
+
 export function LoginForm() {
+    const router = useRouter()
     const [state, formAction] = useActionState(login, initialState)
     const [showPassword, setShowPassword] = useState(false)
+    const [isRedirecting, setIsRedirecting] = useState(false)
 
     // Form state for validation
     const [identifier, setIdentifier] = useState('')
@@ -51,7 +72,17 @@ export function LoginForm() {
     }
 
     return (
-        <form action={formAction} className="grid gap-5">
+        <form action={formAction} className="grid gap-5 relative">
+            <FormPendingOverlay />
+
+            {/* Redirect Loader Overlay */}
+            {isRedirecting && (
+                <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                    <p className="text-sm font-medium text-gray-700">Redirecting...</p>
+                </div>
+            )}
+
             {/* Email / Username Field */}
             <div className="grid gap-2">
                 <Label htmlFor="identifier" className="text-[#333] font-medium text-sm">
@@ -129,12 +160,17 @@ export function LoginForm() {
                         Keep me logged in
                     </label>
                 </div>
-                <a
-                    href="/forgot-password"
-                    className="text-sm text-[#f97316] hover:underline font-medium"
+                <button
+                    type="button"
+                    onClick={() => {
+                        setIsRedirecting(true)
+                        setTimeout(() => router.push('/forgot-password'), 500)
+                    }}
+                    className="text-sm text-[#f97316] hover:underline font-medium bg-transparent border-none p-0 cursor-pointer"
+                    disabled={isRedirecting}
                 >
                     Forgot password?
-                </a>
+                </button>
             </div>
 
             {/* Error Message */}

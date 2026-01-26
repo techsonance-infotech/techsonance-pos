@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
     LifeBuoy, AlertCircle, Clock, CheckCircle, MessageSquare,
-    Filter, Search, ChevronRight, User, Building2
+    Filter, Search, ChevronRight, User, Building2, Timer, AlertTriangle
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getAdminTickets, getSupportStats } from "@/app/actions/support"
+import { getSLASummary } from "@/app/actions/support-notifications"
 
 // Status badge colors
 const statusColors: Record<string, string> = {
@@ -44,6 +45,7 @@ type Ticket = {
 export default function AdminSupportPage() {
     const [tickets, setTickets] = useState<Ticket[]>([])
     const [stats, setStats] = useState<any>(null)
+    const [slaSummary, setSlaSummary] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [filters, setFilters] = useState({
         status: '',
@@ -53,17 +55,19 @@ export default function AdminSupportPage() {
 
     const loadData = async () => {
         setLoading(true)
-        const [ticketsRes, statsRes] = await Promise.all([
+        const [ticketsRes, statsRes, slaRes] = await Promise.all([
             getAdminTickets({
                 status: filters.status as any || undefined,
                 priority: filters.priority as any || undefined,
                 search: filters.search || undefined
             }),
-            getSupportStats()
+            getSupportStats(),
+            getSLASummary()
         ])
 
         if (!('error' in ticketsRes)) setTickets(ticketsRes.tickets || [])
         if (!('error' in statsRes)) setStats(statsRes)
+        if (!('error' in slaRes)) setSlaSummary(slaRes)
         setLoading(false)
     }
 
@@ -147,6 +151,56 @@ export default function AdminSupportPage() {
                             <div>
                                 <p className="text-2xl font-bold text-gray-900">{stats.closed}</p>
                                 <p className="text-xs text-gray-500">Closed</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* SLA Metrics */}
+            {slaSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center">
+                                <AlertTriangle className="h-5 w-5 text-red-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-red-600">{slaSummary.responseBreaches}</p>
+                                <p className="text-xs text-gray-500">Response SLA Breached</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-orange-50 flex items-center justify-center">
+                                <Timer className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-orange-600">{slaSummary.resolutionBreaches}</p>
+                                <p className="text-xs text-gray-500">Resolution SLA Breached</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                                <Clock className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-gray-900">{slaSummary.avgResponseTime || 'N/A'}</p>
+                                <p className="text-xs text-gray-500">Avg Response Time</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
+                                <CheckCircle className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-gray-900">{slaSummary.avgResolutionTime || 'N/A'}</p>
+                                <p className="text-xs text-gray-500">Avg Resolution Time</p>
                             </div>
                         </div>
                     </div>

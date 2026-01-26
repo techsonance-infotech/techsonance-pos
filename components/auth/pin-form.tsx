@@ -12,16 +12,24 @@ const initialState = {
     error: "",
 }
 
-function SubmitButton({ text, disabled }: { text: string, disabled?: boolean }) {
+function SubmitButton({ text, disabled, loadingText = "Processing..." }: { text: string, disabled?: boolean, loadingText?: string }) {
     const { pending } = useFormStatus()
     return (
-        <Button
-            type="submit"
-            disabled={pending || disabled}
-            className="flex w-full justify-center rounded-md bg-orange-600 px-3 py-4 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-orange-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 h-12"
-        >
-            {pending ? <Loader2 className="animate-spin h-5 w-5" /> : text}
-        </Button>
+        <>
+            {pending && (
+                <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                    <p className="text-sm font-medium text-gray-700">{loadingText}</p>
+                </div>
+            )}
+            <Button
+                type="submit"
+                disabled={pending || disabled}
+                className="flex w-full justify-center rounded-md bg-orange-600 px-3 py-4 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-orange-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 h-12"
+            >
+                {pending ? <Loader2 className="animate-spin h-5 w-5" /> : text}
+            </Button>
+        </>
     )
 }
 
@@ -189,6 +197,7 @@ export function PinForm({ mode, userId }: { mode: 'create' | 'enter', userId: st
                 <SubmitButton
                     text={mode === 'create' ? 'Set PIN' : 'Unlock POS'}
                     disabled={!isComplete || (mode === 'create' && (!isConfirmComplete || !isMatch))}
+                    loadingText={mode === 'create' ? 'Setting PIN...' : 'Verifying...'}
                 />
             </div>
         </form>

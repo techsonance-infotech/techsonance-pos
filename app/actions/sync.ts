@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma as localPrisma } from "@/lib/prisma"
-import { PrismaClient as PostgresClient, Role, OrderStatus, PaymentMode, TableStatus } from "@prisma/client"
+import { PrismaClient as PostgresClient } from "@prisma/client"
 import { getUserProfile } from "./user"
 import path from "path"
 import fs from "fs"
@@ -219,11 +219,11 @@ function sanitizeForOnlinePrisma(entity: string, row: any, isUpdate = false): an
     if ('tableMode' in data && data.tableMode !== null) data.tableMode = !!data.tableMode
 
     // Convert string enums to proper enums for Postgres
-    if (entity === 'User' && data.role) data.role = data.role as Role
-    if (entity === 'Table' && data.status) data.status = data.status as TableStatus
+    if (entity === 'User' && data.role) data.role = data.role as any
+    if (entity === 'Table' && data.status) data.status = data.status as any
     if (entity === 'Order') {
-        if (data.status) data.status = data.status as OrderStatus
-        if (data.paymentMode) data.paymentMode = data.paymentMode as PaymentMode
+        if (data.status) data.status = data.status as any
+        if (data.paymentMode) data.paymentMode = data.paymentMode as any
     }
 
     // Convert disabledModules string to array for Postgres

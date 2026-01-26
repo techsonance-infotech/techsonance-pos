@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { RotateCw } from "lucide-react"
 
 export function VersionChecker() {
-    const [clientVersion, setClientVersion] = useState<string | null>(null)
+    // Use ref instead of state to avoid re-running the effect
+    const clientVersionRef = useRef<string | null>(null)
 
     useEffect(() => {
         // Fetch initial version on mount
@@ -15,11 +16,13 @@ export function VersionChecker() {
                 if (!res.ok) return
                 const data = await res.json()
 
-                if (!clientVersion) {
-                    setClientVersion(data.version)
-                } else if (clientVersion !== data.version) {
+                if (!clientVersionRef.current) {
+                    // First check - store initial version
+                    clientVersionRef.current = data.version
+                    console.log('[VersionChecker] Initial version:', data.version)
+                } else if (clientVersionRef.current !== data.version) {
                     // Version mismatch detected!
-                    console.log(`Version mismatch! Client: ${clientVersion}, Server: ${data.version}`)
+                    console.log(`[VersionChecker] Version mismatch! Client: ${clientVersionRef.current}, Server: ${data.version}`)
 
                     toast('New update available!', {
                         description: 'A new version of the app has been deployed.',
@@ -31,18 +34,18 @@ export function VersionChecker() {
                         icon: <RotateCw className="h-4 w-4 animate-spin" />
                     })
 
-                    // Update state to prevent spamming
-                    setClientVersion(data.version)
+                    // Update ref to prevent spamming
+                    clientVersionRef.current = data.version
                 }
             } catch (e) {
-                console.error("Failed to check version", e)
+                console.error("[VersionChecker] Failed to check version", e)
             }
         }
 
         // Check immediately
         checkVersion()
 
-        // Poll every 60 seconds
+        // Poll every 60 seconds (reasonable interval)
         const interval = setInterval(checkVersion, 60 * 1000)
 
         // Also check when window regains focus
@@ -57,7 +60,7 @@ export function VersionChecker() {
             clearInterval(interval)
             document.removeEventListener('visibilitychange', onVisibilityChange)
         }
-    }, [clientVersion])
+    }, []) // Empty deps - only run once on mount
 
     return null // Headless component
 }

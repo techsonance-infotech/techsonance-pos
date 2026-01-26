@@ -131,6 +131,8 @@ model Store {
   categories Category[]
   tables     Table[]
   orders     Order[]
+  floors     Floor[]
+  reservations Reservation[]
 
   defaultForUsers User[] @relation("DefaultStore")
 
@@ -250,11 +252,12 @@ model User {
   backupLogs   BackupLog[]    // Backups triggered by this user
   licenseRequests LicenseRequest[] @relation("LicenseRequestUser")
   licenseRequestMessages LicenseRequestMessage[] @relation("LicenseRequestMessages")
-  activityLogs   ActivityLog[]
+
   supportTickets SupportTicket[]
   supportMessages SupportMessage[]
 
   @@index([companyId])
+  assignedTables Table[] @relation("TableWaiter")
 }
 
 model Table {
@@ -266,16 +269,78 @@ model Table {
   storeId   String
   store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
+  // Restaurant Mode
+  floorId       String?
+  floor         Floor?   @relation(fields: [floorId], references: [id])
+
+  // Advanced Features
+  mergedWithId  String?
+  mergedWith    Table?   @relation("TableMerges", fields: [mergedWithId], references: [id])
+  subTables     Table[]  @relation("TableMerges")
+  
+  waiterId      String?
+  waiter        User?    @relation("TableWaiter", fields: [waiterId], references: [id])
+  
+  x             Int      @default(0)
+  y             Int      @default(0)
+  width         Int      @default(1)
+  height        Int      @default(1)
+  shape         String   @default("RECTANGLE")
+  
+  qrToken       String?  @unique
+  reservations  Reservation[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([storeId])
+  @@index([floorId])
 }
 
 enum TableStatus {
   AVAILABLE
   OCCUPIED
   RESERVED
+  CLEANING
+}
+
+// ========== RESTAURANT MODE ==========
+model Floor {
+  id        String   @id @default(uuid())
+  name      String
+  sortOrder Int      @default(0)
+  
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  tables    Table[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+}
+
+model Reservation {
+  id             String   @id @default(uuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  customerName   String
+  customerPhone  String
+  guests         Int
+  reservationTime DateTime
+  status         String   @default("PENDING")
+  
+  tableId        String?
+  table          Table?   @relation(fields: [tableId], references: [id])
+  
+  notes          String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([storeId, reservationTime])
 }
 
 model Notification {
@@ -319,6 +384,10 @@ model Order {
   // Indexes for fast queries
   @@index([storeId, status])
   @@index([storeId, createdAt])
+  // Optimization Phase 9: Dashboard Composite Index
+  @@index([storeId, status, createdAt])
+  // Optimization Phase 9: Customer Lookup
+  @@index([customerMobile])
 }
 
 enum OrderStatus {
@@ -436,28 +505,8 @@ model PasswordResetOtp {
 
 
 // ========== ACTIVITY LOGS ==========
-model ActivityLog {
-  id          String   @id @default(uuid())
-  action      String   // e.g., "CREATE_ORDER", "UPDATE_SETTINGS"
-  module      String   // e.g., "POS", "SETTINGS", "AUTH"
-  details     String   // JSON string details
-  
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  
-  ipAddress   String?
-  userAgent   String?
-  
-  isSynced    Boolean  @default(false) // Track sync status to MongoDB
-  
-  createdAt   DateTime @default(now())
-
-  @@index([userId])
-  @@index([module])
-  @@index([action])
-  @@index([createdAt])
-  @@index([isSynced])
-}
+// Removed: Web mode now logs directly to MongoDB 'audit_logs' collection.
+// Desktop mode uses SQLite 'AuditLog' table (defined in schema.prisma).
 
 // ========== SUPPORT SYSTEM ==========
 model SupportTicket {
