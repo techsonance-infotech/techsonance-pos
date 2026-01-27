@@ -5,6 +5,7 @@ async function main() {
     const standaloneDir = path.join(__dirname, '../.next/standalone');
     const publicDir = path.join(__dirname, '../public');
     const staticDir = path.join(__dirname, '../.next/static');
+    const prismaDir = path.join(__dirname, '../prisma');
 
     console.log('Checking standalone directory:', standaloneDir);
     if (!await fs.pathExists(standaloneDir)) {
@@ -31,6 +32,37 @@ async function main() {
     if (await fs.pathExists(envPath)) {
         console.log('Copying .env file...');
         await fs.copy(envPath, path.join(standaloneDir, '.env'));
+    }
+
+    // Copy prisma schemas -> .next/standalone/prisma (for reference)
+    const prismaStandaloneDir = path.join(standaloneDir, 'prisma');
+    await fs.ensureDir(prismaStandaloneDir);
+
+    const schemaPrisma = path.join(prismaDir, 'schema.prisma');
+    const schemaPostgres = path.join(prismaDir, 'schema.postgres.prisma');
+
+    if (await fs.pathExists(schemaPrisma)) {
+        console.log('Copying prisma/schema.prisma...');
+        await fs.copy(schemaPrisma, path.join(prismaStandaloneDir, 'schema.prisma'));
+    }
+
+    if (await fs.pathExists(schemaPostgres)) {
+        console.log('Copying prisma/schema.postgres.prisma...');
+        await fs.copy(schemaPostgres, path.join(prismaStandaloneDir, 'schema.postgres.prisma'));
+    }
+
+    // Create backups directory structure
+    const backupsDir = path.join(standaloneDir, 'backups');
+    if (!await fs.pathExists(backupsDir)) {
+        console.log('Creating backups directory...');
+        await fs.ensureDir(backupsDir);
+    }
+
+    // Create data directory for SQLite database
+    const dataDir = path.join(standaloneDir, 'data');
+    if (!await fs.pathExists(dataDir)) {
+        console.log('Creating data directory for SQLite...');
+        await fs.ensureDir(dataDir);
     }
 
     console.log('Standalone build prepared successfully.');

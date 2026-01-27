@@ -11,7 +11,14 @@ contextBridge.exposeInMainWorld('electron', {
     saveCategoriesBulk: (categories) => ipcRenderer.invoke('db-save-categories-bulk', categories),
     saveSettingsBulk: (settings) => ipcRenderer.invoke('db-save-settings-bulk', settings),
     getSettings: () => ipcRenderer.invoke('db-get-settings'),
+    // Tables
     getTables: () => ipcRenderer.invoke('db-get-tables'),
+    saveTablesBulk: (tables) => ipcRenderer.invoke('db-save-tables-bulk', tables),
+    // Activity Logs (Local SQLite storage for desktop)
+    saveActivityLog: (log) => ipcRenderer.invoke('db-save-activity-log', log),
+    getActivityLogs: (limit) => ipcRenderer.invoke('db-get-activity-logs', limit),
+    getUnsyncedLogs: () => ipcRenderer.invoke('db-get-unsynced-logs'),
+    markLogsSynced: (ids) => ipcRenderer.invoke('db-mark-logs-synced', ids),
     // Sync API
     getPendingOrders: () => ipcRenderer.invoke('sync-orders'),
     markOrdersSynced: (ids) => ipcRenderer.invoke('db-mark-synced', ids),
