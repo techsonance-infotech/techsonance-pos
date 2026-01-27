@@ -21,7 +21,10 @@
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
     "electron:secure": "concurrently -k \"npm run dev:secure\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
     "electron:preview": "set FORCE_PROD=true && npm run build && npm run electron:rebuild && npm run electron:compile && electron .",
-    "electron:build": "npm run build && npm run electron:compile && electron-builder"
+    "electron:build": "npm run build && npm run electron:compile && electron-builder",
+    "electron:build:mac": "npm run build && npm run electron:rebuild && npm run electron:compile && electron-builder --mac",
+    "electron:build:win": "npm run build && npm run electron:compile && electron-builder --win",
+    "electron:build:all": "npm run build && npm run electron:compile && electron-builder --mac --win"
   },
   "build": {
     "appId": "com.syncserve.pos",
@@ -72,6 +75,14 @@
       {
         "from": ".next/standalone/.env",
         "to": "standalone/.env"
+      },
+      {
+        "from": "prisma/schema.prisma",
+        "to": "prisma/schema.prisma"
+      },
+      {
+        "from": "prisma/schema.postgres.prisma",
+        "to": "prisma/schema.postgres.prisma"
       }
     ],
     "directories": {
@@ -84,7 +95,9 @@
         "zip"
       ],
       "icon": "public/icon-512.png",
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "win": {
       "target": [

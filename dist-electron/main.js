@@ -256,6 +256,54 @@ else {
             return [];
         }
     });
+    ipcMain.handle('db-save-tables-bulk', async (evt, tables) => {
+        try {
+            dbAsync.saveTablesBulk(tables);
+            return { success: true };
+        }
+        catch (e) {
+            console.error("IPC Error: db-save-tables-bulk", e);
+            return { success: false, error: String(e) };
+        }
+    });
+    // Activity Logs IPC Handlers
+    ipcMain.handle('db-save-activity-log', async (evt, log) => {
+        try {
+            return dbAsync.saveActivityLog(log);
+        }
+        catch (e) {
+            console.error("IPC Error: db-save-activity-log", e);
+            return { success: false, error: String(e) };
+        }
+    });
+    ipcMain.handle('db-get-activity-logs', async (evt, limit = 100) => {
+        try {
+            return dbAsync.getActivityLogs(limit);
+        }
+        catch (e) {
+            console.error("IPC Error: db-get-activity-logs", e);
+            return [];
+        }
+    });
+    ipcMain.handle('db-get-unsynced-logs', async () => {
+        try {
+            return dbAsync.getUnsyncedLogs();
+        }
+        catch (e) {
+            console.error("IPC Error: db-get-unsynced-logs", e);
+            return [];
+        }
+    });
+    ipcMain.handle('db-mark-logs-synced', async (evt, ids) => {
+        try {
+            dbAsync.markLogsSynced(ids);
+            return { success: true };
+        }
+        catch (e) {
+            console.error("IPC Error: db-mark-logs-synced", e);
+            return { success: false, error: String(e) };
+        }
+    });
     ipcMain.handle('get-printers', async () => {
         try {
             if (mainWindow) {

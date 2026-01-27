@@ -79,6 +79,27 @@ function initDB() {
             key TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS tables (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            capacity INTEGER DEFAULT 4,
+            status TEXT DEFAULT 'AVAILABLE',
+            storeId TEXT,
+            sortOrder INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id TEXT PRIMARY KEY,
+            action TEXT NOT NULL,
+            module TEXT NOT NULL,
+            details TEXT,
+            userId TEXT,
+            ipAddress TEXT,
+            userAgent TEXT,
+            isSynced INTEGER DEFAULT 0,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     `);
     console.log("Database Initialized at " + dbPath);
     // Run migrations after initialization
@@ -155,5 +176,53 @@ exports.dbAsync = {
     markOrderSynced: (id) => {
         const stmt = db.prepare("UPDATE orders SET synced = 1 WHERE id = ?");
         stmt.run(id);
+    },
+    // Tables
+    getTables: () => {
+        const stmt = db.prepare('SELECT * FROM tables ORDER BY sortOrder ASC');
+        return stmt.all();
+    },
+    saveTablesBulk: (tables) => {
+        const insert = db.prepare(`
+            INSERT OR REPLACE INTO tables (id, name, capacity, status, storeId, sortOrder)
+            VALUES (@id, @name, @capacity, @status, @storeId, @sortOrder)
+        `);
+        const insertMany = db.transaction((tbls) => {
+            for (const t of tbls)
+                insert.run(t);
+        });
+        insertMany(tables);
+    },
+    // Activity Logs (Local storage - no MongoDB needed for desktop)
+    saveActivityLog: (log) => {
+        const stmt = db.prepare(`
+            INSERT INTO activity_logs (id, action, module, details, userId, ipAddress, userAgent, isSynced, createdAt)
+            VALUES (@id, @action, @module, @details, @userId, @ipAddress, @userAgent, 0, @createdAt)
+        `);
+        const info = stmt.run({
+            id: log.id || require('crypto').randomUUID(),
+            action: log.action,
+            module: log.module,
+            details: typeof log.details === 'string' ? log.details : JSON.stringify(log.details),
+            userId: log.userId || null,
+            ipAddress: log.ipAddress || 'local',
+            userAgent: log.userAgent || 'Electron',
+            createdAt: log.createdAt || new Date().toISOString()
+        });
+        return { success: true, changes: info.changes };
+    },
+    getActivityLogs: (limit = 100) => {
+        const stmt = db.prepare('SELECT * FROM activity_logs ORDER BY createdAt DESC LIMIT ?');
+        return stmt.all(limit);
+    },
+    getUnsyncedLogs: () => {
+        const stmt = db.prepare('SELECT * FROM activity_logs WHERE isSynced = 0');
+        return stmt.all();
+    },
+    markLogsSynced: (ids) => {
+        const stmt = db.prepare('UPDATE activity_logs SET isSynced = 1 WHERE id = ?');
+        for (const id of ids) {
+            stmt.run(id);
+        }
     }
 };
