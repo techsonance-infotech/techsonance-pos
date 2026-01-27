@@ -15,6 +15,7 @@ import {
 import { ReceiptTemplate } from "@/components/pos/receipt-template"
 import { convertOrderToHeld, deleteOrder, getOrder } from "@/app/actions/orders"
 import { getRecentOrdersPageData } from "@/app/actions/pos"
+import { getPrinterSettings } from "@/app/actions/printer"
 import { useCurrency } from "@/lib/hooks/use-currency"
 import { formatCurrency } from "@/lib/format"
 import { toast } from "sonner"
@@ -41,7 +42,11 @@ export function RecentOrdersClient() {
     const [deleteConfirmOrder, setDeleteConfirmOrder] = useState<any | null>(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [editedOrders, setEditedOrders] = useState<Set<string>>(new Set()) // Track edited orders
+    const [printerSettings, setPrinterSettings] = useState<any>(null) // Printer settings
     const printRef = useRef<HTMLDivElement>(null) // Ref for print component
+
+    // Get paper width from settings or default to 80mm
+    const paperWidth = printerSettings?.paperWidth || 80
 
     // Print handler using react-to-print (Web Fallback)
     const handleWebPrint = useReactToPrint({
@@ -49,13 +54,15 @@ export function RecentOrdersClient() {
         documentTitle: `Receipt-${printOrder?.kotNo || 'Order'}`,
         pageStyle: `
             @page {
-                size: 80mm auto;
+                size: ${paperWidth}mm auto;
                 margin: 0mm;
             }
             @media print {
                 body {
                     margin: 0mm;
+                    padding: 0mm;
                 }
+                .hidden { display: block !important; }
             }
         `,
         onAfterPrint: () => {
@@ -83,9 +90,20 @@ export function RecentOrdersClient() {
                             order={order}
                             businessDetails={businessDetails}
                             storeDetails={storeDetails}
+                            printerSettings={printerSettings}
                         />
                     )
-                    await (window as any).electron.printReceipt(html)
+                    const printOptions = {
+                        printerName: printerSettings?.printerName,
+                        margins: {
+                            marginType: 'custom',
+                            top: parseInt(printerSettings?.topMargin || 0),
+                            bottom: parseInt(printerSettings?.bottomMargin || 0),
+                            left: 0,
+                            right: 0
+                        }
+                    }
+                    await (window as any).electron.printReceipt(html, printOptions)
                     setPrintOrder(null)
                 } catch (e) {
                     console.error("Silent print failed", e)
@@ -148,6 +166,11 @@ export function RecentOrdersClient() {
                 setOrders(data.orders)
                 setBusinessDetails(data.businessDetails)
                 setStoreDetails(data.storeDetails)
+            }
+            // Fetch printer settings
+            const pSettings = await getPrinterSettings()
+            if (pSettings) {
+                setPrinterSettings(pSettings)
             }
         } catch (error) {
             // Fallback to Offline Data
@@ -653,6 +676,7 @@ export function RecentOrdersClient() {
                                 order={printOrder}
                                 businessDetails={businessDetails}
                                 storeDetails={storeDetails}
+                                printerSettings={printerSettings}
                             />
                         </div>
                     </div>

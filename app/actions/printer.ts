@@ -22,7 +22,51 @@ const PRINTER_SETTINGS_KEYS = [
     'footer_text'
 ]
 
+// Default printer settings for thermal printers (80mm)
+const DEFAULT_PRINTER_SETTINGS: Record<string, string> = {
+    'printer_name': '',
+    'printer_type': 'thermal_80mm',
+    'paper_width': '80',
+    'auto_print': 'false',
+    'print_copies': '1',
+    'connection_type': 'usb',
+    'font_size': 'medium',
+    'print_quality': 'high',
+    'cut_type': 'full',
+    'enable_buzzer': 'true',
+    'character_encoding': 'UTF-8',
+    'line_spacing': '1',
+    'top_margin': '0',
+    'bottom_margin': '0',
+    'enable_qr_code': 'false',
+    'footer_text': 'Thanks'
+}
+
 import { getUserProfile } from "./user"
+
+// Ensure default printer settings exist in database
+export async function ensureDefaultPrinterSettings() {
+    try {
+        for (const key of PRINTER_SETTINGS_KEYS) {
+            const existing = await prisma.systemConfig.findUnique({
+                where: { key }
+            })
+
+            if (!existing && DEFAULT_PRINTER_SETTINGS[key] !== undefined) {
+                await prisma.systemConfig.create({
+                    data: {
+                        key,
+                        value: DEFAULT_PRINTER_SETTINGS[key]
+                    }
+                })
+            }
+        }
+        return { success: true }
+    } catch (error) {
+        console.error("Failed to ensure default printer settings:", error)
+        return { success: false }
+    }
+}
 
 export async function getPrinterSettings() {
     const user = await getUserProfile()
@@ -37,14 +81,33 @@ export async function getPrinterSettings() {
             }
         })
 
-        const settingsMap: any = {}
+        // Start with defaults, then override with saved values
+        const settingsMap: any = {
+            printerName: '',
+            printerType: 'thermal_80mm',
+            paperWidth: 80,
+            autoPrint: false,
+            printCopies: 1,
+            connectionType: 'usb',
+            fontSize: 'medium',
+            printQuality: 'high',
+            cutType: 'full',
+            enableBuzzer: true,
+            characterEncoding: 'UTF-8',
+            lineSpacing: 1,
+            topMargin: 0,
+            bottomMargin: 0,
+            enableQrCode: false,
+            footerText: 'Thanks'
+        }
+
         settings.forEach((setting: any) => {
             const key = setting.key.replace('printer_', '').replace(/_([a-z])/g, (_: any, letter: any) => letter.toUpperCase())
             let value: any = setting.value
 
             // Parse numeric values
             if (['paperWidth', 'printCopies', 'lineSpacing', 'topMargin', 'bottomMargin'].includes(key)) {
-                value = value ? parseInt(value) : null
+                value = value ? parseInt(value) : settingsMap[key]
             }
             // Parse boolean values
             else if (['autoPrint', 'enableBuzzer', 'enableQrCode'].includes(key)) {
@@ -57,7 +120,25 @@ export async function getPrinterSettings() {
         return settingsMap
     } catch (error) {
         console.error("Failed to fetch printer settings:", error)
-        return null
+        // Return defaults even on error
+        return {
+            printerName: '',
+            printerType: 'thermal_80mm',
+            paperWidth: 80,
+            autoPrint: false,
+            printCopies: 1,
+            connectionType: 'usb',
+            fontSize: 'medium',
+            printQuality: 'high',
+            cutType: 'full',
+            enableBuzzer: true,
+            characterEncoding: 'UTF-8',
+            lineSpacing: 1,
+            topMargin: 0,
+            bottomMargin: 0,
+            enableQrCode: false,
+            footerText: 'Thanks'
+        }
     }
 }
 
