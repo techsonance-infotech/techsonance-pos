@@ -37,7 +37,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         try {
             const posService = getPOSService()
             const orders = await posService.getPendingOrders()
-            const count = orders.length
+            // Fix: handle undefined/null return from IPC if handler fails or returns null
+            const count = orders?.length || 0
             setPendingCount(count)
             return count
         } catch (e) {

@@ -163,46 +163,36 @@ export function NewOrderClient() {
 
                 // Resume order is handled by a separate useEffect
 
-                // 2. If Online & Local Empty, fetch from Server (Products)
-                if (localProducts.length === 0 && isOnline) {
-                    const data = await getPOSInitialData()
-                    if (data) {
-                        setCategories(data.categories)
-                        setProducts(data.products)
-                        setBusinessDetails(data.businessDetails)
-                        setStoreDetails(data.storeDetails)
-                        if (data.categories.length > 0) setSelectedCategory(data.categories[0].id)
-
-                        // Sync to local storage for offline use
-                        await posService.saveProductsBulk(data.products)
-                        await posService.saveCategoriesBulk(data.categories)
-
-                        // Save settings to local storage
-                        const settingsToSave = [
-                            { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
-                            { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
-                        ]
-                        await posService.saveSettingsBulk(settingsToSave as any)
-                    }
-                } else if (isOnline && localProducts.length > 0) {
-                    // If we have local data but we're online, still fetch latest settings
-                    // to ensure tax/discount configs are up-to-date
+                // 2. If Online, ALWAYS fetch latest data from Server to ensure freshness
+                if (isOnline) {
                     try {
                         const data = await getPOSInitialData()
-                        if (data?.businessDetails) {
+                        if (data) {
+                            // Update state with fresh server data
+                            setCategories(data.categories)
+                            setProducts(data.products)
                             setBusinessDetails(data.businessDetails)
                             setStoreDetails(data.storeDetails)
 
-                            // Update settings in local storage
+                            // Initialize selected category only if not already set (or if local was empty)
+                            if (data.categories.length > 0 && selectedCategory === 'all' && (!localCategories || localCategories.length === 0)) {
+                                setSelectedCategory(data.categories[0].id)
+                            }
+
+                            // Sync to local storage for offline use
+                            await posService.saveProductsBulk(data.products)
+                            await posService.saveCategoriesBulk(data.categories)
+
+                            // Save settings to local storage
                             const settingsToSave = [
                                 { key: 'businessDetails', value: JSON.stringify(data.businessDetails) },
                                 { key: 'storeDetails', value: JSON.stringify(data.storeDetails) }
                             ]
                             await posService.saveSettingsBulk(settingsToSave as any)
                         }
-                    } catch (e) {
-                        console.error("Failed to update settings from server", e)
-                        // Continue with local settings if server fetch fails
+                    } catch (error) {
+                        console.error("Failed to load server data", error)
+                        // Error handling handled below or silently fail back to local data
                     }
                 }
             } catch (error) {
@@ -501,7 +491,7 @@ export function NewOrderClient() {
 
     return (
         <>
-            <div className="h-[calc(100vh-theme(spacing.20))] flex gap-6 p-6 overflow-hidden no-print">
+            <div className="h-full flex gap-4 overflow-hidden no-print">
                 {/* LEFT: Categories & Products (Flexible width) */}
                 <div className="flex-1 flex gap-4 min-w-0 overflow-hidden">
                     {/* 1. Categories Sidebar */}

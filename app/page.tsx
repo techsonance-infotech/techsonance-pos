@@ -18,6 +18,7 @@ async function getLoginConfig() {
 export default async function LoginPage() {
   const cookieStore = await cookies()
   const sessionUserId = cookieStore.get('session_user_id')?.value
+  console.log(`[Home] Checking Session Cookie: ${sessionUserId ? 'FOUND' : 'MISSING'}`)
 
   if (sessionUserId) {
     redirect(`/pin?uid=${sessionUserId}`)

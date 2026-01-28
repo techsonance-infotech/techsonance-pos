@@ -107,6 +107,7 @@ export function RecentOrdersClient() {
                     setPrintOrder(null)
                 } catch (e) {
                     console.error("Silent print failed", e)
+                    toast.error("Printer not found/ready. Switching to Web Print.")
                     handleWebPrint() // Fallback knows ref is ready now
                 }
             } else {

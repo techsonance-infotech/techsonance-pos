@@ -261,7 +261,7 @@ export async function updateBusinessSettings(prevState: any, formData: FormData)
             )
         }
 
-        (revalidateTag as any)('business-settings', 'max')
+        (revalidateTag as any)('business-settings')
         revalidatePath('/')
         revalidatePath('/dashboard/settings/business')
         revalidatePath('/dashboard/settings/taxes')

@@ -27,10 +27,15 @@ async function main() {
         await fs.copy(staticDir, path.join(standaloneDir, '.next/static'));
     }
 
-    // Copy .env -> .next/standalone/.env
+    // IMPORTANT: Copy .env.electron as .env for Electron builds (forces SQLite mode)
+    const envElectronPath = path.join(__dirname, '../.env.electron');
     const envPath = path.join(__dirname, '../.env');
-    if (await fs.pathExists(envPath)) {
-        console.log('Copying .env file...');
+
+    if (await fs.pathExists(envElectronPath)) {
+        console.log('Copying .env.electron as .env (for SQLite mode)...');
+        await fs.copy(envElectronPath, path.join(standaloneDir, '.env'));
+    } else if (await fs.pathExists(envPath)) {
+        console.warn('WARNING: .env.electron not found, copying .env (may use PostgreSQL!)');
         await fs.copy(envPath, path.join(standaloneDir, '.env'));
     }
 
@@ -66,6 +71,8 @@ async function main() {
     }
 
     console.log('Standalone build prepared successfully.');
+    console.log('');
+    console.log('Database mode: SQLite (Electron)');
 }
 
 main().catch(err => {

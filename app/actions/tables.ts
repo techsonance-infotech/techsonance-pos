@@ -99,8 +99,9 @@ export async function addTable(name: string, capacity: number) {
             'CREATE_TABLE',
             'TABLES',
             { name, capacity, tableId: table.id },
-            user.id
         )
+        revalidatePath('/dashboard/tables')
+        revalidatePath('/dashboard/new-order')
     } catch (e) {
         console.error("Failed to log table creation", e)
     }
@@ -142,6 +143,8 @@ export async function updateTableStatus(tableId: string, status: 'AVAILABLE' | '
             { tableId, status },
             user.id
         )
+        revalidatePath('/dashboard/tables')
+        revalidatePath('/dashboard/new-order')
     } catch (e) {
         console.error("Failed to log table status update", e)
     }
@@ -167,6 +170,9 @@ export async function deleteTable(tableId: string) {
             { tableId },
             user.id
         )
+
+        revalidatePath('/dashboard/tables')
+        revalidatePath('/dashboard/new-order')
 
         return { success: true }
     } catch (error) {

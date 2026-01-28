@@ -60,13 +60,14 @@ export default async function DashboardLayout({
                         <div className="flex flex-1 overflow-hidden">
                             <Sidebar
                                 userRole={user?.role}
-                                disabledModules={user?.disabledModules}
+                                disabledModules={user?.disabledModules ? Array.from(user.disabledModules) : []}
                                 businessName={businessName}
                                 logoUrl={logoUrl}
                                 storeTableMode={user?.defaultStore?.tableMode}
                             />
                             <div className="flex flex-1 flex-col h-full min-w-0">
-                                <Header initialUser={user} />
+                                {/* Sanitize user object to remove symbols (e.g. from Prisma extensions) before passing to Client Component */}
+                                <Header initialUser={user ? JSON.parse(JSON.stringify(user)) : null} />
                                 <main className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
                                     {children}
                                 </main>
