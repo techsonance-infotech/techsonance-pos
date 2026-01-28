@@ -1,12 +1,13 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-const { app } = require('electron');
 
-const dbPath = path.join(app.getPath('userData'), 'pos.db');
-const db = new Database(dbPath);
+// Lazy initialization - db will be created only when initDB is called
+let db: any = null;
+let dbPath: string = '';
 
 // Run database migrations
 function runMigrations() {
+    if (!db) return;
     console.log('Running database migrations...');
 
     try {
@@ -38,8 +39,17 @@ function runMigrations() {
     }
 }
 
-// Initialize Schema
+// Initialize Schema - call this only from within Electron app context
 export function initDB() {
+    // Lazy import app to avoid issues when module is loaded outside Electron
+    const { app } = require('electron');
+
+    if (!db) {
+        dbPath = path.join(app.getPath('userData'), 'pos.db');
+        console.log('Initializing better-sqlite3 database at:', dbPath);
+        db = new Database(dbPath);
+    }
+
     db.exec(`
         CREATE TABLE IF NOT EXISTS categories (
             id TEXT PRIMARY KEY,
@@ -109,36 +119,55 @@ export function initDB() {
     runMigrations();
 }
 
+// Helper to ensure db is initialized before use
+function ensureDB() {
+    if (!db) {
+        throw new Error('Database not initialized. Call initDB() first.');
+    }
+    return db;
+}
+
 // Data Access Object
 export const dbAsync = {
     // Products & Categories
     getProducts: () => {
-        const stmt = db.prepare('SELECT * FROM products ORDER BY sortOrder ASC');
+        const stmt = ensureDB().prepare('SELECT * FROM products ORDER BY sortOrder ASC');
         return stmt.all().map((p: any) => ({ ...p, addons: p.addons ? JSON.parse(p.addons) : [] }));
     },
 
     getCategories: () => {
-        const stmt = db.prepare('SELECT * FROM categories ORDER BY sortOrder ASC');
+        const stmt = ensureDB().prepare('SELECT * FROM categories ORDER BY sortOrder ASC');
         return stmt.all();
     },
 
     saveProductsBulk: (products: any[]) => {
-        const insert = db.prepare(`
+        const insert = ensureDB().prepare(`
             INSERT OR REPLACE INTO products (id, name, price, description, image, categoryId, sortOrder, addons)
             VALUES (@id, @name, @price, @description, @image, @categoryId, @sortOrder, @addons)
         `);
-        const insertMany = db.transaction((probjs: any[]) => {
-            for (const p of probjs) insert.run({ ...p, addons: JSON.stringify(p.addons || []) });
+        const insertMany = ensureDB().transaction((probjs: any[]) => {
+            for (const p of probjs) {
+                insert.run({
+                    id: p.id,
+                    name: p.name,
+                    price: p.price,
+                    description: p.description || null,
+                    image: p.image || null,
+                    categoryId: p.categoryId || null,
+                    sortOrder: p.sortOrder || 0,
+                    addons: JSON.stringify(p.addons || [])
+                });
+            }
         });
         insertMany(products);
     },
 
     saveCategoriesBulk: (categories: any[]) => {
-        const insert = db.prepare(`
+        const insert = ensureDB().prepare(`
             INSERT OR REPLACE INTO categories (id, name, image, sortOrder)
             VALUES (@id, @name, @image, @sortOrder)
         `);
-        const insertMany = db.transaction((cats: any[]) => {
+        const insertMany = ensureDB().transaction((cats: any[]) => {
             for (const c of cats) insert.run(c);
         });
         insertMany(categories);
@@ -146,24 +175,29 @@ export const dbAsync = {
 
     // Settings
     getSettings: () => {
-        const stmt = db.prepare('SELECT * FROM settings');
+        const stmt = ensureDB().prepare('SELECT * FROM settings');
         return stmt.all();
     },
 
     saveSettingsBulk: (settings: any[]) => {
-        const insert = db.prepare(`
+        const insert = ensureDB().prepare(`
             INSERT OR REPLACE INTO settings (key, value)
             VALUES (@key, @value)
         `);
-        const insertMany = db.transaction((sets: any[]) => {
-            for (const s of sets) insert.run(s);
+        const insertMany = ensureDB().transaction((sets: any[]) => {
+            for (const s of sets) {
+                insert.run({
+                    key: s.key,
+                    value: (typeof s.value === 'string' ? s.value : JSON.stringify(s.value)) || null
+                });
+            }
         });
         insertMany(settings);
     },
 
     // Orders
     saveOrder: (order: any) => {
-        const stmt = db.prepare(`
+        const stmt = ensureDB().prepare(`
             INSERT OR REPLACE INTO orders (id, kotNo, customerName, customerMobile, tableId, tableName, status, paymentMode, totalAmount, taxAmount, discountAmount, items, createdAt, synced)
             VALUES (@id, @kotNo, @customerName, @customerMobile, @tableId, @tableName, @status, @paymentMode, @totalAmount, @taxAmount, @discountAmount, @items, @createdAt, 0)
         `);
@@ -179,27 +213,27 @@ export const dbAsync = {
     },
 
     getPendingOrders: () => {
-        const stmt = db.prepare("SELECT * FROM orders WHERE synced = 0");
+        const stmt = ensureDB().prepare("SELECT * FROM orders WHERE synced = 0");
         return stmt.all().map((o: any) => ({ ...o, items: JSON.parse(o.items) }));
     },
 
     markOrderSynced: (id: string) => {
-        const stmt = db.prepare("UPDATE orders SET synced = 1 WHERE id = ?");
+        const stmt = ensureDB().prepare("UPDATE orders SET synced = 1 WHERE id = ?");
         stmt.run(id);
     },
 
     // Tables
     getTables: () => {
-        const stmt = db.prepare('SELECT * FROM tables ORDER BY sortOrder ASC');
+        const stmt = ensureDB().prepare('SELECT * FROM tables ORDER BY sortOrder ASC');
         return stmt.all();
     },
 
     saveTablesBulk: (tables: any[]) => {
-        const insert = db.prepare(`
+        const insert = ensureDB().prepare(`
             INSERT OR REPLACE INTO tables (id, name, capacity, status, storeId, sortOrder)
             VALUES (@id, @name, @capacity, @status, @storeId, @sortOrder)
         `);
-        const insertMany = db.transaction((tbls: any[]) => {
+        const insertMany = ensureDB().transaction((tbls: any[]) => {
             for (const t of tbls) insert.run(t);
         });
         insertMany(tables);
@@ -207,7 +241,7 @@ export const dbAsync = {
 
     // Activity Logs (Local storage - no MongoDB needed for desktop)
     saveActivityLog: (log: any) => {
-        const stmt = db.prepare(`
+        const stmt = ensureDB().prepare(`
             INSERT INTO activity_logs (id, action, module, details, userId, ipAddress, userAgent, isSynced, createdAt)
             VALUES (@id, @action, @module, @details, @userId, @ipAddress, @userAgent, 0, @createdAt)
         `);
@@ -225,17 +259,17 @@ export const dbAsync = {
     },
 
     getActivityLogs: (limit: number = 100) => {
-        const stmt = db.prepare('SELECT * FROM activity_logs ORDER BY createdAt DESC LIMIT ?');
+        const stmt = ensureDB().prepare('SELECT * FROM activity_logs ORDER BY createdAt DESC LIMIT ?');
         return stmt.all(limit);
     },
 
     getUnsyncedLogs: () => {
-        const stmt = db.prepare('SELECT * FROM activity_logs WHERE isSynced = 0');
+        const stmt = ensureDB().prepare('SELECT * FROM activity_logs WHERE isSynced = 0');
         return stmt.all();
     },
 
     markLogsSynced: (ids: string[]) => {
-        const stmt = db.prepare('UPDATE activity_logs SET isSynced = 1 WHERE id = ?');
+        const stmt = ensureDB().prepare('UPDATE activity_logs SET isSynced = 1 WHERE id = ?');
         for (const id of ids) {
             stmt.run(id);
         }

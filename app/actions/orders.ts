@@ -1,7 +1,7 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { revalidatePath, unstable_cache } from "next/cache"
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache"
 import { getUserProfile } from "./user"
 import { createNotification } from "@/app/actions/notifications"
 
@@ -102,14 +102,18 @@ export async function saveOrder(orderData: any) {
 
         revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
+        revalidatePath('/dashboard/hold-orders')
+        revalidatePath('/dashboard/recent-orders')
+            ; (revalidateTag as any)('recent-orders')
+            ; (revalidateTag as any)('held-orders')
         // Also revalidate tables since status changed
         if (tableId) revalidatePath('/dashboard/tables')
 
-        return {
+        return JSON.parse(JSON.stringify({
             success: true,
             message: orderStatus === 'COMPLETED' ? "Order Saved Successfully" : (orderData.id ? "Order Updated Successfully" : "Order Held Successfully"),
             order: savedOrder
-        }
+        }))
 
     } catch (error) {
         console.error("Save Order Error:", error)
@@ -166,7 +170,12 @@ export async function getHeldOrders() {
         [`held-orders-${user.defaultStoreId}`],
         { revalidate: 10, tags: ['held-orders'] }
     )
-    return getCachedHeldOrders()
+    const cachedHeldOrders = await getCachedHeldOrders()
+    const parsedHeldOrders = cachedHeldOrders.map((order: any) => ({
+        ...order,
+        items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+    }))
+    return JSON.parse(JSON.stringify(parsedHeldOrders))
 }
 
 // Get Recent Completed Orders (Cached)
@@ -212,7 +221,12 @@ export async function getRecentOrders() {
         [`recent-orders-${user.defaultStoreId}`],
         { revalidate: 10, tags: ['recent-orders'] }
     )
-    return getCachedRecentOrders()
+    const cachedOrders = await getCachedRecentOrders()
+    const parsedOrders = cachedOrders.map((order: any) => ({
+        ...order,
+        items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+    }))
+    return JSON.parse(JSON.stringify(parsedOrders))
 }
 
 // Convert Completed Order to Held (for editing)
@@ -251,6 +265,8 @@ export async function convertOrderToHeld(orderId: string) {
 
         revalidatePath('/dashboard/recent-orders')
         revalidatePath('/dashboard/hold-orders')
+            ; (revalidateTag as any)('recent-orders')
+            ; (revalidateTag as any)('held-orders')
 
         return { success: true, message: "Order converted to held status" }
     } catch (error) {
@@ -278,6 +294,7 @@ export async function deleteOrder(orderId: string) {
         await logActivity('DELETE_ORDER', 'POS', `Deleted order ${orderId}`, user.id)
 
         revalidatePath('/dashboard/hold-orders')
+            ; (revalidateTag as any)('held-orders')
         return { success: true }
     } catch (error) {
         return { error: "Failed to delete" }
@@ -290,13 +307,18 @@ export async function getOrder(orderId: string) {
         const user = await getUserProfile()
         if (!user?.defaultStoreId) return null
 
-        const order = await prisma.order.findUnique({
+        const orderResult = await prisma.order.findUnique({
             where: {
                 id: orderId,
                 storeId: user.defaultStoreId // Strict isolation
             }
         })
-        return order
+        if (orderResult) {
+            (orderResult as any).items = typeof orderResult.items === 'string'
+                ? JSON.parse(orderResult.items)
+                : orderResult.items
+        }
+        return JSON.parse(JSON.stringify(orderResult))
     } catch (error) {
         return null
     }
@@ -330,7 +352,11 @@ export async function searchOrders(query: string) {
                 tableName: true
             }
         })
-        return orders
+        const parsedOrders = orders.map((order: any) => ({
+            ...order,
+            items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items
+        }))
+        return JSON.parse(JSON.stringify(parsedOrders))
     } catch (error) {
         console.error("Search Orders Error:", error)
         return []
@@ -377,9 +403,10 @@ export async function cancelOrder(orderId: string) {
             `Order ${order.kotNo} was cancelled. Table released.`
         )
 
-        revalidatePath('/dashboard/hold-orders')
         revalidatePath('/dashboard/recent-orders')
         revalidatePath('/dashboard/tables')
+            ; (revalidateTag as any)('recent-orders')
+            ; (revalidateTag as any)('held-orders')
 
         return { success: true, message: "Order cancelled and table released" }
     } catch (error) {

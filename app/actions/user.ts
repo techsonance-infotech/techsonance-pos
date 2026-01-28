@@ -109,7 +109,9 @@ export const getUserProfile = cache(async () => {
         console.warn("[getUserProfile] Failed to fetch notifications (Offline?)")
     }
 
-    return { ...user, notifications }
+    // Serialize to remove symbols (Prisma extensions) and convert Dates to strings
+    // This prevents "Only plain objects" error when passing to Client Components
+    return JSON.parse(JSON.stringify({ ...user, notifications }))
 })
 
 export async function getStoreStaff() {

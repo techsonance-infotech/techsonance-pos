@@ -106,15 +106,26 @@ export function BootstrapProvider({ children }: { children: React.ReactNode }) {
                 // But I need to filter by category or just iterate all.
             }
 
+            // Create Set of valid Category IDs for FK validation
+            const validCategoryIds = new Set(categories.map(c => c.id))
+
             // Rewrite using data.products flat array
             for (const p of data.products) {
+                // FK Check: If product has categoryId, it MUST exist in validCategoryIds
+                // If not, we set it to null (Uncategorized) to prevent SQLite crash
+                let safeCategoryId = p.categoryId
+                if (safeCategoryId && !validCategoryIds.has(safeCategoryId)) {
+                    console.warn(`Product ${p.name} has invalid categoryId ${safeCategoryId}. Setting to null.`)
+                    safeCategoryId = null
+                }
+
                 products.push({
                     id: p.id,
                     name: p.name,
                     price: p.price,
                     description: p.description || undefined,
                     image: p.image || undefined,
-                    categoryId: p.categoryId,
+                    categoryId: safeCategoryId,
                     sortOrder: p.sortOrder,
                     isAvailable: p.isAvailable,
                     addons: p.addons ? p.addons.map((a: any) => ({

@@ -15,16 +15,17 @@
     "lint": "eslint",
     "generate:sqlite": "prisma generate --schema=prisma/schema.prisma",
     "postinstall": "prisma generate --schema=prisma/schema.postgres.prisma && npm run generate:sqlite",
-    "electron": "electron .",
+    "electron": "ELECTRON_RUN_AS_NODE= electron .",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
-    "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
-    "electron:secure": "concurrently -k \"npm run dev:secure\" \"npm run electron:compile && wait-on tcp:3000 && electron .\"",
-    "electron:preview": "set FORCE_PROD=true && npm run build && npm run electron:rebuild && npm run electron:compile && electron .",
-    "electron:build": "npm run build && npm run electron:compile && electron-builder",
-    "electron:build:mac": "npm run build && npm run electron:rebuild && npm run electron:compile && electron-builder --mac",
-    "electron:build:win": "npm run build && npm run electron:compile && electron-builder --win",
-    "electron:build:all": "npm run build && npm run electron:compile && electron-builder --mac --win"
+    "electron:init-db": "node scripts/init-electron-db.js",
+    "electron:dev": "npm run electron:init-db && npm run electron:rebuild && npm run electron:compile && concurrently -k \"DATABASE_URL='file:/Users/techsonanceinfotechllp/Library/Application Support/SyncServe POS/pos.db' npm run dev\" \"wait-on tcp:3000 && ELECTRON_RUN_AS_NODE= electron .\"",
+    "electron:secure": "npm run electron:compile && concurrently -k \"npm run dev:secure\" \"wait-on tcp:3000 && ELECTRON_RUN_AS_NODE= electron .\"",
+    "electron:preview": "npm run electron:init-db && FORCE_PROD=true npm run build && npm run electron:rebuild && npm run electron:compile && ELECTRON_RUN_AS_NODE= electron .",
+    "electron:build": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder",
+    "electron:build:mac": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:rebuild && npm run electron:compile && electron-builder --mac --universal",
+    "electron:build:win": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder --win",
+    "electron:build:all": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder --mac --win"
   },
   "build": {
     "appId": "com.syncserve.pos",
@@ -33,7 +34,8 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
-      "node_modules/bindings/**/*"
+      "node_modules/bindings/**/*",
+      "node_modules/@prisma/client-sqlite/**/*"
     ],
     "files": [
       "dist-electron/**/*",
@@ -83,6 +85,14 @@
       {
         "from": "prisma/schema.postgres.prisma",
         "to": "prisma/schema.postgres.prisma"
+      },
+      {
+        "from": "node_modules/@prisma/client-sqlite",
+        "to": "standalone/node_modules/@prisma/client-sqlite"
+      },
+      {
+        "from": "resources/template.db",
+        "to": "template.db"
       }
     ],
     "directories": {
@@ -140,6 +150,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dexie": "^4.2.1",
+    "fix-path": "^5.0.0",
     "fs-extra": "^11.3.3",
     "js-cookie": "^3.0.5",
     "jspdf": "^4.0.0",
@@ -169,7 +180,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
-    "electron": "^39.2.7",
+    "electron": "^39.3.0",
     "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",

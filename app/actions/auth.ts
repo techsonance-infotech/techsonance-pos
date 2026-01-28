@@ -21,6 +21,7 @@ export async function login(prevState: any, formData: FormData) {
     const identifier = (formData.get("identifier") as string).trim()
     const password = formData.get("password") as string
     const keepLoggedIn = formData.get("keep_logged_in") === "on" // Checkbox value
+    console.log(`[Auth] Login Attempt: ${identifier}, Remember Me: ${keepLoggedIn}, Env: ${process.env.NODE_ENV}`)
 
     if (!identifier || !password) {
         return { error: "Please enter both username/email and password" }
@@ -150,15 +151,17 @@ export async function login(prevState: any, formData: FormData) {
             httpOnly: true
         }
 
+        console.log(`[Auth] Cookie Options:`, cookieOptions)
+
         // If "Keep me logged in" is checked, set persistent cookie (30 days)
         // Otherwise, set session cookie (expires when browser closes)
         if (keepLoggedIn) {
             const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
             cookieOptions.maxAge = thirtyDays
-            // console.log(`User ${user.id} logged in with "Keep me logged in" enabled. Persistent cookie set (30 days).`)
+            console.log(`[Auth] Setting Persistent Cookie (30 days)`)
         } else {
             // No maxAge = session cookie (expires when browser closes)
-            // console.log(`User ${user.id} logged in without "Keep me logged in". Session cookie set.`)
+            console.log(`[Auth] Setting Session Cookie`)
         }
 
         // Set the session cookie

@@ -44,6 +44,11 @@ interface ReceiptProps {
 }
 
 export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order, businessDetails, storeDetails, printerSettings }, ref) => {
+    // Safety Guard
+    if (!order || !Array.isArray(order.items)) {
+        return null
+    }
+
     // Calculate defaults if not provided (fallback logic)
     const calculatedSubtotal = order.items.reduce((sum, item) => {
         const itemTotal = item.unitPrice * item.quantity;
@@ -121,22 +126,22 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     const fontSize = printerSettings?.fontSize || 'medium'
     const fontSizeStyles = {
         small: {
-            base: '12px',
-            header: '16px',
-            subheader: '14px',
-            total: '18px'
-        },
-        medium: {
             base: '14px',
             header: '18px',
-            subheader: '15px',
+            subheader: '16px',
             total: '20px'
         },
+        medium: {
+            base: '18px', // Increased from 16 to 18
+            header: '24px',
+            subheader: '20px',
+            total: '26px'
+        },
         large: {
-            base: '16px',
-            header: '20px',
-            subheader: '17px',
-            total: '24px'
+            base: '20px',
+            header: '26px',
+            subheader: '22px',
+            total: '30px'
         }
     }
     const sizes = fontSizeStyles[fontSize as keyof typeof fontSizeStyles] || fontSizeStyles.medium
@@ -145,15 +150,20 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
         <div
             ref={ref}
             style={{
-                width: `${paperWidth}mm`,
-                padding: '4mm 3mm',
+                width: '100%',
+                minWidth: `${paperWidth}mm`,
+                padding: '0 7mm',
                 margin: '0',
                 backgroundColor: 'white',
-                color: 'black',
-                fontFamily: 'monospace, Courier, "Courier New"',
-                fontSize: sizes.base,
-                lineHeight: '1.3',
+                color: '#000000',
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '16px',
+                fontWeight: '500', // Standard text is dark but not bold
+                lineHeight: '1.2',
                 boxSizing: 'border-box',
+                textRendering: 'optimizeLegibility',
+                fontSmooth: 'never',
+                WebkitFontSmoothing: 'none'
             }}
         >
             {/* Header */}
@@ -205,21 +215,21 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
             <div style={{ marginBottom: '6px', fontSize: sizes.base, borderBottom: '1px dashed black', paddingBottom: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>Date: {formatDate(order.createdAt)}</span>
-                    <span style={{ fontWeight: 'bold' }}>
+                    <span style={{ fontWeight: '700' }}>
                         {order.tableName ? `Dine In: ${order.tableName.replace('Table ', '')}` : 'Counter'}
                     </span>
                 </div>
                 <div>{formatTime(order.createdAt)}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                     <span>Cashier: {order.customerName ? 'staff' : 'biller'}</span>
-                    <span>Bill No.: {order.kotNo.replace('KOT', '')}</span>
+                    <span style={{ fontWeight: '700' }}>Bill No.: {order.kotNo.replace('KOT', '')}</span>
                 </div>
             </div>
 
             {/* Items Header - Bold and Clear */}
             <div style={{
                 display: 'flex',
-                fontWeight: 'bold',
+                fontWeight: '700',
                 fontSize: sizes.subheader,
                 borderBottom: '1px dashed black',
                 paddingBottom: '4px',
@@ -241,7 +251,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                                 <div style={{ width: '45%', fontWeight: '500' }}>{item.name}</div>
                                 <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
                                 <div style={{ width: '20%', textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</div>
-                                <div style={{ width: '20%', textAlign: 'right', fontWeight: 'bold' }}>
+                                <div style={{ width: '20%', textAlign: 'right', fontWeight: '700' }}>
                                     {itemTotal.toFixed(2)}
                                 </div>
                             </div>
@@ -313,8 +323,8 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                 justifyContent: 'space-between',
                 alignItems: 'center'
             }}>
-                <span style={{ fontSize: sizes.subheader, fontWeight: 'bold' }}>Grand Total</span>
-                <span style={{ fontSize: sizes.total, fontWeight: 'bold' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
+                <span style={{ fontSize: sizes.subheader, fontWeight: '700' }}>Grand Total</span>
+                <span style={{ fontSize: sizes.total, fontWeight: '700' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
             </div>
 
             {/* Footer */}
