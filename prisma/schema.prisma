@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x", "darwin"]
   output        = "../node_modules/@prisma/client-sqlite"
 }
 
@@ -220,13 +220,6 @@ model Table {
   name      String
   capacity  Int      @default(4)
   status    String   @default("AVAILABLE") // Enum: AVAILABLE, OCCUPIED, RESERVED
-  orderId   String?  // Added this field as it was referenced in backup.ts but might be virtual in logic? No, backup.ts referenced it. Wait, check original schema.
-  // Original schema Table did NOT have orderId?
-  // backup.ts: "orderId: t.orderId". 
-  // Let's check original schema quickly. It did NOT have orderId.
-  // "model Table { ... status TableStatus ... }"
-  // The backup.ts code likely assumed it or I misread.
-  // Wait, I should not add fields that weren't there unless necessary.
   // I will check backup.ts again later.
 
   storeId   String
@@ -258,8 +251,7 @@ model Order {
   totalAmount    Float
   taxAmount      Float       @default(0)
   discountAmount Float       @default(0)
-  items          String      // Json is supported in SQLite as String? No, Prisma supports Json on SQLite? YES. Prisma maps Json to TEXT/String automatically.
-  // "JSON type is supported in ... SQLite" (Prisma docs)
+  items          String      // JSON stringified
   paymentMode    String?     // Enum: CASH, CARD, UPI, OTHER
   
   customerName   String?
