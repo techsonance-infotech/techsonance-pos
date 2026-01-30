@@ -99,9 +99,9 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     // TYPOGRAPHY CONFIG - MAX VISIBILITY
     const fontSize = printerSettings?.fontSize || 'medium'
     const fontSizeStyles = {
-        small: { base: '14px', header: '20px', subheader: '16px', total: '22px' },
-        medium: { base: '16px', header: '24px', subheader: '18px', total: '26px' },
-        large: { base: '18px', header: '28px', subheader: '20px', total: '30px' }
+        small: { base: '17px', header: '24px', subheader: '20px', total: '26px' },   // Was 14/20/16/22
+        medium: { base: '20px', header: '28px', subheader: '24px', total: '30px' },  // Was 16/24/18/26
+        large: { base: '24px', header: '32px', subheader: '28px', total: '34px' }    // Was 18/28/20/30
     }
     const sizes = fontSizeStyles[fontSize as keyof typeof fontSizeStyles] || fontSizeStyles.medium
 
@@ -119,13 +119,13 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
             style={{
                 width: '100%',
                 minWidth: `${paperWidth}mm`,
-                padding: '4mm',
+                padding: '0 7mm', // 7mm Left/Right Margin
                 margin: '0 auto',
                 backgroundColor: 'white',
                 color: '#000000',
                 fontFamily: '"Courier New", Courier, monospace',
                 fontSize: sizes.base,
-                fontWeight: '700', // Base Bold
+                fontWeight: '900', // Global Extra Bold
                 lineHeight: '1.2',
                 boxSizing: 'border-box',
                 textRendering: 'optimizeLegibility',

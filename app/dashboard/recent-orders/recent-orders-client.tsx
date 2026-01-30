@@ -103,11 +103,25 @@ export function RecentOrdersClient() {
                             right: 0
                         }
                     }
-                    await (window as any).electron.printReceipt(html, printOptions)
-                    setPrintOrder(null)
+                    const result = await (window as any).electron.printReceipt(html, printOptions)
+
+                    if (!result.success) {
+                        console.error("Silent print failed:", result.error)
+                        if ((window as any).electron?.logError) {
+                            (window as any).electron.logError("Silent Print Failed (Recent Orders)", { error: result.error });
+                        }
+                        toast.error(`Printer error: ${result.error}. Switching to fallback.`)
+                        handleWebPrint()
+                    } else {
+                        toast.success("Printed successfully")
+                        setPrintOrder(null)
+                    }
                 } catch (e) {
-                    console.error("Silent print failed", e)
-                    toast.error("Printer not found/ready. Switching to Web Print.")
+                    console.error("Silent print exception", e)
+                    if ((window as any).electron?.logError) {
+                        (window as any).electron.logError("Silent Print Exception (Recent Orders)", { error: String(e) });
+                    }
+                    toast.error("Printer connection failed. Switching to Web Print.")
                     handleWebPrint() // Fallback knows ref is ready now
                 }
             } else {
