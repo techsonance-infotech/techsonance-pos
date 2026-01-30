@@ -69,6 +69,11 @@ next-env.d.ts
 # backups
 backups/
 
+# scripts
+scripts/*.db
+
+
+
 # Electron build output
 dist/
 dist-electron/

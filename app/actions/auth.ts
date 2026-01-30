@@ -147,7 +147,9 @@ export async function login(prevState: any, formData: FormData) {
         } = {
             path: '/',
             sameSite: 'lax',
-            secure: process.env.NODE_ENV === 'production',
+            // In Electron (localhost http), secure cookies are rejected. 
+            // We must allow non-secure cookies for "Remember Me" to work in desktop mode.
+            secure: process.env.NODE_ENV === 'production' && process.env.IS_ELECTRON !== 'true',
             httpOnly: true
         }
 
