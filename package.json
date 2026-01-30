@@ -24,8 +24,8 @@
     "electron:preview": "npm run electron:init-db && FORCE_PROD=true npm run build && npm run electron:rebuild && npm run electron:compile && ELECTRON_RUN_AS_NODE= electron .",
     "electron:build": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder",
     "electron:build:mac": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:rebuild && npm run electron:compile && electron-builder --mac --universal",
-    "electron:build:win": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder --win",
-    "electron:build:all": "npm run generate:sqlite && npm run electron:init-db && npm run build && npm run electron:compile && electron-builder --mac --win"
+    "electron:build:win": "npm run generate:sqlite && npm run electron:init-db && npm run build && node scripts/generate-template.js && npm run electron:compile && electron-builder --win",
+    "electron:build:all": "npm run generate:sqlite && npm run electron:init-db && npm run build && node scripts/generate-template.js && npm run electron:compile && electron-builder --mac --win"
   },
   "build": {
     "appId": "com.syncserve.pos",
@@ -91,7 +91,7 @@
         "to": "standalone/node_modules/@prisma/client-sqlite"
       },
       {
-        "from": "resources/template.db",
+        "from": "scripts/template.db",
         "to": "template.db"
       }
     ],

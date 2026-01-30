@@ -57,10 +57,32 @@ export async function verifyPin(prevState: any, formData: FormData) {
 
         // Set session cookie
         const cookieStore = await cookies()
+        const isPersistent = cookieStore.get('persistent_session')?.value === 'true'
+
+        // Cookie options
+        const cookieOptions: {
+            path: string
+            sameSite: 'lax' | 'strict' | 'none'
+            secure: boolean
+            httpOnly: boolean
+            maxAge?: number
+        } = {
+            path: '/',
+            sameSite: 'lax',
+            // In Electron (localhost http), secure cookies are rejected. 
+            // We must allow non-secure cookies for "Remember Me" to work in desktop mode.
+            secure: process.env.NODE_ENV === 'production' && process.env.IS_ELECTRON !== 'true',
+            httpOnly: true
+        }
+
+        if (isPersistent) {
+            const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
+            cookieOptions.maxAge = thirtyDays
+        }
 
         // Set session cookie
-        cookieStore.set('session_role', user.role)
-        cookieStore.set('session_user_id', user.id)
+        cookieStore.set('session_role', user.role, cookieOptions)
+        cookieStore.set('session_user_id', user.id, cookieOptions)
 
         // Redirect based on Default Store Mode
         if (user.defaultStore?.tableMode === false) {
@@ -106,9 +128,33 @@ export async function createPin(prevState: any, formData: FormData) {
         })
 
         // Set session cookie
+        // Set session cookie
         const cookieStore = await cookies()
-        cookieStore.set('session_role', user.role)
-        cookieStore.set('session_user_id', user.id)
+        const isPersistent = cookieStore.get('persistent_session')?.value === 'true'
+
+        // Cookie options
+        const cookieOptions: {
+            path: string
+            sameSite: 'lax' | 'strict' | 'none'
+            secure: boolean
+            httpOnly: boolean
+            maxAge?: number
+        } = {
+            path: '/',
+            sameSite: 'lax',
+            // In Electron (localhost http), secure cookies are rejected. 
+            // We must allow non-secure cookies for "Remember Me" to work in desktop mode.
+            secure: process.env.NODE_ENV === 'production' && process.env.IS_ELECTRON !== 'true',
+            httpOnly: true
+        }
+
+        if (isPersistent) {
+            const thirtyDays = 30 * 24 * 60 * 60 // 30 days in seconds
+            cookieOptions.maxAge = thirtyDays
+        }
+
+        cookieStore.set('session_role', user.role, cookieOptions)
+        cookieStore.set('session_user_id', user.id, cookieOptions)
 
         if (user.defaultStore?.tableMode === false) {
             redirect("/dashboard/new-order?verified=true")

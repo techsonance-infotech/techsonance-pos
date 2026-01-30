@@ -165,6 +165,34 @@ if (!electron || !electron.app) {
                 logToFile('.env file not found at:', envPath);
             }
 
+            // Load .env.electron (Specific override for Electron)
+            const envElectronPath = path.join(serverCwd, '.env.electron');
+            if (fs.existsSync(envElectronPath)) {
+                logToFile('Loading .env.electron from:', envElectronPath);
+                try {
+                    const envContent = fs.readFileSync(envElectronPath, 'utf8');
+                    envContent.split('\n').forEach((line: string) => {
+                        const trimmed = line.trim();
+                        if (!trimmed || trimmed.startsWith('#')) return;
+                        const [key, ...valueParts] = trimmed.split('=');
+                        if (key && valueParts.length > 0) {
+                            let value = valueParts.join('=');
+                            // Remove quotes if present
+                            if ((value.startsWith('"') && value.endsWith('"')) ||
+                                (value.startsWith("'") && value.endsWith("'"))) {
+                                value = value.slice(1, -1);
+                            }
+                            envVars[key.trim()] = value;
+                        }
+                    });
+                    logToFile('Loaded .env.electron vars keys:', Object.keys(envVars));
+                } catch (e: any) {
+                    logToFile('Error loading .env.electron:', e.message);
+                }
+            } else {
+                logToFile('.env.electron file not found at:', envElectronPath);
+            }
+
             // IMPORTANT: Override DATABASE_URL with the correct absolute path
             logToFile('Using SQLite DB Path:', sqliteDbPath);
 
@@ -362,85 +390,85 @@ if (!electron || !electron.app) {
         // Data Access Handlers
         ipcMain.handle('db-get-products', async () => {
             try {
-                return dbAsync.getProducts();
+                return await dbAsync.getProducts();
             } catch (e) {
-                console.error("IPC Error: db-get-products", e);
+                logToFile("IPC Error: db-get-products", e);
                 return [];
             }
         });
 
         ipcMain.handle('db-get-categories', async () => {
             try {
-                return dbAsync.getCategories();
+                return await dbAsync.getCategories();
             } catch (e) {
-                console.error("IPC Error: db-get-categories", e);
+                logToFile("IPC Error: db-get-categories", e);
                 return [];
             }
         });
 
         ipcMain.handle('db-save-order', async (evt: any, order: any) => {
             try {
-                return dbAsync.saveOrder(order);
+                return await dbAsync.saveOrder(order);
             } catch (e) {
-                console.error("IPC Error: db-save-order", e);
+                logToFile("IPC Error: db-save-order", e);
                 return { success: false, error: String(e) };
             }
         });
 
         ipcMain.handle('db-save-products-bulk', async (evt: any, products: any[]) => {
             try {
-                dbAsync.saveProductsBulk(products);
+                await dbAsync.saveProductsBulk(products);
                 return { success: true };
             } catch (e) {
-                console.error("IPC Error: db-save-products-bulk", e);
+                logToFile("IPC Error: db-save-products-bulk", e);
                 return { success: false, error: String(e) };
             }
         });
 
         ipcMain.handle('db-save-categories-bulk', async (evt: any, categories: any[]) => {
             try {
-                dbAsync.saveCategoriesBulk(categories);
+                await dbAsync.saveCategoriesBulk(categories);
                 return { success: true };
             } catch (e) {
-                console.error("IPC Error: db-save-categories-bulk", e);
+                logToFile("IPC Error: db-save-categories-bulk", e);
                 return { success: false, error: String(e) };
             }
         });
 
         ipcMain.handle('db-save-settings-bulk', async (evt: any, settings: any[]) => {
             try {
-                dbAsync.saveSettingsBulk(settings);
+                await dbAsync.saveSettingsBulk(settings);
                 return { success: true };
             } catch (e) {
-                console.error("IPC Error: db-save-settings-bulk", e);
+                logToFile("IPC Error: db-save-settings-bulk", e);
                 return { success: false, error: String(e) };
             }
         });
 
         ipcMain.handle('db-get-settings', async () => {
             try {
-                return dbAsync.getSettings();
+                return await dbAsync.getSettings();
             } catch (e) {
-                console.error("IPC Error: db-get-settings", e);
+                logToFile("IPC Error: db-get-settings", e);
                 return [];
             }
         });
 
         ipcMain.handle('db-get-tables', async () => {
             try {
-                return dbAsync.getTables();
+                return await dbAsync.getTables();
             } catch (e) {
-                console.error("IPC Error: db-get-tables", e);
+                logToFile("IPC Error: db-get-tables", e);
                 return [];
             }
         });
 
         ipcMain.handle('db-save-tables-bulk', async (evt: any, tables: any[]) => {
             try {
-                dbAsync.saveTablesBulk(tables);
+                await dbAsync.saveTablesBulk(tables);
                 return { success: true };
             } catch (e) {
-                console.error("IPC Error: db-save-tables-bulk", e);
+                logToFile("IPC Error: db-save-tables-bulk", e);
                 return { success: false, error: String(e) };
             }
         });
@@ -496,13 +524,20 @@ if (!electron || !electron.app) {
         ipcMain.handle('db-mark-synced', async (evt: any, ids: string[]) => {
             try {
                 for (const id of ids) {
-                    dbAsync.markOrderSynced(id);
+                    await dbAsync.markOrderSynced(id);
                 }
                 return { success: true };
             } catch (e) {
-                console.error("IPC Error: db-mark-synced", e);
+                logToFile("IPC Error: db-mark-synced", e);
                 return { success: false, error: String(e) };
             }
+        });
+
+        // Logging Bridge
+        ipcMain.handle('log-message', async (evt, { level, message, data }: any) => {
+            const prefix = level ? `[${level.toUpperCase()}]` : '[INFO]';
+            logToFile(`${prefix} ${message}`, data);
+            return { success: true };
         });
 
         ipcMain.handle('get-printers', async () => {
@@ -520,6 +555,23 @@ if (!electron || !electron.app) {
         // Silent Printing Handler
         ipcMain.handle('print-receipt', async (event, htmlContent, options: { printerName?: string; margins?: any } = {}) => {
             try {
+                logToFile('Print Request Received:', {
+                    printerName: options.printerName,
+                    hasMargins: !!options.margins,
+                    htmlLength: htmlContent.length
+                });
+
+                // Validate printer availability
+                if (options.printerName && mainWindow) {
+                    const printers = await mainWindow.webContents.getPrintersAsync();
+                    const printerExists = printers.some((p: any) => p.name === options.printerName);
+                    if (!printerExists) {
+                        const availableNames = printers.map((p: any) => p.name);
+                        logToFile(`WARNING: Requested printer '${options.printerName}' not found. Available:`, availableNames);
+                        return { success: false, error: `Printer '${options.printerName}' not found` };
+                    }
+                }
+
                 const printWindow = new BrowserWindow({
                     show: false,
                     webPreferences: {
@@ -533,8 +585,6 @@ if (!electron || !electron.app) {
                 // Wait for content to load
                 await new Promise(resolve => setTimeout(resolve, 500));
 
-                // Print silently
-                // Print silently (wrapped in Promise)
                 return await new Promise((resolve) => {
                     const printOptions: any = {
                         silent: true,
@@ -547,19 +597,26 @@ if (!electron || !electron.app) {
                         printOptions.margins = options.margins;
                     }
 
+                    logToFile('Attempting silent print with options:', {
+                        deviceName: printOptions.deviceName,
+                        silent: printOptions.silent,
+                        margins: printOptions.margins
+                    });
+
                     printWindow.webContents.print(printOptions, (success, errorType) => {
                         if (!success) {
-                            console.error("Print failed:", errorType);
+                            logToFile("Print failed:", errorType);
                             printWindow.close();
-                            resolve({ success: false, error: errorType });
+                            resolve({ success: false, error: errorType || 'Unknown print error' });
                         } else {
+                            logToFile("Print success");
                             printWindow.close();
                             resolve({ success: true });
                         }
                     });
                 });
             } catch (e) {
-                console.error("Print Error:", e);
+                logToFile("Print Exception:", e);
                 return { success: false, error: String(e) };
             }
         });

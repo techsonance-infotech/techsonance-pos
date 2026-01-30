@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld('electron', {
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
     getPrinters: () => ipcRenderer.invoke('get-printers'),
     printReceipt: (html: string, options?: any) => ipcRenderer.invoke('print-receipt', html, options),
+
+    // Logging Bridge
+    logError: (message: string, data?: any) => ipcRenderer.invoke('log-message', { level: 'ERROR', message, data }),
+    logInfo: (message: string, data?: any) => ipcRenderer.invoke('log-message', { level: 'INFO', message, data }),
+
     isDesktop: true
 });
 
@@ -47,6 +52,9 @@ declare global {
             // Tables
             getTables: () => Promise<any[]>;
             saveTablesBulk: (tables: any[]) => Promise<any>;
+            // Logging
+            logError: (message: string, data?: any) => Promise<void>;
+            logInfo: (message: string, data?: any) => Promise<void>;
         }
     }
 }

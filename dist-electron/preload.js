@@ -26,5 +26,8 @@ contextBridge.exposeInMainWorld('electron', {
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
     getPrinters: () => ipcRenderer.invoke('get-printers'),
     printReceipt: (html, options) => ipcRenderer.invoke('print-receipt', html, options),
+    // Logging Bridge
+    logError: (message, data) => ipcRenderer.invoke('log-message', { level: 'ERROR', message, data }),
+    logInfo: (message, data) => ipcRenderer.invoke('log-message', { level: 'INFO', message, data }),
     isDesktop: true
 });

@@ -34,6 +34,8 @@ export async function syncOfflineData() {
 
         // Initialize Online Postgres Client
         const onlineUrl = process.env.ONLINE_DATABASE_URL
+        console.log(`[Sync] Online URL Configured: ${!!onlineUrl} (Length: ${onlineUrl?.length || 0})`);
+
         let onlinePrisma: PostgresClient | null = null
         if (onlineUrl) {
             onlinePrisma = new PostgresClient({ datasources: { db: { url: onlineUrl } } })
@@ -53,10 +55,11 @@ export async function syncOfflineData() {
                 try {
                     const Database = require('better-sqlite3')
                     sqliteDb = new Database(p)
-                    // console.log("[Sync] Found SQLite at:", p)
+                    sqliteDb = new Database(p)
+                    console.log("[Sync] Found SQLite at:", p)
                     break
                 } catch (e) {
-                    // console.log("[Sync] Could not open:", p)
+                    console.log("[Sync] Could not open:", p)
                 }
             }
         }
@@ -77,7 +80,7 @@ export async function syncOfflineData() {
         // ================================================
         // PHASE 1: SQLite → Local Postgres
         // ================================================
-        // console.log("[Sync] Phase 1: SQLite → Local Postgres")
+        console.log("[Sync] Phase 1: SQLite → Local Postgres")
         for (const entity of entities) {
             if (!tableExists(sqliteDb, entity)) continue
             try {
@@ -100,7 +103,7 @@ export async function syncOfflineData() {
         // PHASE 2: SQLite → Online Postgres
         // ================================================
         if (onlinePrisma) {
-            // console.log("[Sync] Phase 2: SQLite → Online Postgres")
+            console.log("[Sync] Phase 2: SQLite → Online Postgres")
             for (const entity of entities) {
                 if (!tableExists(sqliteDb, entity)) continue
                 try {
@@ -124,7 +127,7 @@ export async function syncOfflineData() {
         // PHASE 3: Online Postgres → SQLite
         // ================================================
         if (onlinePrisma) {
-            // console.log("[Sync] Phase 3: Online Postgres → SQLite")
+            console.log("[Sync] Phase 3: Online Postgres → SQLite")
             for (const entity of entities) {
                 try {
                     const rows = await (onlinePrisma as any)[entity.toLowerCase()].findMany()
@@ -142,7 +145,7 @@ export async function syncOfflineData() {
         // ================================================
         // PHASE 4: Local Postgres → SQLite
         // ================================================
-        // console.log("[Sync] Phase 4: Local Postgres → SQLite")
+        console.log("[Sync] Phase 4: Local Postgres → SQLite")
         for (const entity of entities) {
             try {
                 const rows = await (localPrisma as any)[entity.toLowerCase()].findMany()
