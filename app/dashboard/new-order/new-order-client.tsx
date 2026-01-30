@@ -105,10 +105,24 @@ export function NewOrderClient() {
                     }
                 }
 
-                await (window as any).electron.printReceipt(html, printOptions)
-                setPrintOrder(null)
+                const result = await (window as any).electron.printReceipt(html, printOptions)
+
+                if (!result.success) {
+                    console.error("Silent print failed:", result.error)
+                    if ((window as any).electron?.logError) {
+                        (window as any).electron.logError("Silent Print Failed (New Order)", { error: result.error });
+                    }
+                    toast.error(`Printer error: ${result.error}. Switching to fallback.`)
+                    handleWebPrint() // Fallback
+                } else {
+                    setPrintOrder(null)
+                }
             } catch (e) {
-                console.error("Silent print failed", e)
+                console.error("Silent print exception", e)
+                if ((window as any).electron?.logError) {
+                    (window as any).electron.logError("Silent Print Exception (New Order)", { error: String(e) });
+                }
+                toast.error("Printer connection failed. Switching to Web Print.")
                 handleWebPrint() // Fallback
             }
         } else {

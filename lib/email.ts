@@ -1,8 +1,12 @@
 import nodemailer from 'nodemailer'
 
 // Email configuration from environment variables
+// Email configuration from environment variables
+// Use explicit port 587 (TLS) to avoid EACCES firewall issues on Windows Port 465
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // upgrade later with STARTTLS
     auth: {
         user: process.env.EMAIL_SERVER_USER,
         pass: process.env.EMAIL_SERVER_PASSWORD,

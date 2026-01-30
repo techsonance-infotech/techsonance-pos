@@ -65,86 +65,53 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     const minOrderForDiscount = parseFloat((businessDetails as any)?.minOrderForDiscount || '0')
     const maxDiscountVal = parseFloat((businessDetails as any)?.maxDiscount || '0')
 
-    let discountAmount = order.discountAmount ?? 0
-
-    // Auto-Correct: If subtotal < minOrder, Discount MUST be 0
-    if (subtotal < minOrderForDiscount) {
-        discountAmount = 0
-    }
-
-    // Auto-Correct: Cap at Max Discount (if max > 0)
-    if (maxDiscountVal > 0 && discountAmount > maxDiscountVal) {
-        discountAmount = maxDiscountVal
-    }
-
-    // If disabled, zero it out for calculation correctness
-    if (!isDiscountEnabled) {
-        discountAmount = 0
-    }
-
-    // 2. Tax Logic
+    // Tax Logic
     const isTaxEnabled = businessDetails?.showTaxBreakdown === true
     const taxRate = businessDetails?.taxRate ? parseFloat(businessDetails.taxRate.toString()) : 0
     let taxAmount = order.taxAmount ?? 0
+    if (!isTaxEnabled) taxAmount = 0
 
-    if (!isTaxEnabled) {
-        taxAmount = 0
-    }
+    // Discount Calculation
+    let discountAmount = order.discountAmount ?? 0
+    if (subtotal < minOrderForDiscount) discountAmount = 0
+    if (maxDiscountVal > 0 && discountAmount > maxDiscountVal) discountAmount = maxDiscountVal
+    if (!isDiscountEnabled) discountAmount = 0
 
     const finalTotal = subtotal + taxAmount - discountAmount
 
-    // Date Format: DD/MM/YY (compact for thermal)
+    // Date Format: DD/MM/YYYY
     const formatDate = (date: Date | string) => {
         try {
-            return new Date(date).toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: '2-digit'
-            });
-        } catch (e) {
-            return String(date);
-        }
+            return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })
+        } catch (e) { return String(date) }
     };
 
-    // Time Format: HH:MM
+    // Time Format: HH:mm AM/PM
     const formatTime = (date: Date | string) => {
         try {
-            return new Date(date).toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true
-            });
-        } catch (e) {
-            return '';
-        }
+            return new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+        } catch (e) { return '' }
     };
 
-    // Printer Settings Logic - Default to 80mm
+    // Printer Settings Logic
     const paperWidth = printerSettings?.paperWidth ? parseInt(printerSettings.paperWidth.toString()) : 80
 
-    // Font Size based on settings - LARGER defaults for thermal printers
+    // TYPOGRAPHY CONFIG - MAX VISIBILITY
     const fontSize = printerSettings?.fontSize || 'medium'
     const fontSizeStyles = {
-        small: {
-            base: '14px',
-            header: '18px',
-            subheader: '16px',
-            total: '20px'
-        },
-        medium: {
-            base: '18px', // Increased from 16 to 18
-            header: '24px',
-            subheader: '20px',
-            total: '26px'
-        },
-        large: {
-            base: '20px',
-            header: '26px',
-            subheader: '22px',
-            total: '30px'
-        }
+        small: { base: '17px', header: '24px', subheader: '20px', total: '26px' },   // Was 14/20/16/22
+        medium: { base: '20px', header: '28px', subheader: '24px', total: '30px' },  // Was 16/24/18/26
+        large: { base: '24px', header: '32px', subheader: '28px', total: '34px' }    // Was 18/28/20/30
     }
     const sizes = fontSizeStyles[fontSize as keyof typeof fontSizeStyles] || fontSizeStyles.medium
+
+    // Helper for Bold Rows
+    const BoldRow = ({ label, value, size = sizes.base }: { label: string, value: string | number, size?: string }) => (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: size, fontWeight: '800', marginBottom: '4px' }}>
+            <span>{label}</span>
+            <span>{value}</span>
+        </div>
+    )
 
     return (
         <div
@@ -152,118 +119,115 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
             style={{
                 width: '100%',
                 minWidth: `${paperWidth}mm`,
-                padding: '0 7mm',
-                margin: '0',
+                padding: '0 7mm', // 7mm Left/Right Margin
+                margin: '0 auto',
                 backgroundColor: 'white',
                 color: '#000000',
                 fontFamily: '"Courier New", Courier, monospace',
-                fontSize: '16px',
-                fontWeight: '500', // Standard text is dark but not bold
+                fontSize: sizes.base,
+                fontWeight: '900', // Global Extra Bold
                 lineHeight: '1.2',
                 boxSizing: 'border-box',
                 textRendering: 'optimizeLegibility',
-                fontSmooth: 'never',
-                WebkitFontSmoothing: 'none'
+                WebkitFontSmoothing: 'none' // Crisp pixels for thermal
             }}
         >
-            {/* Header */}
+            {/* Header Section */}
             <div style={{ textAlign: 'center', marginBottom: '8px', borderBottom: '2px dashed black', paddingBottom: '8px' }}>
-                {/* Logo - Centered */}
                 {businessDetails?.logoUrl && (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
                         <img
                             src={businessDetails.logoUrl}
                             alt="Logo"
-                            style={{
-                                height: '50px',
-                                width: 'auto',
-                                maxWidth: '60%',
-                                objectFit: 'contain',
-                                filter: 'grayscale(100%) contrast(150%)'
-                            }}
+                            style={{ height: '60px', width: 'auto', maxWidth: '80%', objectFit: 'contain', filter: 'grayscale(100%) contrast(150%)' }}
                         />
                     </div>
                 )}
 
-                <div style={{ fontSize: sizes.header, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                {/* Outlet Name - Extra Large & Bold */}
+                <div style={{ fontSize: sizes.header, fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>
                     {storeDetails?.name || businessDetails?.name || 'SyncServe'}
                 </div>
 
+                {/* Location - Bold */}
                 {storeDetails?.location ? (
-                    <div style={{ fontSize: sizes.base, fontWeight: '600', marginTop: '2px' }}>{storeDetails.location}</div>
+                    <div style={{ fontSize: sizes.subheader, fontWeight: '800' }}>{storeDetails.location}</div>
                 ) : (
-                    businessDetails?.address && <div style={{ fontSize: sizes.base, marginTop: '2px' }}>{businessDetails.address}</div>
+                    businessDetails?.address && <div style={{ fontSize: sizes.subheader, fontWeight: '800' }}>{businessDetails.address}</div>
                 )}
 
-                {storeDetails?.contactNo ? (
-                    <div style={{ fontSize: sizes.base }}>Ph: {storeDetails.contactNo}</div>
-                ) : (
-                    businessDetails?.phone && <div style={{ fontSize: sizes.base }}>Ph: {businessDetails.phone}</div>
+                {/* Phone - Bold */}
+                {(storeDetails?.contactNo || businessDetails?.phone) && (
+                    <div style={{ fontSize: sizes.subheader, fontWeight: '800', marginTop: '2px' }}>
+                        Ph: {storeDetails?.contactNo || businessDetails?.phone}
+                    </div>
                 )}
 
-                {businessDetails?.email && <div style={{ fontSize: sizes.base }}>Email: {businessDetails.email}</div>}
+                {/* GST Invoice Label - Force Show if Tax Enabled */}
+                {isTaxEnabled && (
+                    <div style={{ marginTop: '6px', fontWeight: '900', textTransform: 'uppercase', fontSize: sizes.subheader, border: '2px dashed black', display: 'inline-block', padding: '2px 8px' }}>
+                        GST INVOICE
+                    </div>
+                )}
             </div>
 
-            {/* Customer Name Section */}
-            <div style={{ borderBottom: '1px dashed black', paddingBottom: '4px', marginBottom: '4px' }}>
-                <div style={{ fontSize: sizes.base }}>
-                    Name: {order.customerName || ''}
-                </div>
-            </div>
+            {/* Meta Info Section - Reordered & Bold */}
+            <div style={{ borderBottom: '2px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
 
-            {/* Order Info - Matching Reference Layout */}
-            <div style={{ marginBottom: '6px', fontSize: sizes.base, borderBottom: '1px dashed black', paddingBottom: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Date: {formatDate(order.createdAt)}</span>
-                    <span style={{ fontWeight: '700' }}>
-                        {order.tableName ? `Dine In: ${order.tableName.replace('Table ', '')}` : 'Counter'}
+                {/* Row 1: Date/Time (Left) | Table/Counter (Right) */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                    <span>Date: {formatDate(order.createdAt)} {formatTime(order.createdAt)}</span>
+                    <span style={{ textTransform: 'uppercase' }}>
+                        {order.tableName ? `Dine In: ${order.tableName}` : 'Counter'}
                     </span>
                 </div>
-                <div>{formatTime(order.createdAt)}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                    <span>Cashier: {order.customerName ? 'staff' : 'biller'}</span>
-                    <span style={{ fontWeight: '700' }}>Bill No.: {order.kotNo.replace('KOT', '')}</span>
+
+                {/* Row 2: Cashier | Bill No */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                    <span>Cashier: biller</span>
+                    <span style={{ fontSize: sizes.subheader }}>Bill No: {order.kotNo.replace(/^KOT/i, '')}</span>
+                </div>
+
+                {/* Row 3: Customer Name (Restored Here) */}
+                <div style={{ marginTop: '4px', fontWeight: '800', fontSize: sizes.subheader }}>
+                    Name: {order.customerName || 'Walk-in'}
                 </div>
             </div>
 
-            {/* Items Header - Bold and Clear */}
+            {/* Items Header - Solid Line */}
             <div style={{
                 display: 'flex',
-                fontWeight: '700',
+                fontWeight: '900',
                 fontSize: sizes.subheader,
-                borderBottom: '1px dashed black',
+                borderBottom: '2px dashed black',
                 paddingBottom: '4px',
-                marginBottom: '4px'
+                marginBottom: '6px'
             }}>
-                <div style={{ width: '45%' }}>Item</div>
-                <div style={{ width: '15%', textAlign: 'center' }}>Qty.</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Price</div>
-                <div style={{ width: '20%', textAlign: 'right' }}>Amount</div>
+                <div style={{ width: '45%' }}>ITEM</div>
+                <div style={{ width: '15%', textAlign: 'center' }}>QTY</div>
+                <div style={{ width: '20%', textAlign: 'right' }}>PRICE</div>
+                <div style={{ width: '20%', textAlign: 'right' }}>AMT</div>
             </div>
 
             {/* Items List */}
-            <div style={{ marginBottom: '6px' }}>
+            <div style={{ marginBottom: '10px' }}>
                 {order.items.map((item, index) => {
                     const itemTotal = item.unitPrice * item.quantity;
                     return (
-                        <div key={index} style={{ marginBottom: '4px' }}>
+                        <div key={index} style={{ marginBottom: '6px', fontWeight: '700' }}>
                             <div style={{ display: 'flex', fontSize: sizes.base }}>
-                                <div style={{ width: '45%', fontWeight: '500' }}>{item.name}</div>
+                                <div style={{ width: '45%' }}>{item.name}</div>
                                 <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
                                 <div style={{ width: '20%', textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</div>
-                                <div style={{ width: '20%', textAlign: 'right', fontWeight: '700' }}>
-                                    {itemTotal.toFixed(2)}
-                                </div>
+                                <div style={{ width: '20%', textAlign: 'right', fontWeight: '800' }}>{itemTotal.toFixed(2)}</div>
                             </div>
                             {/* Addons */}
                             {item.addons && item.addons.length > 0 && item.addons.map((addon: any, idx: number) => (
-                                <div key={idx} style={{ display: 'flex', fontSize: '12px', paddingLeft: '8px', color: '#333' }}>
+                                <div key={idx} style={{ display: 'flex', fontSize: '0.9em', paddingLeft: '8px', marginTop: '2px', fontStyle: 'italic' }}>
                                     <div style={{ width: '45%' }}>+ {addon.addon.name}</div>
                                     <div style={{ width: '15%', textAlign: 'center' }}>{addon.quantity}</div>
                                     <div style={{ width: '20%', textAlign: 'right' }}>{addon.addon.price.toFixed(2)}</div>
-                                    <div style={{ width: '20%', textAlign: 'right' }}>
-                                        {(addon.addon.price * addon.quantity).toFixed(2)}
-                                    </div>
+                                    <div style={{ width: '20%', textAlign: 'right' }}>{(addon.addon.price * addon.quantity).toFixed(2)}</div>
                                 </div>
                             ))}
                         </div>
@@ -271,79 +235,71 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                 })}
             </div>
 
-            {/* Totals Section */}
-            <div style={{ borderTop: '1px dashed black', paddingTop: '6px', fontSize: sizes.base }}>
-                {/* Total Qty and Sub Total */}
+            {/* Totals Section - All Bold */}
+            <div style={{ borderTop: '2px dashed black', paddingTop: '8px', fontSize: sizes.base }}>
+
+                {/* Unified Line: Total Qty and Subtotal */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>Total Qty: {order.items.reduce((sum, item) => sum + item.quantity, 0)}</span>
-                    <span>Sub Total</span>
-                    <span>{subtotal.toFixed(2)}</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <span style={{ fontWeight: 'bold' }}>Total Qty:</span>
+                        <span style={{ fontWeight: 'bold' }}>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <span style={{ fontWeight: 'bold' }}>Sub Total</span>
+                        <span style={{ fontWeight: 'bold' }}>{subtotal.toFixed(2)}</span>
+                    </div>
                 </div>
 
-                {/* Discount - Strict Visibility */}
                 {isDiscountEnabled && discountAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Discount{order.discount ? ` (${order.discount})` : ''}:</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                        <span>Discount ({order.discount || ''}):</span>
                         <span>- {discountAmount.toFixed(2)}</span>
                     </div>
                 )}
 
-                {/* Tax Breakdown - Strict Visibility */}
                 {isTaxEnabled && taxAmount > 0 && (
-                    <>
-                        {businessDetails?.taxName && businessDetails.taxName.toLowerCase().includes('gst') ? (
+                    <div style={{ marginBottom: '4px' }}>
+                        {(businessDetails?.taxName || 'GST').toUpperCase().includes('GST') ? (
                             <>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>CGST ({(taxRate / 2).toFixed(1)}%):</span>
-                                    <span>{(taxAmount / 2).toFixed(2)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>SGST ({(taxRate / 2).toFixed(1)}%):</span>
-                                    <span>{(taxAmount / 2).toFixed(2)}</span>
-                                </div>
+                                <BoldRow label={`CGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
+                                <BoldRow label={`SGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
                             </>
                         ) : (
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span>{businessDetails?.taxName || 'Tax'} ({taxRate}%):</span>
-                                <span>{taxAmount.toFixed(2)}</span>
-                            </div>
+                            <BoldRow label={`${businessDetails?.taxName || 'Tax'} (${taxRate}%):`} value={taxAmount.toFixed(2)} />
                         )}
-                    </>
+                    </div>
                 )}
+
+                <BoldRow label="Payment Mode:" value={order.paymentMode || 'CASH'} />
             </div>
 
-            {/* Grand Total - Prominent */}
+            {/* Grand Total - Block Style */}
             <div style={{
                 borderTop: '2px dashed black',
                 borderBottom: '2px dashed black',
-                marginTop: '6px',
-                paddingTop: '8px',
-                paddingBottom: '8px',
+                marginTop: '8px',
+                padding: '8px 0',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
             }}>
-                <span style={{ fontSize: sizes.subheader, fontWeight: '700' }}>Grand Total</span>
-                <span style={{ fontSize: sizes.total, fontWeight: '700' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
+                <span style={{ fontSize: sizes.header, fontWeight: '900', textTransform: 'uppercase' }}>TOTAL</span>
+                <span style={{ fontSize: sizes.total, fontWeight: '900' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
             </div>
 
             {/* Footer */}
-            <div style={{ textAlign: 'center', marginTop: '8px', fontSize: sizes.base }}>
-                {printerSettings?.footerText ? (
-                    <div style={{ fontWeight: 'bold' }}>{printerSettings.footerText}</div>
-                ) : (
-                    <div style={{ fontWeight: 'bold' }}>Thanks</div>
-                )}
+            <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                <div style={{ fontWeight: '900', fontSize: sizes.subheader, marginBottom: '6px' }}>Thank you for visiting!</div>
 
                 {printerSettings?.enableQrCode && (
-                    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                        <div style={{ border: '1px solid black', padding: '4px', fontSize: '10px' }}>
-                            Scan to Pay
-                        </div>
+                    <div style={{ margin: '8px auto', width: 'fit-content', border: '3px solid black', padding: '6px' }}>
+                        [QR CODE]
                     </div>
                 )}
 
-                <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>Powered by SyncServe POS</div>
+                <div style={{ fontSize: '12px', marginTop: '8px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    Powered by SyncServe POS
+                </div>
             </div>
         </div>
     )
