@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electron', {
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
     getPrinters: () => ipcRenderer.invoke('get-printers'),
     printReceipt: (html, options) => ipcRenderer.invoke('print-receipt', html, options),
+    testPrinter: (printerName, paperWidth) => ipcRenderer.invoke('test-printer', printerName, paperWidth || '80'),
     // Logging Bridge
     logError: (message, data) => ipcRenderer.invoke('log-message', { level: 'ERROR', message, data }),
     logInfo: (message, data) => ipcRenderer.invoke('log-message', { level: 'INFO', message, data }),

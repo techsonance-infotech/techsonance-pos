@@ -29,7 +29,14 @@ contextBridge.exposeInMainWorld('electron', {
     // System API
     getMachineId: () => ipcRenderer.invoke('get-machine-id'),
     getPrinters: () => ipcRenderer.invoke('get-printers'),
-    printReceipt: (html: string, options?: any) => ipcRenderer.invoke('print-receipt', html, options),
+    printReceipt: (html: string, options?: {
+        printerName?: string;
+        margins?: any;
+        paperWidth?: string | number;
+        copies?: number;
+    }) => ipcRenderer.invoke('print-receipt', html, options),
+    testPrinter: (printerName: string, paperWidth?: string) =>
+        ipcRenderer.invoke('test-printer', printerName, paperWidth || '80'),
 
     // Logging Bridge
     logError: (message: string, data?: any) => ipcRenderer.invoke('log-message', { level: 'ERROR', message, data }),
@@ -43,7 +50,13 @@ declare global {
         electron?: {
             isDesktop: boolean;
             getPrinters: () => Promise<any[]>;
-            printReceipt: (html: string, options?: any) => Promise<{ success: boolean; error?: string }>;
+            printReceipt: (html: string, options?: {
+                printerName?: string;
+                margins?: any;
+                paperWidth?: string | number;
+                copies?: number;
+            }) => Promise<{ success: boolean; error?: string; printerUsed?: string; retried?: boolean }>;
+            testPrinter: (printerName: string, paperWidth?: string) => Promise<{ success: boolean; error?: string }>;
             // Activity Logs
             saveActivityLog: (log: any) => Promise<any>;
             getActivityLogs: (limit?: number) => Promise<any[]>;

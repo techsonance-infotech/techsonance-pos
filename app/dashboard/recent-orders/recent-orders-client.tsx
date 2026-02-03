@@ -95,6 +95,7 @@ export function RecentOrdersClient() {
                     )
                     const printOptions = {
                         printerName: printerSettings?.printerName,
+                        paperWidth: printerSettings?.paperWidth || '80',
                         margins: {
                             marginType: 'custom',
                             top: parseInt(printerSettings?.topMargin || 0),
@@ -108,12 +109,15 @@ export function RecentOrdersClient() {
                     if (!result.success) {
                         console.error("Silent print failed:", result.error)
                         if ((window as any).electron?.logError) {
-                            (window as any).electron.logError("Silent Print Failed (Recent Orders)", { error: result.error });
+                            (window as any).electron.logError("Silent Print Failed (Recent Orders)", {
+                                error: result.error,
+                                printerUsed: result.printerUsed
+                            });
                         }
                         toast.error(`Printer error: ${result.error}. Switching to fallback.`)
                         handleWebPrint()
                     } else {
-                        toast.success("Printed successfully")
+                        toast.success(`Printed successfully${result.printerUsed ? ` on ${result.printerUsed}` : ''}`)
                         setPrintOrder(null)
                     }
                 } catch (e) {

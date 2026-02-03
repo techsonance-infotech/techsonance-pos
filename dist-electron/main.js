@@ -511,76 +511,95 @@ else {
         });
         ipcMain.handle('get-printers', async () => {
             try {
-                if (mainWindow) {
-                    return await mainWindow.webContents.getPrintersAsync();
+                const { listPrinters, getPrinterStatusText } = require('./printer-utils');
+                if (!mainWindow) {
+                    logToFile('[PRINT] ERROR: No main window for printer detection');
+                    return [];
                 }
-                return [];
+                const printers = await listPrinters(mainWindow, logToFile);
+                // Enrich printer data with status text
+                return printers.map((p) => ({
+                    ...p,
+                    statusText: getPrinterStatusText(p.status)
+                }));
             }
             catch (e) {
-                console.error("IPC Error: get-printers", e);
+                logToFile('[PRINT] ERROR: get-printers failed', { error: e.message });
                 return [];
             }
         });
-        // Silent Printing Handler
+        // Enhanced Silent Printing Handler with retry and thermal printer support
         ipcMain.handle('print-receipt', async (event, htmlContent, options = {}) => {
             try {
-                logToFile('Print Request Received:', {
-                    printerName: options.printerName,
-                    hasMargins: !!options.margins,
-                    htmlLength: htmlContent.length
+                const { listPrinters, selectThermalPrinter, silentPrint, getPageSize, getPrinterStatusText } = require('./printer-utils');
+                logToFile('[PRINT] Print request received', {
+                    configuredPrinter: options.printerName || '(auto)',
+                    paperWidth: options.paperWidth || '80',
+                    htmlLength: htmlContent?.length || 0
                 });
-                // Validate printer availability
-                if (options.printerName && mainWindow) {
-                    const printers = await mainWindow.webContents.getPrintersAsync();
-                    const printerExists = printers.some((p) => p.name === options.printerName);
-                    if (!printerExists) {
-                        const availableNames = printers.map((p) => p.name);
-                        logToFile(`WARNING: Requested printer '${options.printerName}' not found. Available:`, availableNames);
-                        return { success: false, error: `Printer '${options.printerName}' not found` };
-                    }
-                }
-                const printWindow = new BrowserWindow({
-                    show: false,
-                    webPreferences: {
-                        nodeIntegration: false,
-                        contextIsolation: true
-                    }
-                });
-                await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-                // Wait for content to load
-                await new Promise(resolve => setTimeout(resolve, 500));
-                return await new Promise((resolve) => {
-                    const printOptions = {
-                        silent: true,
-                        printBackground: false,
-                        deviceName: options.printerName || ''
+                // Get available printers
+                const printers = await listPrinters(mainWindow, logToFile);
+                if (!printers || printers.length === 0) {
+                    logToFile('[PRINT] ERROR: No printers available');
+                    return {
+                        success: false,
+                        error: 'No printers found. Please check printer connections.'
                     };
-                    // Add margin settings if provided
-                    if (options.margins) {
-                        printOptions.margins = options.margins;
-                    }
-                    logToFile('Attempting silent print with options:', {
-                        deviceName: printOptions.deviceName,
-                        silent: printOptions.silent,
-                        margins: printOptions.margins
+                }
+                // Smart printer selection
+                const selectedPrinter = selectThermalPrinter(printers, options.printerName, logToFile);
+                if (!selectedPrinter) {
+                    logToFile('[PRINT] ERROR: Could not select a printer');
+                    return {
+                        success: false,
+                        error: 'Could not find a suitable printer'
+                    };
+                }
+                // Check printer status
+                if (selectedPrinter.status !== 0) {
+                    const statusText = getPrinterStatusText(selectedPrinter.status);
+                    logToFile('[PRINT] WARNING: Printer may not be ready', {
+                        printer: selectedPrinter.name,
+                        status: statusText
                     });
-                    printWindow.webContents.print(printOptions, (success, errorType) => {
-                        if (!success) {
-                            logToFile("Print failed:", errorType);
-                            printWindow.close();
-                            resolve({ success: false, error: errorType || 'Unknown print error' });
-                        }
-                        else {
-                            logToFile("Print success");
-                            printWindow.close();
-                            resolve({ success: true });
-                        }
+                }
+                // Perform silent print with retry logic
+                const result = await silentPrint(BrowserWindow, htmlContent, {
+                    printerName: selectedPrinter.name,
+                    paperWidth: options.paperWidth || '80',
+                    margins: options.margins,
+                    copies: options.copies
+                }, logToFile);
+                if (result.success) {
+                    logToFile('[PRINT] SUCCESS', {
+                        printer: result.printerUsed,
+                        retried: result.retried || false
                     });
-                });
+                }
+                else {
+                    logToFile('[PRINT] FAILED', { error: result.error });
+                }
+                return result;
             }
             catch (e) {
-                logToFile("Print Exception:", e);
-                return { success: false, error: String(e) };
+                logToFile('[PRINT] EXCEPTION', {
+                    error: e.message,
+                    stack: e.stack
+                });
+                return { success: false, error: e.message || 'Print failed unexpectedly' };
+            }
+        });
+        // Test printer connection
+        ipcMain.handle('test-printer', async (event, printerName, paperWidth = '80') => {
+            try {
+                const { testPrint } = require('./printer-utils');
+                logToFile('[PRINT] Test print requested', { printer: printerName, width: paperWidth });
+                const result = await testPrint(BrowserWindow, printerName, paperWidth, logToFile);
+                return result;
+            }
+            catch (e) {
+                logToFile('[PRINT] Test print failed', { error: e.message });
+                return { success: false, error: e.message };
             }
         });
         ipcMain.handle('get-machine-id', () => {

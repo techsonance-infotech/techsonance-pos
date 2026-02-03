@@ -96,6 +96,7 @@ export function NewOrderClient() {
 
                 const printOptions = {
                     printerName: printerConfig?.printerName,
+                    paperWidth: printerConfig?.paperWidth || '80',
                     margins: {
                         marginType: 'custom',
                         top: parseInt(printerConfig?.topMargin || 0),
@@ -110,11 +111,15 @@ export function NewOrderClient() {
                 if (!result.success) {
                     console.error("Silent print failed:", result.error)
                     if ((window as any).electron?.logError) {
-                        (window as any).electron.logError("Silent Print Failed (New Order)", { error: result.error });
+                        (window as any).electron.logError("Silent Print Failed (New Order)", {
+                            error: result.error,
+                            printerUsed: result.printerUsed
+                        });
                     }
                     toast.error(`Printer error: ${result.error}. Switching to fallback.`)
                     handleWebPrint() // Fallback
                 } else {
+                    toast.success(`Printed successfully${result.printerUsed ? ` on ${result.printerUsed}` : ''}`)
                     setPrintOrder(null)
                 }
             } catch (e) {
