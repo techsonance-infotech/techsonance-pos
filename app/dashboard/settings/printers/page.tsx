@@ -532,8 +532,41 @@ export default function PrinterSettingsPage() {
                                     )
 
                                     if ((window as any).electron && (window as any).electron.isDesktop) {
+                                        // Auto-detect printer if not configured
+                                        let resolvedPrinterName = printerName
+
+                                        if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                                            console.log('[TEST PRINT] No printer configured, auto-detecting...')
+                                            try {
+                                                const systemPrinters = await (window as any).electron.getPrinters()
+                                                if (systemPrinters && systemPrinters.length > 0) {
+                                                    const thermalKeywords = ['EPSON', 'TM-T', 'THERMAL', 'POS', 'BIXOLON', 'STAR', 'TSP', 'CITIZEN', 'CT-S', 'SRP', 'RECEIPT']
+                                                    const thermalPrinter = systemPrinters.find((p: any) =>
+                                                        thermalKeywords.some(kw => p.name.toUpperCase().includes(kw))
+                                                    )
+                                                    if (thermalPrinter) {
+                                                        resolvedPrinterName = thermalPrinter.name
+                                                        console.log('[TEST PRINT] Auto-detected thermal printer:', resolvedPrinterName)
+                                                    } else {
+                                                        const defaultPrinter = systemPrinters.find((p: any) => p.isDefault)
+                                                        resolvedPrinterName = defaultPrinter?.name || systemPrinters[0].name
+                                                        console.log('[TEST PRINT] Using default/first printer:', resolvedPrinterName)
+                                                    }
+                                                }
+                                            } catch (detectErr) {
+                                                console.warn('[TEST PRINT] Printer detection failed:', detectErr)
+                                            }
+                                        }
+
+                                        if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                                            toast.error("No printer found. Please connect a printer.")
+                                            setTesting(false)
+                                            return
+                                        }
+
                                         const printOptions = {
-                                            printerName: printerName,
+                                            printerName: resolvedPrinterName,
+                                            paperWidth: paperWidth || '80',
                                             margins: {
                                                 marginType: 'custom',
                                                 top: parseInt(topMargin || '0'),
@@ -543,10 +576,11 @@ export default function PrinterSettingsPage() {
                                             }
                                         }
 
+                                        console.log('[TEST PRINT] Sending to printer:', resolvedPrinterName)
                                         const result = await (window as any).electron.printReceipt(html, printOptions)
 
                                         if (result.success) {
-                                            toast.success("Test print sent successfully!")
+                                            toast.success(`Test print sent to ${result.printerUsed || resolvedPrinterName}!`)
                                         } else {
                                             toast.error("Failed to print: " + result.error)
                                         }
@@ -561,11 +595,27 @@ export default function PrinterSettingsPage() {
                                                         <style>
                                                             @page { 
                                                                 size: ${paperWidth}mm auto;
-                                                                margin: 0;
+                                                                margin: 0 !important;
+                                                                padding: 0 !important;
                                                             }
-                                                            body { 
+                                                            * {
+                                                                box-sizing: border-box;
                                                                 margin: 0;
+                                                                padding: 0;
+                                                            }
+                                                            html, body { 
+                                                                margin: 0 !important;
+                                                                padding: 0 !important;
+                                                                margin-top: 0 !important;
+                                                                padding-top: 0 !important;
                                                                 width: ${paperWidth}mm;
+                                                                background: white;
+                                                                -webkit-print-color-adjust: exact;
+                                                                print-color-adjust: exact;
+                                                            }
+                                                            body > *:first-child {
+                                                                margin-top: 0 !important;
+                                                                padding-top: 0 !important;
                                                             }
                                                         </style>
                                                     </head>

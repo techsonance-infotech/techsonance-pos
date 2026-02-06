@@ -96,18 +96,65 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
     // Printer Settings Logic
     const paperWidth = printerSettings?.paperWidth ? parseInt(printerSettings.paperWidth.toString()) : 80
 
-    // TYPOGRAPHY CONFIG - MAX VISIBILITY
+    // TYPOGRAPHY CONFIG - Thermal Printer Optimized (Sans-Serif, Bold weights)
+    // Exact specs: Header 16-18pt Bold, Address 10-11pt SemiBold, Title 13-14pt Bold
+    // Meta 9.5-10pt SemiBold, Item 10-11pt SemiBold, Qty 9.5-10pt Bold
+    // Subtotal 10-11pt SemiBold, Total 14-16pt ExtraBold, Payment 10pt Bold, Footer 9-9.5pt SemiBold
     const fontSize = printerSettings?.fontSize || 'medium'
     const fontSizeStyles = {
-        small: { base: '17px', header: '24px', subheader: '20px', total: '26px' },   // Was 14/20/16/22
-        medium: { base: '20px', header: '28px', subheader: '24px', total: '30px' },  // Was 16/24/18/26
-        large: { base: '24px', header: '32px', subheader: '28px', total: '34px' }    // Was 18/28/20/30
+        small: {
+            base: '12px',       // ~9pt - minimum safe for body
+            header: '21px',     // ~16pt Bold/ExtraBold - store name
+            subheader: '13px',  // ~10pt SemiBold - address/contact
+            title: '17px',      // ~13pt Bold - GST Invoice
+            meta: '12px',       // ~9.5pt SemiBold - date/time/bill
+            item: '13px',       // ~10pt SemiBold - item names
+            qty: '12px',        // ~9.5pt Bold - qty/rate columns
+            subtotal: '13px',   // ~10pt SemiBold - subtotal/tax/discount
+            total: '18px',      // ~14pt ExtraBold - grand total
+            payment: '13px',    // ~10pt Bold - payment method
+            footer: '12px'      // ~9pt SemiBold - footer text
+        },
+        medium: {
+            base: '13px',       // ~10pt - body text
+            header: '24px',     // ~18pt Bold/ExtraBold - store name
+            subheader: '14px',  // ~11pt SemiBold - address/contact
+            title: '18px',      // ~14pt Bold - GST Invoice
+            meta: '13px',       // ~10pt SemiBold - date/time/bill
+            item: '14px',       // ~11pt SemiBold - item names
+            qty: '13px',        // ~10pt Bold - qty/rate columns
+            subtotal: '14px',   // ~11pt SemiBold - subtotal/tax/discount
+            total: '21px',      // ~16pt ExtraBold - grand total
+            payment: '13px',    // ~10pt Bold - payment method
+            footer: '12px'      // ~9.5pt SemiBold - footer text
+        },
+        large: {
+            base: '14px',       // ~11pt - body text
+            header: '28px',     // ~21pt Bold/ExtraBold - store name
+            subheader: '16px',  // ~12pt SemiBold - address/contact
+            title: '21px',      // ~16pt Bold - GST Invoice
+            meta: '14px',       // ~11pt SemiBold - date/time/bill
+            item: '16px',       // ~12pt SemiBold - item names
+            qty: '14px',        // ~11pt Bold - qty/rate columns
+            subtotal: '16px',   // ~12pt SemiBold - subtotal/tax/discount
+            total: '24px',      // ~18pt ExtraBold - grand total
+            payment: '14px',    // ~11pt Bold - payment method
+            footer: '13px'      // ~10pt SemiBold - footer text
+        }
     }
     const sizes = fontSizeStyles[fontSize as keyof typeof fontSizeStyles] || fontSizeStyles.medium
 
-    // Helper for Bold Rows
-    const BoldRow = ({ label, value, size = sizes.base }: { label: string, value: string | number, size?: string }) => (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: size, fontWeight: '800', marginBottom: '4px' }}>
+    // Helper for SemiBold Rows (Subtotal/Tax/Discount - 10-11pt SemiBold)
+    const SemiBoldRow = ({ label, value, size = sizes.subtotal }: { label: string, value: string | number, size?: string }) => (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: size, fontWeight: '600', marginBottom: '4px' }}>
+            <span>{label}</span>
+            <span>{value}</span>
+        </div>
+    )
+
+    // Helper for Payment Row (10pt Bold)
+    const PaymentRow = ({ label, value }: { label: string, value: string | number }) => (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: sizes.payment, fontWeight: '700', marginBottom: '4px' }}>
             <span>{label}</span>
             <span>{value}</span>
         </div>
@@ -117,23 +164,28 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
         <div
             ref={ref}
             style={{
-                width: '100%',
+                width: `${paperWidth}mm`,
+                maxWidth: `${paperWidth}mm`,
                 minWidth: `${paperWidth}mm`,
-                padding: '0 7mm', // 7mm Left/Right Margin
-                margin: '0 auto',
+                padding: '0 5mm', // Reduced side padding for thermal
+                paddingTop: 0,
+                paddingBottom: '2mm',
+                margin: 0, // No margin - eliminates white space at top
+                marginTop: 0,
                 backgroundColor: 'white',
                 color: '#000000',
-                fontFamily: '"Courier New", Courier, monospace',
+                fontFamily: 'Roboto, Arial, Helvetica, "Noto Sans", sans-serif',
                 fontSize: sizes.base,
-                fontWeight: '900', // Global Extra Bold
+                fontWeight: '600', // SemiBold baseline for thermal
                 lineHeight: '1.2',
                 boxSizing: 'border-box',
                 textRendering: 'optimizeLegibility',
-                WebkitFontSmoothing: 'none' // Crisp pixels for thermal
+                WebkitFontSmoothing: 'none', // Crisp pixels for thermal
+                MozOsxFontSmoothing: 'grayscale'
             }}
         >
-            {/* Header Section */}
-            <div style={{ textAlign: 'center', marginBottom: '8px', borderBottom: '2px dashed black', paddingBottom: '8px' }}>
+            {/* 🏪 Header Section - 16-18pt Bold/ExtraBold, line-height 1.25 */}
+            <div style={{ textAlign: 'center', marginTop: 0, paddingTop: 0, marginBottom: '8px', borderBottom: '2px solid black', paddingBottom: '8px', lineHeight: '1.25' }}>
                 {businessDetails?.logoUrl && (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
                         <img
@@ -144,38 +196,38 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     </div>
                 )}
 
-                {/* Outlet Name - Extra Large & Bold */}
-                <div style={{ fontSize: sizes.header, fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>
+                {/* 🏪 Outlet Name - 16-18pt Bold/ExtraBold */}
+                <div style={{ fontSize: sizes.header, fontWeight: '800', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.5px' }}>
                     {storeDetails?.name || businessDetails?.name || 'SyncServe'}
                 </div>
 
-                {/* Location - Bold */}
+                {/* 📍 Location - 10-11pt SemiBold, line-height 1.15 */}
                 {storeDetails?.location ? (
-                    <div style={{ fontSize: sizes.subheader, fontWeight: '800' }}>{storeDetails.location}</div>
+                    <div style={{ fontSize: sizes.subheader, fontWeight: '600', lineHeight: '1.15' }}>{storeDetails.location}</div>
                 ) : (
-                    businessDetails?.address && <div style={{ fontSize: sizes.subheader, fontWeight: '800' }}>{businessDetails.address}</div>
+                    businessDetails?.address && <div style={{ fontSize: sizes.subheader, fontWeight: '600', lineHeight: '1.15' }}>{businessDetails.address}</div>
                 )}
 
-                {/* Phone - Bold */}
+                {/* 📍 Phone - 10-11pt SemiBold */}
                 {(storeDetails?.contactNo || businessDetails?.phone) && (
-                    <div style={{ fontSize: sizes.subheader, fontWeight: '800', marginTop: '2px' }}>
+                    <div style={{ fontSize: sizes.subheader, fontWeight: '600', marginTop: '2px', lineHeight: '1.15' }}>
                         Ph: {storeDetails?.contactNo || businessDetails?.phone}
                     </div>
                 )}
 
-                {/* GST Invoice Label - Force Show if Tax Enabled */}
+                {/* 🧾 GST Invoice Label - 13-14pt Bold, UPPERCASE */}
                 {isTaxEnabled && (
-                    <div style={{ marginTop: '6px', fontWeight: '900', textTransform: 'uppercase', fontSize: sizes.subheader, border: '2px dashed black', display: 'inline-block', padding: '2px 8px' }}>
+                    <div style={{ marginTop: '6px', fontWeight: '700', textTransform: 'uppercase', fontSize: sizes.title, border: '2px solid black', display: 'inline-block', padding: '2px 8px' }}>
                         GST INVOICE
                     </div>
                 )}
             </div>
 
-            {/* Meta Info Section - Reordered & Bold */}
-            <div style={{ borderBottom: '2px dashed black', paddingBottom: '8px', marginBottom: '8px' }}>
+            {/* 📅 Meta Info Section - 9.5-10pt SemiBold */}
+            <div style={{ borderBottom: '2px solid black', paddingBottom: '8px', marginBottom: '8px' }}>
 
                 {/* Row 1: Date/Time (Left) | Table/Counter (Right) */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '600', fontSize: sizes.meta }}>
                     <span>Date: {formatDate(order.createdAt)} {formatTime(order.createdAt)}</span>
                     <span style={{ textTransform: 'uppercase' }}>
                         {order.tableName ? `Dine In: ${order.tableName}` : 'Counter'}
@@ -183,23 +235,23 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                 </div>
 
                 {/* Row 2: Cashier | Bill No */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '600', fontSize: sizes.meta }}>
                     <span>Cashier: biller</span>
-                    <span style={{ fontSize: sizes.subheader }}>Bill No: {order.kotNo.replace(/^KOT/i, '')}</span>
+                    <span style={{ fontSize: sizes.meta, fontWeight: '600' }}>Bill No: {order.kotNo.replace(/^KOT/i, '')}</span>
                 </div>
 
                 {/* Row 3: Customer Name (Restored Here) */}
-                <div style={{ marginTop: '4px', fontWeight: '800', fontSize: sizes.subheader }}>
+                <div style={{ marginTop: '4px', fontWeight: '600', fontSize: sizes.meta }}>
                     Name: {order.customerName || 'Walk-in'}
                 </div>
             </div>
 
-            {/* Items Header - Solid Line */}
+            {/* 🛒 Items Header - 10-11pt SemiBold, Bold separator */}
             <div style={{
                 display: 'flex',
-                fontWeight: '900',
-                fontSize: sizes.subheader,
-                borderBottom: '2px dashed black',
+                fontWeight: '600',
+                fontSize: sizes.item,
+                borderBottom: '2px solid black',
                 paddingBottom: '4px',
                 marginBottom: '6px'
             }}>
@@ -215,11 +267,11 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     const itemTotal = item.unitPrice * item.quantity;
                     return (
                         <div key={index} style={{ marginBottom: '6px', fontWeight: '700' }}>
-                            <div style={{ display: 'flex', fontSize: sizes.base }}>
+                            <div style={{ display: 'flex', fontSize: sizes.item, fontWeight: '600' }}>
                                 <div style={{ width: '45%' }}>{item.name}</div>
-                                <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
-                                <div style={{ width: '20%', textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</div>
-                                <div style={{ width: '20%', textAlign: 'right', fontWeight: '800' }}>{itemTotal.toFixed(2)}</div>
+                                <div style={{ width: '15%', textAlign: 'center', fontSize: sizes.qty, fontWeight: '700' }}>{item.quantity}</div>
+                                <div style={{ width: '20%', textAlign: 'right', fontSize: sizes.qty, fontWeight: '700' }}>{item.unitPrice.toFixed(2)}</div>
+                                <div style={{ width: '20%', textAlign: 'right', fontSize: sizes.qty, fontWeight: '700' }}>{itemTotal.toFixed(2)}</div>
                             </div>
                             {/* Addons */}
                             {item.addons && item.addons.length > 0 && item.addons.map((addon: any, idx: number) => (
@@ -235,23 +287,23 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                 })}
             </div>
 
-            {/* Totals Section - All Bold */}
-            <div style={{ borderTop: '2px dashed black', paddingTop: '8px', fontSize: sizes.base }}>
+            {/* 💰 Totals Section - 10-11pt SemiBold */}
+            <div style={{ borderTop: '2px solid black', paddingTop: '8px', fontSize: sizes.subtotal }}>
 
                 {/* Unified Line: Total Qty and Subtotal */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <span style={{ fontWeight: 'bold' }}>Total Qty:</span>
-                        <span style={{ fontWeight: 'bold' }}>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                        <span style={{ fontWeight: '600' }}>Total Qty:</span>
+                        <span style={{ fontWeight: '600' }}>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <span style={{ fontWeight: 'bold' }}>Sub Total</span>
-                        <span style={{ fontWeight: 'bold' }}>{subtotal.toFixed(2)}</span>
+                        <span style={{ fontWeight: '600' }}>Sub Total</span>
+                        <span style={{ fontWeight: '600' }}>{subtotal.toFixed(2)}</span>
                     </div>
                 </div>
 
                 {isDiscountEnabled && discountAmount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '800' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: '600' }}>
                         <span>Discount ({order.discount || ''}):</span>
                         <span>- {discountAmount.toFixed(2)}</span>
                     </div>
@@ -261,35 +313,36 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     <div style={{ marginBottom: '4px' }}>
                         {(businessDetails?.taxName || 'GST').toUpperCase().includes('GST') ? (
                             <>
-                                <BoldRow label={`CGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
-                                <BoldRow label={`SGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
+                                <SemiBoldRow label={`CGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
+                                <SemiBoldRow label={`SGST (${(taxRate / 2).toFixed(1)}%):`} value={(taxAmount / 2).toFixed(2)} />
                             </>
                         ) : (
-                            <BoldRow label={`${businessDetails?.taxName || 'Tax'} (${taxRate}%):`} value={taxAmount.toFixed(2)} />
+                            <SemiBoldRow label={`${businessDetails?.taxName || 'Tax'} (${taxRate}%):`} value={taxAmount.toFixed(2)} />
                         )}
                     </div>
                 )}
 
-                <BoldRow label="Payment Mode:" value={order.paymentMode || 'CASH'} />
+                {/* 💳 Payment Method - 10pt Bold */}
+                <PaymentRow label="Payment Mode:" value={order.paymentMode || 'CASH'} />
             </div>
 
-            {/* Grand Total - Block Style */}
+            {/* 💵 Grand Total - 14-16pt ExtraBold */}
             <div style={{
-                borderTop: '2px dashed black',
-                borderBottom: '2px dashed black',
+                borderTop: '2px solid black',
+                borderBottom: '2px solid black',
                 marginTop: '8px',
                 padding: '8px 0',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
             }}>
-                <span style={{ fontSize: sizes.header, fontWeight: '900', textTransform: 'uppercase' }}>TOTAL</span>
-                <span style={{ fontSize: sizes.total, fontWeight: '900' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
+                <span style={{ fontSize: sizes.title, fontWeight: '800', textTransform: 'uppercase' }}>TOTAL</span>
+                <span style={{ fontSize: sizes.total, fontWeight: '800' }}>₹{Math.round(finalTotal).toFixed(2)}</span>
             </div>
 
-            {/* Footer */}
-            <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                <div style={{ fontWeight: '900', fontSize: sizes.subheader, marginBottom: '6px' }}>Thank you for visiting!</div>
+            {/* 🔁 Footer - 9-9.5pt SemiBold, line-height 1.15 */}
+            <div style={{ textAlign: 'center', marginTop: '15px', lineHeight: '1.15' }}>
+                <div style={{ fontWeight: '600', fontSize: sizes.footer, marginBottom: '6px' }}>Thank you for visiting!</div>
 
                 {printerSettings?.enableQrCode && (
                     <div style={{ margin: '8px auto', width: 'fit-content', border: '3px solid black', padding: '6px' }}>
@@ -297,7 +350,7 @@ export const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptProps>(({ order
                     </div>
                 )}
 
-                <div style={{ fontSize: '12px', marginTop: '8px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: sizes.footer, marginTop: '8px', fontWeight: '600', textTransform: 'uppercase' }}>
                     Powered by SyncServe POS
                 </div>
             </div>

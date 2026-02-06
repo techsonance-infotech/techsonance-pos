@@ -55,12 +55,18 @@ export function RecentOrdersClient() {
         pageStyle: `
             @page {
                 size: ${paperWidth}mm auto;
-                margin: 0mm;
+                margin: 0 !important;
+                padding: 0 !important;
             }
             @media print {
-                body {
-                    margin: 0mm;
-                    padding: 0mm;
+                html, body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: ${paperWidth}mm !important;
+                }
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 .hidden { display: block !important; }
             }
@@ -70,7 +76,6 @@ export function RecentOrdersClient() {
         }
     })
 
-    // Unified Print Handler
     // Unified Print Handler
     const handlePrint = async (orderToPrint?: any) => {
         // use provided order or fallback to selectedOrder (if viewing details)
@@ -85,6 +90,40 @@ export function RecentOrdersClient() {
             // Check if running in Electron
             if ((window as any).electron && (window as any).electron.isDesktop) {
                 try {
+                    // Step 1: Detect printer if not configured
+                    let resolvedPrinterName = printerSettings?.printerName
+
+                    if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                        console.log('[PRINT] No printer configured, auto-detecting...')
+                        try {
+                            const systemPrinters = await (window as any).electron.getPrinters()
+                            if (systemPrinters && systemPrinters.length > 0) {
+                                // Priority: Thermal keywords > Default > First available
+                                const thermalKeywords = ['EPSON', 'TM-T', 'THERMAL', 'POS', 'BIXOLON', 'STAR', 'TSP', 'CITIZEN', 'CT-S', 'SRP', 'RECEIPT']
+                                const thermalPrinter = systemPrinters.find((p: any) =>
+                                    thermalKeywords.some(kw => p.name.toUpperCase().includes(kw))
+                                )
+                                if (thermalPrinter) {
+                                    resolvedPrinterName = thermalPrinter.name
+                                    console.log('[PRINT] Auto-detected thermal printer:', resolvedPrinterName)
+                                } else {
+                                    const defaultPrinter = systemPrinters.find((p: any) => p.isDefault)
+                                    resolvedPrinterName = defaultPrinter?.name || systemPrinters[0].name
+                                    console.log('[PRINT] Using default/first printer:', resolvedPrinterName)
+                                }
+                            }
+                        } catch (detectErr) {
+                            console.warn('[PRINT] Printer detection failed:', detectErr)
+                        }
+                    }
+
+                    // If still no printer, fallback to web
+                    if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                        console.warn('[PRINT] No printer found, using web fallback')
+                        handleWebPrint()
+                        return
+                    }
+
                     const html = renderToStaticMarkup(
                         <ReceiptTemplate
                             order={order}
@@ -94,7 +133,7 @@ export function RecentOrdersClient() {
                         />
                     )
                     const printOptions = {
-                        printerName: printerSettings?.printerName,
+                        printerName: resolvedPrinterName,
                         paperWidth: printerSettings?.paperWidth || '80',
                         margins: {
                             marginType: 'custom',
@@ -104,6 +143,8 @@ export function RecentOrdersClient() {
                             right: 0
                         }
                     }
+
+                    console.log('[PRINT] Sending to printer:', resolvedPrinterName)
                     const result = await (window as any).electron.printReceipt(html, printOptions)
 
                     if (!result.success) {

@@ -535,6 +535,7 @@ else {
                 logToFile('[PRINT] Print request received', {
                     configuredPrinter: options.printerName || '(auto)',
                     paperWidth: options.paperWidth || '80',
+                    copies: options.copies || 1,
                     htmlLength: htmlContent?.length || 0
                 });
                 // Get available printers
@@ -546,6 +547,10 @@ else {
                         error: 'No printers found. Please check printer connections.'
                     };
                 }
+                logToFile('[PRINT] Available printers', {
+                    count: printers.length,
+                    names: printers.map((p) => p.name)
+                });
                 // Smart printer selection
                 const selectedPrinter = selectThermalPrinter(printers, options.printerName, logToFile);
                 if (!selectedPrinter) {
@@ -553,6 +558,19 @@ else {
                     return {
                         success: false,
                         error: 'Could not find a suitable printer'
+                    };
+                }
+                logToFile('[PRINT] Selected printer', {
+                    name: selectedPrinter.name,
+                    status: selectedPrinter.status,
+                    isDefault: selectedPrinter.isDefault
+                });
+                // CRITICAL: Validate printer name before printing
+                if (!selectedPrinter.name || selectedPrinter.name.trim() === '') {
+                    logToFile('[PRINT] ERROR: Selected printer has no name');
+                    return {
+                        success: false,
+                        error: 'Selected printer has no name. Please reconfigure printer.'
                     };
                 }
                 // Check printer status
@@ -563,9 +581,12 @@ else {
                         status: statusText
                     });
                 }
-                // Perform silent print with retry logic
+                logToFile('[PRINT] Sending to silentPrint with explicit printer name', {
+                    printerName: selectedPrinter.name
+                });
+                // Perform silent print with retry logic - ALWAYS pass explicit printer name
                 const result = await silentPrint(BrowserWindow, htmlContent, {
-                    printerName: selectedPrinter.name,
+                    printerName: selectedPrinter.name, // CRITICAL: Always use explicit name
                     paperWidth: options.paperWidth || '80',
                     margins: options.margins,
                     copies: options.copies

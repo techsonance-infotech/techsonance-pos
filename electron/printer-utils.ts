@@ -198,7 +198,7 @@ export function getPrinterStatusText(status: number): string {
 }
 
 /**
- * Silent print with retry logic
+ * Silent print with retry logic - Enhanced for thermal printers
  */
 export async function silentPrint(
     BrowserWindow: any,
@@ -209,36 +209,121 @@ export async function silentPrint(
     const logger = createLogger(logToFile);
     const pageSize = getPageSize(options.paperWidth);
 
+    // CRITICAL: Validate printer name is explicitly provided
+    if (!options.printerName || options.printerName.trim() === '') {
+        logger.print('ERROR: No printer name provided - cannot print silently');
+        return {
+            success: false,
+            error: 'No printer selected. Please configure a printer in Settings.'
+        };
+    }
+
+    logger.print('Printer validation passed', {
+        printerName: options.printerName,
+        paperWidth: options.paperWidth || '80'
+    });
+
+    // Enhanced print options for thermal printers
     const printOptions: any = {
         silent: true,
         printBackground: true,
-        deviceName: options.printerName || '',
+        // CRITICAL: Always use the explicit printer name
+        deviceName: options.printerName.trim(),
         pageSize: pageSize,
+        // CRITICAL: pageRanges is required for reliable silent printing
+        pageRanges: { from: 0, to: 0 },
+        // Prevent scaling issues on thermal printers
+        scaleFactor: 100,
+        // Use CSS page size for thermal receipt dimensions
+        preferCSSPageSize: true,
         margins: options.margins || { marginType: 'none' },
         copies: options.copies || 1
     };
 
     logger.print('Attempting silent print', {
-        printer: printOptions.deviceName || '(default)',
+        printer: printOptions.deviceName,
         pageSize: `${pageSize.width / 1000}mm x auto`,
-        silent: true
+        silent: true,
+        scaleFactor: printOptions.scaleFactor,
+        pageRanges: printOptions.pageRanges,
+        copies: printOptions.copies
     });
 
-    // Create hidden print window
+    // Create hidden print window with specific settings for receipt printing
     const printWindow = new BrowserWindow({
         show: false,
+        width: Math.round(pageSize.width / 1000), // Convert microns to mm
+        height: 600,
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            // Disable features that could interfere with printing
+            webSecurity: false
         }
     });
 
     try {
-        // Load HTML content
-        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+        // Wrap HTML with proper document structure for thermal printing
+        const wrappedHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=${pageSize.width / 1000}">
+                <style>
+                    @page {
+                        size: ${pageSize.width / 1000}mm auto;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                    * {
+                        box-sizing: border-box;
+                        margin: 0;
+                        padding: 0;
+                    }
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        margin-top: 0 !important;
+                        padding-top: 0 !important;
+                        width: ${pageSize.width / 1000}mm;
+                        background: white;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    body > *:first-child {
+                        margin-top: 0 !important;
+                        padding-top: 0 !important;
+                    }
+                </style>
+            </head>
+            <body>${htmlContent}</body>
+            </html>
+        `;
 
-        // Wait for content to render
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Load HTML content
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(wrappedHtml)}`);
+
+        // CRITICAL: Wait for DOM to be fully ready
+        await new Promise<void>((resolve) => {
+            const checkReady = () => {
+                printWindow.webContents.executeJavaScript('document.readyState')
+                    .then((state: string) => {
+                        if (state === 'complete') {
+                            resolve();
+                        } else {
+                            setTimeout(checkReady, 100);
+                        }
+                    })
+                    .catch(() => resolve()); // Proceed on error
+            };
+            checkReady();
+        });
+
+        // Additional render delay for complex content (increased from 500ms to 800ms)
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        logger.print('Content loaded, initiating print');
 
         // Attempt print
         const result = await attemptPrint(printWindow, printOptions, logger);
@@ -249,8 +334,20 @@ export async function silentPrint(
             return { success: true, printerUsed: printOptions.deviceName };
         }
 
-        // First attempt failed - retry once
-        logger.print('Print failed, retrying...', { error: result.error });
+        // First attempt failed - retry with PDF-based printing
+        logger.print('Direct print failed, trying PDF-based approach...', { error: result.error });
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const pdfResult = await attemptPdfPrint(printWindow, printOptions, logger);
+
+        if (pdfResult.success) {
+            logger.print('PDF-based print success', { printer: printOptions.deviceName });
+            printWindow.close();
+            return { success: true, printerUsed: printOptions.deviceName, retried: true };
+        }
+
+        // PDF failed - try with retry on direct print
+        logger.print('PDF print failed, retrying direct print...', { error: pdfResult.error });
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const retryResult = await attemptPrint(printWindow, printOptions, logger);
@@ -261,8 +358,8 @@ export async function silentPrint(
             return { success: true, printerUsed: printOptions.deviceName, retried: true };
         }
 
-        // Retry failed - try with dialog as last resort
-        logger.print('Retry failed, using fallback (silent=false)', { error: retryResult.error });
+        // All silent methods failed - try with dialog as last resort
+        logger.print('All silent methods failed, using fallback (silent=false)', { error: retryResult.error });
         const fallbackOptions = { ...printOptions, silent: false };
         const fallbackResult = await attemptPrint(printWindow, fallbackOptions, logger);
 
@@ -275,7 +372,7 @@ export async function silentPrint(
 
         return {
             success: false,
-            error: fallbackResult.error || 'Print failed after retries',
+            error: fallbackResult.error || 'Print failed after all attempts',
             printerUsed: printOptions.deviceName
         };
 
@@ -290,7 +387,7 @@ export async function silentPrint(
 }
 
 /**
- * Internal: Attempt a single print operation
+ * Internal: Attempt a single print operation with detailed error handling
  */
 function attemptPrint(
     printWindow: any,
@@ -298,15 +395,91 @@ function attemptPrint(
     logger: ReturnType<typeof createLogger>
 ): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
-        printWindow.webContents.print(printOptions, (success: boolean, errorType: string) => {
-            if (success) {
-                resolve({ success: true });
-            } else {
-                logger.print('Print attempt failed', { errorType });
-                resolve({ success: false, error: errorType || 'Unknown print error' });
+        logger.print('Calling webContents.print', {
+            deviceName: printOptions.deviceName,
+            silent: printOptions.silent
+        });
+
+        try {
+            printWindow.webContents.print(printOptions, (success: boolean, errorType: string) => {
+                if (success) {
+                    logger.print('webContents.print callback: SUCCESS');
+                    resolve({ success: true });
+                } else {
+                    // Map Electron error types to user-friendly messages
+                    const errorMessages: Record<string, string> = {
+                        'cancelled': 'Print was cancelled',
+                        'failed': 'Print job failed - check printer connection',
+                        'invalid_settings': 'Invalid print settings',
+                        '': 'Unknown error - printer may be offline'
+                    };
+                    const readableError = errorMessages[errorType] || `Print error: ${errorType}`;
+                    logger.print('webContents.print callback: FAILED', { errorType, readableError });
+                    resolve({ success: false, error: readableError });
+                }
+            });
+        } catch (e: any) {
+            logger.print('webContents.print threw exception', { error: e.message });
+            resolve({ success: false, error: e.message });
+        }
+    });
+}
+
+/**
+ * Internal: Attempt printing via PDF generation (more reliable for some printers)
+ */
+async function attemptPdfPrint(
+    printWindow: any,
+    printOptions: any,
+    logger: ReturnType<typeof createLogger>
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        logger.print('Attempting PDF-based print method');
+
+        // Generate PDF from the content
+        const pdfData = await printWindow.webContents.printToPDF({
+            pageSize: printOptions.pageSize,
+            printBackground: true,
+            margins: printOptions.margins,
+            preferCSSPageSize: true
+        });
+
+        // Create a temporary window to print the PDF
+        const pdfWindow = new (require('electron').BrowserWindow)({
+            show: false,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true
             }
         });
-    });
+
+        try {
+            // Load PDF as base64 data URI
+            const pdfBase64 = pdfData.toString('base64');
+            await pdfWindow.loadURL(`data:application/pdf;base64,${pdfBase64}`);
+
+            // Wait for PDF to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Print the PDF
+            const result = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+                pdfWindow.webContents.print(printOptions, (success: boolean, errorType: string) => {
+                    resolve({ success, error: errorType || undefined });
+                });
+            });
+
+            pdfWindow.close();
+            return result;
+
+        } catch (e: any) {
+            try { pdfWindow.close(); } catch { }
+            throw e;
+        }
+
+    } catch (error: any) {
+        logger.print('PDF print method failed', { error: error.message });
+        return { success: false, error: error.message };
+    }
 }
 
 /**

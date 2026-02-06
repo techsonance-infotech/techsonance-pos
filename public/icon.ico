@@ -1,0 +1,10 @@
+npm warn exec The following package was not found and will be installed: png-to-ico@3.0.1
+file:///Users/techsonanceinfotechllp/.npm/_npx/94e6c7d88b079398/node_modules/png-to-ico/lib/png.js:16
+		throw new Error(`${filepath} is not or a valid PNG file.`);
+		      ^
+
+Error: public/icon-512.png is not or a valid PNG file.
+    at readPNG (file:///Users/techsonanceinfotechllp/.npm/_npx/94e6c7d88b079398/node_modules/png-to-ico/lib/png.js:16:9)
+    at async default (file:///Users/techsonanceinfotechllp/.npm/_npx/94e6c7d88b079398/node_modules/png-to-ico/index.js:17:14)
+
+Node.js v24.13.0

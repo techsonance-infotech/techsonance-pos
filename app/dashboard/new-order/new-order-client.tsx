@@ -67,11 +67,18 @@ export function NewOrderClient() {
         pageStyle: `
             @page {
                 size: ${printerConfig?.paperWidth || 80}mm auto;
-                margin: 0mm;
+                margin: 0 !important;
+                padding: 0 !important;
             }
             @media print {
-                body {
-                    margin: 0mm;
+                html, body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: ${printerConfig?.paperWidth || 80}mm !important;
+                }
+                * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
             }
         `,
@@ -80,14 +87,56 @@ export function NewOrderClient() {
         }
     })
 
-    // Unified Print Handler
-    const handlePrint = async () => {
+    // Unified Print Handler - accepts order to ensure data is available
+    const handlePrint = async (orderToPrint?: any) => {
+        const order = orderToPrint || printOrder
+        if (!order) {
+            console.error('[PRINT] No order data available for printing')
+            toast.error('No order data to print')
+            return
+        }
+
         // Check if running in Electron
         if ((window as any).electron && (window as any).electron.isDesktop) {
             try {
+                // Step 1: Detect printer if not configured
+                let resolvedPrinterName = printerConfig?.printerName
+
+                if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                    console.log('[PRINT] No printer configured, auto-detecting...')
+                    try {
+                        const systemPrinters = await (window as any).electron.getPrinters()
+                        if (systemPrinters && systemPrinters.length > 0) {
+                            // Priority: Thermal keywords > Default > First available
+                            const thermalKeywords = ['EPSON', 'TM-T', 'THERMAL', 'POS', 'BIXOLON', 'STAR', 'TSP', 'CITIZEN', 'CT-S', 'SRP', 'RECEIPT']
+                            const thermalPrinter = systemPrinters.find((p: any) =>
+                                thermalKeywords.some(kw => p.name.toUpperCase().includes(kw))
+                            )
+                            if (thermalPrinter) {
+                                resolvedPrinterName = thermalPrinter.name
+                                console.log('[PRINT] Auto-detected thermal printer:', resolvedPrinterName)
+                            } else {
+                                const defaultPrinter = systemPrinters.find((p: any) => p.isDefault)
+                                resolvedPrinterName = defaultPrinter?.name || systemPrinters[0].name
+                                console.log('[PRINT] Using default/first printer:', resolvedPrinterName)
+                            }
+                        }
+                    } catch (detectErr) {
+                        console.warn('[PRINT] Printer detection failed:', detectErr)
+                    }
+                }
+
+                // If still no printer, fallback to web
+                if (!resolvedPrinterName || resolvedPrinterName.trim() === '') {
+                    console.warn('[PRINT] No printer found, using web fallback')
+                    setPrintOrder(order) // Ensure state is set for web print
+                    setTimeout(() => handleWebPrint(), 50)
+                    return
+                }
+
                 const html = renderToStaticMarkup(
                     <ReceiptTemplate
-                        order={printOrder}
+                        order={order}
                         businessDetails={businessDetails}
                         storeDetails={storeDetails}
                         printerSettings={printerConfig}
@@ -95,7 +144,7 @@ export function NewOrderClient() {
                 )
 
                 const printOptions = {
-                    printerName: printerConfig?.printerName,
+                    printerName: resolvedPrinterName,
                     paperWidth: printerConfig?.paperWidth || '80',
                     margins: {
                         marginType: 'custom',
@@ -106,6 +155,7 @@ export function NewOrderClient() {
                     }
                 }
 
+                console.log('[PRINT] Sending to printer:', resolvedPrinterName, 'Order:', order.kotNo)
                 const result = await (window as any).electron.printReceipt(html, printOptions)
 
                 if (!result.success) {
@@ -117,7 +167,8 @@ export function NewOrderClient() {
                         });
                     }
                     toast.error(`Printer error: ${result.error}. Switching to fallback.`)
-                    handleWebPrint() // Fallback
+                    setPrintOrder(order)
+                    setTimeout(() => handleWebPrint(), 50)
                 } else {
                     toast.success(`Printed successfully${result.printerUsed ? ` on ${result.printerUsed}` : ''}`)
                     setPrintOrder(null)
@@ -128,10 +179,12 @@ export function NewOrderClient() {
                     (window as any).electron.logError("Silent Print Exception (New Order)", { error: String(e) });
                 }
                 toast.error("Printer connection failed. Switching to Web Print.")
-                handleWebPrint() // Fallback
+                setPrintOrder(order)
+                setTimeout(() => handleWebPrint(), 50)
             }
         } else {
-            handleWebPrint()
+            setPrintOrder(order) // Ensure state is set for web print
+            setTimeout(() => handleWebPrint(), 50)
         }
     }
 
@@ -390,8 +443,9 @@ export function NewOrderClient() {
                     })
 
                     if (shouldPrint) {
-                        setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
-                        setTimeout(() => handlePrint(), 100)
+                        const orderForPrint = { ...orderData, subtotal, taxAmount: tax, createdAt: new Date() }
+                        setPrintOrder(orderForPrint)
+                        handlePrint(orderForPrint) // Pass order directly, no delay needed
                     }
 
                     finishOrder(shouldPrint)
@@ -411,8 +465,9 @@ export function NewOrderClient() {
                     toast.success(status === 'HELD' ? "Order Held Successfully" : "Order Saved Successfully")
 
                     if (shouldPrint) {
-                        setPrintOrder({ ...orderData, subtotal, taxAmount: tax, createdAt: new Date() })
-                        setTimeout(() => handlePrint(), 100)
+                        const orderForPrint = { ...orderData, subtotal, taxAmount: tax, createdAt: new Date() }
+                        setPrintOrder(orderForPrint)
+                        handlePrint(orderForPrint) // Pass order directly, no delay needed
                     }
                     finishOrder(shouldPrint)
                 } else {
